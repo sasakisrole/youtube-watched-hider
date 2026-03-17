@@ -281,6 +281,44 @@ input:checked + .slider::before {
   transform: translateX(16px);
 }
 
+/* About */
+.about-section {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #2a2a4a;
+}
+
+.about-link {
+  display: block;
+  text-align: center;
+  width: 100%;
+}
+
+.about-content {
+  margin-top: 8px;
+  font-size: 10px;
+  color: #888;
+  line-height: 1.6;
+}
+
+.about-content p {
+  margin-bottom: 6px;
+}
+
+.about-content ul {
+  margin: 4px 0 8px 16px;
+  padding: 0;
+}
+
+.about-content li {
+  margin-bottom: 2px;
+}
+
+.about-note {
+  color: #666;
+  font-style: italic;
+}
+
 .status {
   margin-top: 8px;
   font-size: 12px;

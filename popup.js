@@ -18,6 +18,8 @@ const recordWhileOffToggle = document.getElementById('recordWhileOffToggle');
 const autoBackupToggle = document.getElementById('autoBackupToggle');
 const backupNowBtn = document.getElementById('backupNowBtn');
 const lastBackupInfo = document.getElementById('lastBackupInfo');
+const aboutBtn = document.getElementById('aboutBtn');
+const aboutPanel = document.getElementById('aboutPanel');
 
 let allHistoryData = [];
 
@@ -221,6 +223,12 @@ autoBackupToggle.addEventListener('change', () => {
 backupNowBtn.addEventListener('click', () => {
   chrome.runtime.sendMessage({ type: 'BACKUP_NOW' });
   showStatus('Backup started...');
+});
+
+// About toggle
+aboutBtn.addEventListener('click', () => {
+  const visible = aboutPanel.style.display !== 'none';
+  aboutPanel.style.display = visible ? 'none' : 'block';
 });
 
 // Clear

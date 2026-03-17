@@ -63,6 +63,21 @@
       <button id="backupNowBtn" class="btn">Backup Now</button>
 
       <button id="clearBtn" class="btn btn-danger">Clear All Data</button>
+
+      <div class="about-section">
+        <button id="aboutBtn" class="btn-link about-link">About</button>
+        <div id="aboutPanel" style="display:none" class="about-content">
+          <p><strong>YT Watched Hider</strong> <span id="aboutVersion">v1.1.0</span></p>
+          <ul>
+            <li>IndexedDB: capacity limit none</li>
+            <li>Record: video ended event detection</li>
+            <li>Seekbar: YouTube red bar auto-detection</li>
+            <li>Backup: daily auto / manual export</li>
+            <li>History: title, play count, source</li>
+          </ul>
+          <p class="about-note">Data: Chrome internal (not synced via Dropbox).<br>Use Export/Import for PC migration.</p>
+        </div>
+      </div>
     </div>
 
     <input type="file" id="fileInput" accept=".json" style="display:none">
