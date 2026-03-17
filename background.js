@@ -43,15 +43,32 @@ setInterval(() => {
 const BACKUP_ALARM = 'auto-backup';
 const BACKUP_FILENAME = 'yt-watched-backup.json';
 
-// Set up daily backup alarm
+// Re-inject content scripts into existing YouTube tabs on install/update/enable
+async function reinjectContentScripts() {
+  try {
+    const tabs = await chrome.tabs.query({ url: '*://*.youtube.com/*' });
+    for (const tab of tabs) {
+      chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['db.js', 'content.js']
+      }).catch(() => {});
+    }
+  } catch (e) {
+    // scripting API not available or tabs not accessible
+  }
+}
+
+// Set up daily backup alarm + re-inject content scripts
 chrome.runtime.onInstalled.addListener(() => {
+  reinjectContentScripts();
   chrome.alarms.create(BACKUP_ALARM, {
     periodInMinutes: 24 * 60 // daily
   });
 });
 
-// Also ensure alarm exists on startup
+// Also ensure alarm exists on startup + re-inject
 chrome.runtime.onStartup.addListener(() => {
+  reinjectContentScripts();
   chrome.alarms.get(BACKUP_ALARM, (alarm) => {
     if (!alarm) {
       chrome.alarms.create(BACKUP_ALARM, {
