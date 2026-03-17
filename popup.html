@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h1>YT Watched Hider</h1>
+
+    <div class="toggle-row">
+      <label class="toggle">
+        <input type="checkbox" id="enableToggle" checked>
+        <span class="slider"></span>
+      </label>
+      <span id="toggleLabel">ON</span>
+    </div>
+
+    <div class="stats">
+      <span id="count">-</span>
+      <span class="label">watched videos</span>
+    </div>
+
+    <div class="actions">
+      <button id="historyBtn" class="btn">History</button>
+      <button id="exportBtn" class="btn">Export JSON</button>
+      <button id="importBtn" class="btn">Import JSON</button>
+    </div>
+
+    <!-- History list (hidden by default) -->
+    <div id="historyPanel" class="history-panel" style="display:none">
+      <div class="history-header">
+        <input type="text" id="historySearch" placeholder="Search..." class="search-input">
+      </div>
+      <div id="historyList" class="history-list"></div>
+    </div>
+
+    <!-- Settings (hidden by default) -->
+    <div class="settings-toggle">
+      <button id="settingsBtn" class="btn-link">Settings</button>
+    </div>
+    <div id="settingsPanel" class="settings-panel" style="display:none">
+      <div class="setting-item">
+        <span class="setting-label">Record while OFF</span>
+        <label class="toggle toggle-small">
+          <input type="checkbox" id="recordWhileOffToggle">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="setting-desc">OFF中も視聴履歴を記録する</div>
+
+      <div class="setting-item">
+        <span class="setting-label">Auto Backup (daily)</span>
+        <label class="toggle toggle-small">
+          <input type="checkbox" id="autoBackupToggle" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="setting-desc">
+        毎日自動でダウンロードフォルダにバックアップ
+        <span id="lastBackupInfo"></span>
+      </div>
+      <button id="backupNowBtn" class="btn">Backup Now</button>
+
+      <button id="clearBtn" class="btn btn-danger">Clear All Data</button>
+    </div>
+
+    <input type="file" id="fileInput" accept=".json" style="display:none">
+    <div id="status" class="status"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
