@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "YouTube Watched Hider",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "YouTubeのおすすめから視聴済み動画を非表示にする拡張機能",
   "permissions": ["storage", "downloads", "alarms", "scripting"],
   "host_permissions": ["*://*.youtube.com/*"],

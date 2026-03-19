@@ -101,11 +101,13 @@ function renderHistory(filter = '') {
     a.rel = 'noopener';
 
     // Source indicator
-    if (video.source === 'seekbar') {
+    if (video.source === 'seekbar' || video.source === 'history') {
       const badge = document.createElement('span');
       badge.className = 'source-badge';
       badge.textContent = 'YT';
-      badge.title = 'Detected via YouTube seekbar (may not be self-played)';
+      badge.title = video.source === 'seekbar'
+        ? 'Detected via YouTube seekbar'
+        : 'Imported from YouTube history';
       a.appendChild(badge);
     }
 
