@@ -208,10 +208,15 @@
       if (videoIds.length > 0) {
         const results = await WatchedDB.checkMultiple(videoIds);
         for (const [videoId, isWatched] of Object.entries(results)) {
+          const matchingCards = cardMap.get(videoId) || [];
           if (isWatched) {
-            const matchingCards = cardMap.get(videoId) || [];
             for (const card of matchingCards) {
               hideCard(card, videoId);
+            }
+          } else {
+            // Mark as checked so sidebar polling skips these
+            for (const card of matchingCards) {
+              card.dataset.watchedChecked = 'true';
             }
           }
         }
@@ -275,22 +280,48 @@
     if (location.pathname === '/watch') {
       attachVideoEndedListener();
     }
-    // Reset hidden flags on navigation (sidebar content changes)
-    const hidden = document.querySelectorAll('[data-watched-hidden="true"]');
-    for (const card of hidden) {
+    // Reset flags on navigation (sidebar content changes)
+    for (const card of document.querySelectorAll('[data-watched-hidden="true"]')) {
       delete card.dataset.watchedHidden;
     }
-    // Single delayed processPage — MutationObserver handles late-loading content
+    for (const card of document.querySelectorAll('[data-watched-checked="true"]')) {
+      delete card.dataset.watchedChecked;
+    }
     if (enabled) {
       setTimeout(processPage, 500);
     }
   });
 
+  // Sidebar re-check: YouTube recycles DOM in sidebar without adding new nodes,
+  // so MutationObserver (childList only) misses them. Poll for unprocessed cards.
+  let sidebarInterval = null;
+  function startSidebarPolling() {
+    if (sidebarInterval) return;
+    sidebarInterval = setInterval(() => {
+      if (!enabled || location.pathname !== '/watch') return;
+      // Only run if there are unprocessed compact-video cards
+      const unprocessed = document.querySelectorAll(
+        `${SELECTORS.compactVideo}:not([data-watched-hidden="true"]):not([data-watched-checked="true"])`
+      );
+      if (unprocessed.length > 0) {
+        processPage();
+      }
+    }, 2000);
+  }
+
   // Initial processing
   if (location.pathname === '/watch') {
     attachVideoEndedListener();
+    startSidebarPolling();
   }
   if (enabled) setTimeout(processPage, 500);
+
+  // Start polling when navigating to watch page
+  document.addEventListener('yt-navigate-finish', () => {
+    if (location.pathname === '/watch') {
+      startSidebarPolling();
+    }
+  });
 
   // Listen for messages from background script
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
