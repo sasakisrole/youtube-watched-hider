@@ -239,12 +239,14 @@
   }
 
   // Observe DOM mutations for dynamically loaded content
+  // NOTE: Only observe childList (new nodes added). Do NOT observe attributes
+  // because YouTube heavily mutates href/attributes during SPA navigation,
+  // which can interfere with background playback and mini-player.
   const observer = new MutationObserver((mutations) => {
     if (!enabled) return;
 
     let hasRelevantChange = false;
     for (const mutation of mutations) {
-      // Check for new nodes added
       for (const node of mutation.addedNodes) {
         if (node.nodeType === Node.ELEMENT_NODE) {
           if (node.matches?.(ALL_CARD_SELECTORS) || node.querySelector?.(ALL_CARD_SELECTORS)) {
@@ -254,32 +256,23 @@
         }
       }
       if (hasRelevantChange) break;
-
-      // Also check attribute changes on existing cards (YouTube recycles sidebar DOM)
-      if (mutation.type === 'attributes' && mutation.target.closest?.(ALL_CARD_SELECTORS)) {
-        hasRelevantChange = true;
-        break;
-      }
     }
 
     if (hasRelevantChange) {
       // Debounce processing
       clearTimeout(observer._debounceTimer);
-      observer._debounceTimer = setTimeout(processPage, 200);
+      observer._debounceTimer = setTimeout(processPage, 300);
     }
   });
 
   observer.observe(document.body, {
     childList: true,
     subtree: true,
-    attributes: true,
-    attributeFilter: ['href'],
   });
 
   // Listen for YouTube SPA navigation
   document.addEventListener('yt-navigate-finish', () => {
     if (location.pathname === '/watch') {
-      // Attach ended listener to detect playback completion
       attachVideoEndedListener();
     }
     // Reset hidden flags on navigation (sidebar content changes)
@@ -287,11 +280,9 @@
     for (const card of hidden) {
       delete card.dataset.watchedHidden;
     }
-    // Process multiple times to catch late-loading sidebar
+    // Single delayed processPage — MutationObserver handles late-loading content
     if (enabled) {
-      setTimeout(processPage, 300);
-      setTimeout(processPage, 1000);
-      setTimeout(processPage, 2500);
+      setTimeout(processPage, 500);
     }
   });
 
