@@ -272,11 +272,25 @@
     return card.querySelector('a[href*="watch"], a[href*="/watch?v="]');
   }
 
+  // Check if a history card's video was watched to completion (>= 95%)
+  // New YouTube UI uses yt-thumbnail-overlay-progress-bar-view-model with
+  // a child div whose style.width indicates progress percentage.
+  // Returns false if no progress bar found (e.g. live streams) or progress < 95%.
+  function isHistoryCardCompleted(card) {
+    const segment = card.querySelector(
+      '.ytThumbnailOverlayProgressBarHostWatchedProgressBarSegment'
+    );
+    if (!segment) return false;
+
+    const width = parseFloat(segment.style.width);
+    return !isNaN(width) && width >= 95;
+  }
+
   async function scrapeHistoryPage() {
     const cards = document.querySelectorAll(HISTORY_CARD_SELECTOR);
     console.log(`[YT-Watched-Hider] History scrape: found ${cards.length} cards`);
 
-    // Collect candidates
+    // Collect candidates (only videos watched >= 95%)
     const candidates = [];
     for (const card of cards) {
       if (card.dataset.historyScraped === 'true') continue;
@@ -287,6 +301,9 @@
 
       const videoId = getVideoIdFromHref(link.href);
       if (!videoId) continue;
+
+      // Skip partially watched videos — only register >= 95% progress
+      if (!isHistoryCardCompleted(card)) continue;
 
       candidates.push({ card, videoId });
     }
