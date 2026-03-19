@@ -260,13 +260,13 @@
 
   async function scrapeHistoryPage() {
     const cards = document.querySelectorAll(HISTORY_CARD_SELECTOR);
-    let imported = 0;
 
+    // Collect candidates: fully watched + not yet scraped
+    const candidates = [];
     for (const card of cards) {
       if (card.dataset.historyScraped === 'true') continue;
       card.dataset.historyScraped = 'true';
 
-      // Only import videos with seekbar >= 90% (fully watched)
       if (!isFullyWatched(card)) continue;
 
       const link = card.querySelector(SELECTORS.videoLink);
@@ -274,6 +274,19 @@
 
       const videoId = getVideoIdFromHref(link.href);
       if (!videoId) continue;
+
+      candidates.push({ card, videoId });
+    }
+
+    if (candidates.length === 0) return;
+
+    // Batch check which are already in DB — skip those
+    const videoIds = candidates.map(c => c.videoId);
+    const existing = await WatchedDB.checkMultiple(videoIds);
+
+    let imported = 0;
+    for (const { card, videoId } of candidates) {
+      if (existing[videoId]) continue; // already in DB, skip
 
       const title = getTitleFromCard(card);
       const channel = getChannelFromCard(card);
@@ -287,7 +300,7 @@
     }
 
     if (imported > 0) {
-      console.log(`[YT-Watched-Hider] Imported ${imported} videos from history (fully watched only)`);
+      console.log(`[YT-Watched-Hider] Imported ${imported} new videos from history`);
     }
   }
 
