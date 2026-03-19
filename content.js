@@ -246,41 +246,43 @@
   // --- History page scraping ---
   // Scan /feed/history for watched videos and import them into DB
   // Does NOT hide anything on the history page
-  const HISTORY_CARD_SELECTOR = 'ytd-video-renderer';
+  // YouTube history page uses yt-lockup-view-model (new UI), fallback to ytd-video-renderer
+  const HISTORY_CARD_SELECTOR = 'yt-lockup-view-model, ytd-video-renderer';
 
-  // Check if video on history page was fully (or nearly fully) watched.
-  // On YouTube's history page:
-  //   - Fully watched videos have NO seekbar/progress bar
-  //   - Partially watched videos show a red progress bar with width < 100%
-  function isFullyWatched(card) {
-    const resume = card.querySelector(SELECTORS.resumeOverlay);
-    const progress = card.querySelector(SELECTORS.seekbar);
+  // Get title from history card (handles both old and new YouTube UI)
+  function getHistoryTitle(card) {
+    const el = card.querySelector('h3, #video-title, yt-formatted-string#video-title');
+    return el ? el.textContent.trim() : getTitleFromCard(card);
+  }
 
-    // No progress indicator at all = fully watched
-    if (!resume && !progress) return true;
+  // Get channel from history card
+  function getHistoryChannel(card) {
+    // New UI: channel info in various text elements
+    const el = card.querySelector(
+      '.yt-content-metadata-view-model-wiz__metadata-text, ' +
+      'ytd-channel-name yt-formatted-string a, ' +
+      'ytd-channel-name yt-formatted-string'
+    );
+    return el ? el.textContent.trim() : getChannelFromCard(card);
+  }
 
-    // Has progress bar — check if nearly complete (>= 90%)
-    if (progress && progress.style && progress.style.width) {
-      const pct = parseFloat(progress.style.width);
-      return pct >= 90;
-    }
-
-    // Resume overlay exists but no measurable progress
-    return false;
+  // Get video link from history card
+  function getHistoryVideoLink(card) {
+    // New UI uses a[href*="watch"], same as old
+    return card.querySelector('a[href*="watch"], a[href*="/watch?v="]');
   }
 
   async function scrapeHistoryPage() {
     const cards = document.querySelectorAll(HISTORY_CARD_SELECTOR);
+    console.log(`[YT-Watched-Hider] History scrape: found ${cards.length} cards`);
 
-    // Collect candidates: fully watched + not yet scraped
+    // Collect candidates
     const candidates = [];
     for (const card of cards) {
       if (card.dataset.historyScraped === 'true') continue;
       card.dataset.historyScraped = 'true';
 
-      if (!isFullyWatched(card)) continue;
-
-      const link = card.querySelector(SELECTORS.videoLink);
+      const link = getHistoryVideoLink(card);
       if (!link) continue;
 
       const videoId = getVideoIdFromHref(link.href);
@@ -288,6 +290,7 @@
 
       candidates.push({ card, videoId });
     }
+    console.log(`[YT-Watched-Hider] Candidates: ${candidates.length}`);
 
     if (candidates.length === 0) return;
 
@@ -299,8 +302,8 @@
     for (const { card, videoId } of candidates) {
       if (existing[videoId]) continue; // already in DB, skip
 
-      const title = getTitleFromCard(card);
-      const channel = getChannelFromCard(card);
+      const title = getHistoryTitle(card);
+      const channel = getHistoryChannel(card);
 
       try {
         await WatchedDB.addWatched(videoId, title, 'self', channel);
