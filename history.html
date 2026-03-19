@@ -314,11 +314,13 @@
         a.rel = 'noopener';
 
         // Source badge
-        if (video.source === 'seekbar') {
+        if (video.source === 'seekbar' || video.source === 'history') {
           const badge = document.createElement('span');
           badge.className = 'badge badge-yt';
           badge.textContent = 'YT';
-          badge.title = 'Detected via YouTube seekbar';
+          badge.title = video.source === 'seekbar'
+            ? 'Detected via YouTube seekbar'
+            : 'Imported from YouTube history';
           a.appendChild(badge);
         }
 

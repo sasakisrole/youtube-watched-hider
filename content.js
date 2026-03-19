@@ -323,7 +323,7 @@
       const channel = getHistoryChannel(card);
 
       try {
-        await WatchedDB.addWatched(videoId, title, 'self', channel);
+        await WatchedDB.addWatched(videoId, title, 'history', channel);
         imported++;
       } catch (e) {
         // skip individual failures
