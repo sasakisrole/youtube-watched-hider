@@ -248,13 +248,24 @@
   // Does NOT hide anything on the history page
   const HISTORY_CARD_SELECTOR = 'ytd-video-renderer';
 
-  // Check if seekbar is fully (or nearly fully) watched (>= 90%)
+  // Check if video on history page was fully (or nearly fully) watched.
+  // On YouTube's history page:
+  //   - Fully watched videos have NO seekbar/progress bar
+  //   - Partially watched videos show a red progress bar with width < 100%
   function isFullyWatched(card) {
+    const resume = card.querySelector(SELECTORS.resumeOverlay);
     const progress = card.querySelector(SELECTORS.seekbar);
+
+    // No progress indicator at all = fully watched
+    if (!resume && !progress) return true;
+
+    // Has progress bar — check if nearly complete (>= 90%)
     if (progress && progress.style && progress.style.width) {
       const pct = parseFloat(progress.style.width);
       return pct >= 90;
     }
+
+    // Resume overlay exists but no measurable progress
     return false;
   }
 
