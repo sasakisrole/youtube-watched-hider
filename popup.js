@@ -38,11 +38,13 @@ function formatDate(timestamp) {
   return `${mm}/${dd}`;
 }
 
-// Load stats
-function loadStats() {
+// Load stats with retry (content script may not be ready yet)
+function loadStats(retries = 3) {
   chrome.runtime.sendMessage({ type: 'GET_STATS' }, (response) => {
-    if (response && typeof response.count === 'number') {
+    if (response && typeof response.count === 'number' && response.count > 0) {
       countEl.textContent = response.count.toLocaleString();
+    } else if (retries > 0) {
+      setTimeout(() => loadStats(retries - 1), 1000);
     } else {
       countEl.textContent = '0';
     }
