@@ -243,18 +243,57 @@
     }
   }
 
+  // --- History page scraping ---
+  // Scan /feed/history for watched videos and import them into DB
+  // Does NOT hide anything on the history page
+  const HISTORY_CARD_SELECTOR = 'ytd-video-renderer';
+
+  async function scrapeHistoryPage() {
+    const cards = document.querySelectorAll(HISTORY_CARD_SELECTOR);
+    let imported = 0;
+
+    for (const card of cards) {
+      if (card.dataset.historyScraped === 'true') continue;
+
+      const link = card.querySelector(SELECTORS.videoLink);
+      if (!link) continue;
+
+      const videoId = getVideoIdFromHref(link.href);
+      if (!videoId) continue;
+
+      const title = getTitleFromCard(card);
+      const channel = getChannelFromCard(card);
+
+      try {
+        await WatchedDB.addWatched(videoId, title, 'self', channel);
+        imported++;
+      } catch (e) {
+        // skip individual failures
+      }
+
+      card.dataset.historyScraped = 'true';
+    }
+
+    if (imported > 0) {
+      console.log(`[YT-Watched-Hider] Imported ${imported} videos from history page`);
+    }
+  }
+
+  function isHistoryPage() {
+    return location.pathname === '/feed/history';
+  }
+
   // Observe DOM mutations for dynamically loaded content
   // NOTE: Only observe childList (new nodes added). Do NOT observe attributes
   // because YouTube heavily mutates href/attributes during SPA navigation,
   // which can interfere with background playback and mini-player.
   const observer = new MutationObserver((mutations) => {
-    if (!enabled) return;
-
     let hasRelevantChange = false;
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (node.nodeType === Node.ELEMENT_NODE) {
-          if (node.matches?.(ALL_CARD_SELECTORS) || node.querySelector?.(ALL_CARD_SELECTORS)) {
+          if (node.matches?.(ALL_CARD_SELECTORS) || node.querySelector?.(ALL_CARD_SELECTORS) ||
+              node.matches?.(HISTORY_CARD_SELECTOR) || node.querySelector?.(HISTORY_CARD_SELECTOR)) {
             hasRelevantChange = true;
             break;
           }
@@ -264,9 +303,14 @@
     }
 
     if (hasRelevantChange) {
-      // Debounce processing
       clearTimeout(observer._debounceTimer);
-      observer._debounceTimer = setTimeout(processPage, 300);
+      if (isHistoryPage()) {
+        // On history page: scrape new cards into DB (no hiding)
+        observer._debounceTimer = setTimeout(scrapeHistoryPage, 300);
+      } else if (enabled) {
+        // Normal pages: hide watched videos
+        observer._debounceTimer = setTimeout(processPage, 300);
+      }
     }
   });
 
@@ -287,7 +331,10 @@
     for (const card of document.querySelectorAll('[data-watched-checked="true"]')) {
       delete card.dataset.watchedChecked;
     }
-    if (enabled) {
+    if (isHistoryPage()) {
+      // Scrape history page
+      setTimeout(scrapeHistoryPage, 500);
+    } else if (enabled) {
       setTimeout(processPage, 500);
     }
   });
@@ -314,7 +361,11 @@
     attachVideoEndedListener();
     startSidebarPolling();
   }
-  if (enabled) setTimeout(processPage, 500);
+  if (isHistoryPage()) {
+    setTimeout(scrapeHistoryPage, 500);
+  } else if (enabled) {
+    setTimeout(processPage, 500);
+  }
 
   // Start polling when navigating to watch page
   document.addEventListener('yt-navigate-finish', () => {
