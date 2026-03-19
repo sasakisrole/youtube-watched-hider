@@ -85,164 +85,94 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   }
 });
 
+// --- Helper: send message to a YouTube tab with retry ---
+// Tries each YouTube tab in order until one responds.
+// Ensures content scripts are injected before sending.
+async function sendToYouTubeTab(message) {
+  const tabs = await chrome.tabs.query({ url: '*://*.youtube.com/*' });
+  if (tabs.length === 0) throw new Error('No YouTube tab open');
+
+  for (const tab of tabs) {
+    try {
+      // Ensure content scripts are loaded
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['db.js', 'content.js']
+      });
+    } catch (e) {
+      // May fail if already injected or tab not ready
+    }
+
+    try {
+      const result = await chrome.tabs.sendMessage(tab.id, message);
+      return result;
+    } catch (e) {
+      // This tab didn't respond, try next
+    }
+  }
+
+  throw new Error('No YouTube tab responded');
+}
+
 function performAutoBackup() {
   chrome.storage.local.get({ autoBackup: true }, (settings) => {
     if (!settings.autoBackup) return;
 
-    // Get data from a YouTube tab
-    chrome.tabs.query({ url: '*://*.youtube.com/*' }, (tabs) => {
-      if (tabs.length === 0) return;
+    sendToYouTubeTab({ type: 'EXPORT_DATA' })
+      .then((data) => {
+        if (!data || data.length === 0) return;
 
-      chrome.tabs.sendMessage(tabs[0].id, { type: 'EXPORT_DATA' })
-        .then((data) => {
-          if (!data || data.length === 0) return;
+        const json = JSON.stringify(data, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
 
-          const json = JSON.stringify(data, null, 2);
-          const blob = new Blob([json], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-
-          chrome.downloads.download({
-            url,
-            filename: BACKUP_FILENAME,
-            conflictAction: 'overwrite',
-            saveAs: false
-          }, (downloadId) => {
-            if (downloadId) {
-              chrome.storage.local.set({
-                lastBackup: Date.now(),
-                lastBackupCount: data.length
-              });
-            }
-            // Clean up blob URL after a delay
-            setTimeout(() => URL.revokeObjectURL(url), 10000);
-          });
-        })
-        .catch(() => {});
-    });
+        chrome.downloads.download({
+          url,
+          filename: BACKUP_FILENAME,
+          conflictAction: 'overwrite',
+          saveAs: false
+        }, (downloadId) => {
+          if (downloadId) {
+            chrome.storage.local.set({
+              lastBackup: Date.now(),
+              lastBackupCount: data.length
+            });
+          }
+          // Clean up blob URL after a delay
+          setTimeout(() => URL.revokeObjectURL(url), 10000);
+        });
+      })
+      .catch(() => {});
   });
 }
 
 // Handle messages from content script and popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  // --- DB operations via chrome.scripting.executeScript ---
-  // Runs code directly in a YouTube tab's main world to access IndexedDB,
-  // bypassing unreliable content script message passing.
-
-  function runInYouTubeTab(scriptFn, args = []) {
-    return new Promise((resolve, reject) => {
-      chrome.tabs.query({ url: '*://*.youtube.com/*' }, (tabs) => {
-        if (tabs.length === 0) {
-          reject(new Error('No YouTube tab open'));
-          return;
-        }
-        // Try each tab until one succeeds
-        function tryTab(i) {
-          if (i >= tabs.length) {
-            reject(new Error('All YouTube tabs failed'));
-            return;
-          }
-          chrome.scripting.executeScript({
-            target: { tabId: tabs[i].id },
-            world: 'MAIN',
-            func: scriptFn,
-            args,
-          }).then((results) => {
-            resolve(results[0]?.result);
-          }).catch(() => tryTab(i + 1));
-        }
-        tryTab(0);
-      });
-    });
-  }
-
-  // IndexedDB read helper (runs in page context)
-  function idbGetAll() {
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open('YouTubeWatchedDB', 2);
-      req.onerror = () => reject(req.error);
-      req.onsuccess = () => {
-        const db = req.result;
-        const tx = db.transaction('watchedVideos', 'readonly');
-        const store = tx.objectStore('watchedVideos');
-        const getReq = store.getAll();
-        getReq.onsuccess = () => resolve(getReq.result);
-        getReq.onerror = () => reject(getReq.error);
-      };
-    });
-  }
-
-  function idbCount() {
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open('YouTubeWatchedDB', 2);
-      req.onerror = () => reject(req.error);
-      req.onsuccess = () => {
-        const db = req.result;
-        const tx = db.transaction('watchedVideos', 'readonly');
-        const store = tx.objectStore('watchedVideos');
-        const countReq = store.count();
-        countReq.onsuccess = () => resolve(countReq.result);
-        countReq.onerror = () => reject(countReq.error);
-      };
-    });
-  }
-
-  function idbClear() {
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open('YouTubeWatchedDB', 2);
-      req.onerror = () => reject(req.error);
-      req.onsuccess = () => {
-        const db = req.result;
-        const tx = db.transaction('watchedVideos', 'readwrite');
-        const store = tx.objectStore('watchedVideos');
-        const clearReq = store.clear();
-        clearReq.onsuccess = () => resolve();
-        clearReq.onerror = () => reject(clearReq.error);
-      };
-    });
-  }
-
-  function idbImport(records) {
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open('YouTubeWatchedDB', 2);
-      req.onerror = () => reject(req.error);
-      req.onsuccess = () => {
-        const db = req.result;
-        const tx = db.transaction('watchedVideos', 'readwrite');
-        const store = tx.objectStore('watchedVideos');
-        for (const record of records) {
-          store.put(record);
-        }
-        tx.oncomplete = () => resolve(records.length);
-        tx.onerror = () => reject(tx.error);
-      };
-    });
-  }
-
   if (message.type === 'GET_STATS') {
-    runInYouTubeTab(idbCount)
-      .then((count) => sendResponse({ count }))
+    sendToYouTubeTab({ type: 'GET_STATS' })
+      .then(sendResponse)
       .catch(() => sendResponse({ count: 0 }));
     return true;
   }
 
   if (message.type === 'EXPORT_DATA') {
-    runInYouTubeTab(idbGetAll)
+    sendToYouTubeTab({ type: 'EXPORT_DATA' })
       .then((data) => sendResponse(data || []))
       .catch(() => sendResponse([]));
     return true;
   }
 
   if (message.type === 'IMPORT_DATA') {
-    runInYouTubeTab(idbImport, [message.data])
-      .then((count) => sendResponse({ success: true, count }))
-      .catch((e) => sendResponse({ success: false, error: e.message }));
+    sendToYouTubeTab({ type: 'IMPORT_DATA', data: message.data })
+      .then(sendResponse)
+      .catch(() => sendResponse({ success: false }));
     return true;
   }
 
   if (message.type === 'CLEAR_DATA') {
-    runInYouTubeTab(idbClear)
-      .then(() => sendResponse({ success: true }))
-      .catch((e) => sendResponse({ success: false, error: e.message }));
+    sendToYouTubeTab({ type: 'CLEAR_DATA' })
+      .then(sendResponse)
+      .catch(() => sendResponse({ success: false }));
     return true;
   }
 
