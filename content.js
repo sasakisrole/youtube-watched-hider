@@ -364,21 +364,75 @@
     }
   });
 
-  // Sidebar re-check: YouTube recycles DOM in sidebar without adding new nodes,
-  // so MutationObserver (childList only) misses them. Poll for unprocessed cards.
+  // Sidebar-specific check: independent of processPage to avoid processing flag deadlock.
+  // YouTube recycles sidebar DOM without adding new nodes, so MutationObserver misses them.
+  const SIDEBAR_SELECTORS = [
+    'ytd-compact-video-renderer',
+    'ytd-video-renderer',
+    'ytd-rich-item-renderer',
+  ].join(', ');
+
   let sidebarInterval = null;
+  async function checkSidebar() {
+    if (!enabled || location.pathname !== '/watch') return;
+
+    const sidebar = document.querySelector('#secondary, ytd-watch-next-secondary-results-renderer');
+    if (!sidebar) return;
+
+    const cards = sidebar.querySelectorAll(SIDEBAR_SELECTORS);
+    if (cards.length === 0) return;
+
+    const unchecked = [];
+    const currentVid = getCurrentVideoId();
+
+    for (const card of cards) {
+      if (card.dataset.watchedHidden === 'true') continue;
+      if (card.dataset.watchedChecked === 'true') continue;
+
+      // Check seekbar first (hide immediately)
+      if (hasYouTubeSeekbar(card)) {
+        const link = card.querySelector(SELECTORS.videoLink);
+        const videoId = link ? getVideoIdFromHref(link.href) : null;
+        if (videoId && videoId !== currentVid) {
+          hideCard(card, videoId);
+          const title = getTitleFromCard(card);
+          const channel = getChannelFromCard(card);
+          WatchedDB.addWatched(videoId, title, 'seekbar', channel).catch(() => {});
+        }
+        continue;
+      }
+
+      const link = card.querySelector(SELECTORS.videoLink);
+      if (!link) continue;
+      const videoId = getVideoIdFromHref(link.href);
+      if (!videoId || videoId === currentVid) continue;
+
+      unchecked.push({ card, videoId });
+    }
+
+    if (unchecked.length === 0) return;
+
+    // Batch check against DB
+    try {
+      const ids = unchecked.map(c => c.videoId);
+      const results = await WatchedDB.checkMultiple(ids);
+      for (const { card, videoId } of unchecked) {
+        if (results[videoId]) {
+          hideCard(card, videoId);
+        } else {
+          card.dataset.watchedChecked = 'true';
+        }
+      }
+    } catch (e) {
+      // DB error, will retry on next poll
+    }
+  }
+
   function startSidebarPolling() {
     if (sidebarInterval) return;
-    sidebarInterval = setInterval(() => {
-      if (!enabled || location.pathname !== '/watch') return;
-      // Only run if there are unprocessed compact-video cards
-      const unprocessed = document.querySelectorAll(
-        `${SELECTORS.compactVideo}:not([data-watched-hidden="true"]):not([data-watched-checked="true"])`
-      );
-      if (unprocessed.length > 0) {
-        processPage();
-      }
-    }, 2000);
+    // Run immediately, then every 2 seconds
+    checkSidebar();
+    sidebarInterval = setInterval(checkSidebar, 2000);
   }
 
   // Initial processing
