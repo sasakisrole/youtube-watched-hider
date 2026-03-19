@@ -87,22 +87,12 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 // --- Helper: send message to a YouTube tab with retry ---
 // Tries each YouTube tab in order until one responds.
-// Ensures content scripts are injected before sending.
+// Does NOT re-inject content scripts (const redeclaration would crash).
 async function sendToYouTubeTab(message) {
   const tabs = await chrome.tabs.query({ url: '*://*.youtube.com/*' });
   if (tabs.length === 0) throw new Error('No YouTube tab open');
 
   for (const tab of tabs) {
-    try {
-      // Ensure content scripts are loaded
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ['db.js', 'content.js']
-      });
-    } catch (e) {
-      // May fail if already injected or tab not ready
-    }
-
     try {
       const result = await chrome.tabs.sendMessage(tab.id, message);
       return result;
