@@ -248,12 +248,26 @@
   // Does NOT hide anything on the history page
   const HISTORY_CARD_SELECTOR = 'ytd-video-renderer';
 
+  // Check if seekbar is fully (or nearly fully) watched (>= 90%)
+  function isFullyWatched(card) {
+    const progress = card.querySelector(SELECTORS.seekbar);
+    if (progress && progress.style && progress.style.width) {
+      const pct = parseFloat(progress.style.width);
+      return pct >= 90;
+    }
+    return false;
+  }
+
   async function scrapeHistoryPage() {
     const cards = document.querySelectorAll(HISTORY_CARD_SELECTOR);
     let imported = 0;
 
     for (const card of cards) {
       if (card.dataset.historyScraped === 'true') continue;
+      card.dataset.historyScraped = 'true';
+
+      // Only import videos with seekbar >= 90% (fully watched)
+      if (!isFullyWatched(card)) continue;
 
       const link = card.querySelector(SELECTORS.videoLink);
       if (!link) continue;
@@ -270,12 +284,10 @@
       } catch (e) {
         // skip individual failures
       }
-
-      card.dataset.historyScraped = 'true';
     }
 
     if (imported > 0) {
-      console.log(`[YT-Watched-Hider] Imported ${imported} videos from history page`);
+      console.log(`[YT-Watched-Hider] Imported ${imported} videos from history (fully watched only)`);
     }
   }
 
