@@ -18,6 +18,7 @@ const recordWhileOffToggle = document.getElementById('recordWhileOffToggle');
 const autoBackupToggle = document.getElementById('autoBackupToggle');
 const backupNowBtn = document.getElementById('backupNowBtn');
 const lastBackupInfo = document.getElementById('lastBackupInfo');
+const viewerBtn = document.getElementById('viewerBtn');
 const aboutBtn = document.getElementById('aboutBtn');
 const aboutPanel = document.getElementById('aboutPanel');
 
@@ -48,12 +49,30 @@ function loadStats() {
   });
 }
 
+// Format date for group headers (YYYY/MM/DD with day of week)
+function formatDateGroup(timestamp) {
+  const d = new Date(timestamp);
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}/${mm}/${dd} (${days[d.getDay()]})`;
+}
+
+// Format time (HH:MM)
+function formatTime(timestamp) {
+  const d = new Date(timestamp);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
 // Render history list
 function renderHistory(filter = '') {
   historyList.innerHTML = '';
+  const lowerFilter = filter.toLowerCase();
   const filtered = filter
     ? allHistoryData.filter(v =>
-        (v.title || v.videoId).toLowerCase().includes(filter.toLowerCase()))
+        (v.title || v.videoId).toLowerCase().includes(lowerFilter) ||
+        (v.channel || '').toLowerCase().includes(lowerFilter))
     : allHistoryData;
 
   if (filtered.length === 0) {
@@ -61,7 +80,18 @@ function renderHistory(filter = '') {
     return;
   }
 
+  // Group by date
+  let currentDateGroup = '';
   for (const video of filtered) {
+    const dateGroup = formatDateGroup(video.watchedAt);
+    if (dateGroup !== currentDateGroup) {
+      currentDateGroup = dateGroup;
+      const header = document.createElement('div');
+      header.className = 'history-date-header';
+      header.textContent = dateGroup;
+      historyList.appendChild(header);
+    }
+
     const a = document.createElement('a');
     a.className = 'history-item';
     a.href = `https://www.youtube.com/watch?v=${video.videoId}`;
@@ -77,19 +107,38 @@ function renderHistory(filter = '') {
       a.appendChild(badge);
     }
 
+    // Play count badge
+    const count = video.playCount || 1;
+    if (count > 1) {
+      const countBadge = document.createElement('span');
+      countBadge.className = 'play-count-badge';
+      countBadge.textContent = `${count}x`;
+      countBadge.title = `Played ${count} times`;
+      a.appendChild(countBadge);
+    }
+
+    const textWrap = document.createElement('div');
+    textWrap.className = 'history-text';
+
     const title = document.createElement('span');
     title.className = 'title';
     title.textContent = video.title || video.videoId;
+    textWrap.appendChild(title);
 
-    const meta = document.createElement('span');
-    meta.className = 'meta';
-    const count = video.playCount || 1;
-    meta.textContent = count > 1
-      ? `${count}x ${formatDate(video.watchedAt)}`
-      : formatDate(video.watchedAt);
+    if (video.channel) {
+      const channel = document.createElement('span');
+      channel.className = 'channel';
+      channel.textContent = video.channel;
+      textWrap.appendChild(channel);
+    }
 
-    a.appendChild(title);
-    a.appendChild(meta);
+    a.appendChild(textWrap);
+
+    const time = document.createElement('span');
+    time.className = 'meta';
+    time.textContent = formatTime(video.watchedAt);
+    a.appendChild(time);
+
     historyList.appendChild(a);
   }
 }
@@ -143,6 +192,11 @@ historyBtn.addEventListener('click', () => {
 // History search
 historySearch.addEventListener('input', () => {
   renderHistory(historySearch.value);
+});
+
+// Open viewer in new tab
+viewerBtn.addEventListener('click', () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('history.html') });
 });
 
 // Export

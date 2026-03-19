@@ -48,7 +48,7 @@ const WatchedDB = (() => {
   }
 
   // source: 'self' (user actually played) or 'seekbar' (detected via YouTube seekbar)
-  async function addWatched(videoId, title = '', source = 'self') {
+  async function addWatched(videoId, title = '', source = 'self', channel = '') {
     const db = await openDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -59,23 +59,26 @@ const WatchedDB = (() => {
       getReq.onsuccess = () => {
         const existing = getReq.result;
         if (existing) {
-          // Update: increment playCount, update title if we have a better one
+          // Only increment playCount for actual plays (source='self'), not seekbar re-detection
+          const shouldIncrement = source === 'self';
           store.put({
             videoId,
             title: title || existing.title || '',
-            watchedAt: Date.now(),
+            channel: channel || existing.channel || '',
+            watchedAt: shouldIncrement ? Date.now() : existing.watchedAt,
             firstWatchedAt: existing.firstWatchedAt || existing.watchedAt,
-            playCount: (existing.playCount || 1) + 1,
+            playCount: shouldIncrement ? (existing.playCount || 1) + 1 : (existing.playCount || 1),
             source: existing.source === 'self' ? 'self' : source,
           });
         } else {
-          // New record
+          // New record: seekbar detection = 0 plays (just detected), self = 1 play
           store.put({
             videoId,
             title,
+            channel: channel || '',
             watchedAt: Date.now(),
             firstWatchedAt: Date.now(),
-            playCount: 1,
+            playCount: source === 'self' ? 1 : 0,
             source,
           });
         }
@@ -99,6 +102,28 @@ const WatchedDB = (() => {
         if (existing && !existing.title) {
           existing.title = title;
           store.put(existing);
+        }
+      };
+      tx.oncomplete = () => resolve();
+      tx.onerror = (event) => reject(event.target.error);
+    });
+  }
+
+  // Update title and channel (without incrementing playCount)
+  async function updateTitleAndChannel(videoId, title, channel) {
+    if (!title && !channel) return;
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const getReq = store.get(videoId);
+      getReq.onsuccess = () => {
+        const existing = getReq.result;
+        if (existing) {
+          let updated = false;
+          if (title && !existing.title) { existing.title = title; updated = true; }
+          if (channel && !existing.channel) { existing.channel = channel; updated = true; }
+          if (updated) store.put(existing);
         }
       };
       tx.oncomplete = () => resolve();
@@ -184,5 +209,5 @@ const WatchedDB = (() => {
     });
   }
 
-  return { openDB, addWatched, updateTitle, isWatched, checkMultiple, getStats, exportAll, importData, clearAll };
+  return { openDB, addWatched, updateTitle, updateTitleAndChannel, isWatched, checkMultiple, getStats, exportAll, importData, clearAll };
 })();

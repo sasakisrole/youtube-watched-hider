@@ -139,13 +139,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'EXPORT_DATA') {
     chrome.tabs.query({ url: '*://*.youtube.com/*' }, (tabs) => {
-      if (tabs.length > 0) {
-        chrome.tabs.sendMessage(tabs[0].id, { type: 'EXPORT_DATA' })
-          .then(sendResponse)
-          .catch(() => sendResponse([]));
-      } else {
+      if (tabs.length === 0) {
         sendResponse([]);
+        return;
       }
+      // Try each YouTube tab until one responds
+      let tried = 0;
+      function tryTab(i) {
+        if (i >= tabs.length) { sendResponse([]); return; }
+        chrome.tabs.sendMessage(tabs[i].id, { type: 'EXPORT_DATA' })
+          .then((data) => sendResponse(data || []))
+          .catch(() => tryTab(i + 1));
+      }
+      tryTab(0);
     });
     return true;
   }

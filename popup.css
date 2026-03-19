@@ -161,11 +161,24 @@ input:checked + .slider::before {
   gap: 2px;
 }
 
+.history-date-header {
+  font-size: 10px;
+  font-weight: 600;
+  color: #ff8888;
+  padding: 8px 4px 4px;
+  border-bottom: 1px solid #2a2a4a;
+  margin-bottom: 2px;
+  position: sticky;
+  top: 0;
+  background: #1a1a2e;
+  z-index: 1;
+}
+
 .history-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: 6px;
+  padding: 5px 8px;
   background: #16213e;
   border-radius: 4px;
   font-size: 11px;
@@ -179,8 +192,23 @@ input:checked + .slider::before {
   background: #1a3a5c;
 }
 
-.history-item .title {
+.history-text {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.history-item .title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-item .channel {
+  font-size: 9px;
+  color: #888;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -190,11 +218,21 @@ input:checked + .slider::before {
   color: #666;
   font-size: 10px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .source-badge {
   background: #ff444433;
   color: #ff8888;
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.play-count-badge {
+  background: #4444ff33;
+  color: #8888ff;
   font-size: 9px;
   padding: 1px 4px;
   border-radius: 3px;

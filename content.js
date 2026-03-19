@@ -59,6 +59,19 @@
     return titleEl ? titleEl.textContent.trim() : '';
   }
 
+  // Get channel name from a video card element
+  function getChannelFromCard(card) {
+    const channelEl = card.querySelector(
+      'ytd-channel-name #text-container yt-formatted-string a, ' +
+      'ytd-channel-name #text-container yt-formatted-string, ' +
+      'ytd-channel-name yt-formatted-string a, ' +
+      'ytd-channel-name yt-formatted-string, ' +
+      '#channel-name yt-formatted-string a, ' +
+      '#channel-name a'
+    );
+    return channelEl ? channelEl.textContent.trim() : '';
+  }
+
   // Check if a card has YouTube's seekbar (red progress bar)
   function hasYouTubeSeekbar(card) {
     const resume = card.querySelector(SELECTORS.resumeOverlay);
@@ -85,6 +98,17 @@
     return titleEl ? titleEl.textContent.trim() : '';
   }
 
+  // Get channel name from watch page
+  function getWatchPageChannel() {
+    const channelEl = document.querySelector(
+      'ytd-watch-metadata ytd-channel-name yt-formatted-string a, ' +
+      '#owner ytd-channel-name yt-formatted-string a, ' +
+      '#channel-name yt-formatted-string a, ' +
+      'ytd-video-owner-renderer ytd-channel-name a'
+    );
+    return channelEl ? channelEl.textContent.trim() : '';
+  }
+
   // Record current video as watched (source: 'self')
   async function recordCurrentVideo() {
     if (!enabled && !recordWhileOff) return;
@@ -94,7 +118,8 @@
 
     try {
       const title = getWatchPageTitle();
-      await WatchedDB.addWatched(videoId, title, 'self');
+      const channel = getWatchPageChannel();
+      await WatchedDB.addWatched(videoId, title, 'self', channel);
       console.log(`[YT-Watched-Hider] Recorded: ${title || videoId}`);
     } catch (e) {
       console.error('[YT-Watched-Hider] Error recording video:', e);
@@ -124,12 +149,13 @@
 
     video.addEventListener('ended', endedHandler);
 
-    // Also update title in DB if we already have the record (from seekbar detection)
+    // Also update title/channel in DB if we already have the record (from seekbar detection)
     setTimeout(() => {
       const videoId = getCurrentVideoId();
       const title = getWatchPageTitle();
-      if (videoId && title) {
-        WatchedDB.updateTitle(videoId, title).catch(() => {});
+      const channel = getWatchPageChannel();
+      if (videoId && (title || channel)) {
+        WatchedDB.updateTitleAndChannel(videoId, title, channel).catch(() => {});
       }
     }, 3000);
   }
@@ -164,9 +190,10 @@
         // Check YouTube seekbar first (no DB needed)
         if (hasYouTubeSeekbar(card)) {
           hideCard(card, videoId);
-          // Record with source='seekbar' and grab title from card
+          // Record with source='seekbar' and grab title/channel from card
           const title = getTitleFromCard(card);
-          WatchedDB.addWatched(videoId, title, 'seekbar').catch(() => {});
+          const channel = getChannelFromCard(card);
+          WatchedDB.addWatched(videoId, title, 'seekbar', channel).catch(() => {});
           continue;
         }
 
@@ -215,20 +242,27 @@
   const observer = new MutationObserver((mutations) => {
     if (!enabled) return;
 
-    let hasNewCards = false;
+    let hasRelevantChange = false;
     for (const mutation of mutations) {
+      // Check for new nodes added
       for (const node of mutation.addedNodes) {
         if (node.nodeType === Node.ELEMENT_NODE) {
           if (node.matches?.(ALL_CARD_SELECTORS) || node.querySelector?.(ALL_CARD_SELECTORS)) {
-            hasNewCards = true;
+            hasRelevantChange = true;
             break;
           }
         }
       }
-      if (hasNewCards) break;
+      if (hasRelevantChange) break;
+
+      // Also check attribute changes on existing cards (YouTube recycles sidebar DOM)
+      if (mutation.type === 'attributes' && mutation.target.closest?.(ALL_CARD_SELECTORS)) {
+        hasRelevantChange = true;
+        break;
+      }
     }
 
-    if (hasNewCards) {
+    if (hasRelevantChange) {
       // Debounce processing
       clearTimeout(observer._debounceTimer);
       observer._debounceTimer = setTimeout(processPage, 200);
@@ -238,6 +272,8 @@
   observer.observe(document.body, {
     childList: true,
     subtree: true,
+    attributes: true,
+    attributeFilter: ['href'],
   });
 
   // Listen for YouTube SPA navigation
@@ -246,9 +282,16 @@
       // Attach ended listener to detect playback completion
       attachVideoEndedListener();
     }
-    // Only hide cards when enabled
+    // Reset hidden flags on navigation (sidebar content changes)
+    const hidden = document.querySelectorAll('[data-watched-hidden="true"]');
+    for (const card of hidden) {
+      delete card.dataset.watchedHidden;
+    }
+    // Process multiple times to catch late-loading sidebar
     if (enabled) {
-      setTimeout(processPage, 500);
+      setTimeout(processPage, 300);
+      setTimeout(processPage, 1000);
+      setTimeout(processPage, 2500);
     }
   });
 
