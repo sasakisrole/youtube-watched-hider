@@ -185,6 +185,9 @@ window._ytWatchedHider = (() => {
   }
 
   // Attach ended listener to the <video> element
+  let videoRetryCount = 0;
+  const VIDEO_RETRY_MAX = 10;
+
   function attachVideoEndedListener() {
     // Clean up previous listener
     if (currentVideoElement && endedHandler) {
@@ -195,10 +198,13 @@ window._ytWatchedHider = (() => {
 
     const video = document.querySelector('video');
     if (!video) {
-      // Video element might not be ready yet, retry
-      setTimeout(attachVideoEndedListener, 1000);
+      if (videoRetryCount < VIDEO_RETRY_MAX) {
+        videoRetryCount++;
+        setTimeout(attachVideoEndedListener, 1000);
+      }
       return;
     }
+    videoRetryCount = 0;
 
     currentVideoElement = video;
     endedHandler = () => {
@@ -457,6 +463,8 @@ window._ytWatchedHider = (() => {
     if (location.pathname === '/watch') {
       attachVideoEndedListener();
       startRecoPolling();
+    } else {
+      stopRecoPolling();
     }
     // Reset flags on navigation (sidebar content changes)
     for (const card of document.querySelectorAll('[data-watched-hidden="true"]')) {
@@ -565,6 +573,13 @@ window._ytWatchedHider = (() => {
     recoInterval = setInterval(checkRecommendations, 1000);
   }
 
+  function stopRecoPolling() {
+    if (recoInterval) {
+      clearInterval(recoInterval);
+      recoInterval = null;
+    }
+  }
+
   // Initial processing
   if (location.pathname === '/watch') {
     attachVideoEndedListener();
@@ -618,6 +633,10 @@ window._ytWatchedHider = (() => {
 
     if (message.type === 'IMPORT_DATA') {
       WatchedDB.importData(message.data).then((count) => {
+        // Update cache with imported IDs
+        for (const record of message.data) {
+          if (record.videoId) watchedCache.add(record.videoId);
+        }
         processPage();
         sendResponse({ success: true, count });
       }).catch((e) => {
@@ -628,6 +647,7 @@ window._ytWatchedHider = (() => {
 
     if (message.type === 'CLEAR_DATA') {
       WatchedDB.clearAll().then(() => {
+        watchedCache.clear();
         showAllCards();
         sendResponse({ success: true });
       }).catch((e) => {
