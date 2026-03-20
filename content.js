@@ -39,11 +39,13 @@ window._ytWatchedHider = (() => {
 
   let enabled = true;
   let recordWhileOff = false;
-  let processing = false;
+  let processQueued = false;
+  let processRunning = false;
   let currentVideoElement = null;
   let endedHandler = null;
 
   // In-memory cache of watched video IDs to avoid repeated IndexedDB lookups
+  const CACHE_MAX_SIZE = 50000;
   const watchedCache = new Set();
   let cacheLoaded = false;
   let cacheLoadTime = 0;
@@ -60,6 +62,11 @@ window._ytWatchedHider = (() => {
       cacheLoaded = true;
       cacheLoadTime = Math.round(performance.now() - t0);
       dbStatus = 'ready';
+      if (watchedCache.size > CACHE_MAX_SIZE) {
+        console.warn(`[YT-Watched-Hider] Cache exceeds ${CACHE_MAX_SIZE}, falling back to DB queries`);
+        watchedCache.clear();
+        cacheLoaded = false;
+      }
       console.log(`[YT-Watched-Hider] DB ready: ${watchedCache.size} videos cached in ${cacheLoadTime}ms`);
       // Cache is now ready — run a full pass to catch anything missed during phase 1
       if (enabled) processPage();
@@ -211,15 +218,20 @@ window._ytWatchedHider = (() => {
     }, 3000);
   }
 
-  // Process all visible video cards
+  // Process all visible video cards (with queue to avoid lost updates)
   async function processPage() {
-    if (!enabled || processing) return;
-    processing = true;
+    if (!enabled) return;
+    if (processRunning) {
+      processQueued = true; // will re-run after current finishes
+      return;
+    }
+    processRunning = true;
+    processQueued = false;
 
     try {
       const cards = document.querySelectorAll(ALL_CARD_SELECTORS);
       if (cards.length === 0) {
-        processing = false;
+        processRunning = false;
         return;
       }
 
@@ -295,7 +307,12 @@ window._ytWatchedHider = (() => {
       console.error('[YT-Watched-Hider] Error processing page:', e);
     }
 
-    processing = false;
+    processRunning = false;
+    // If another processPage() was requested while we were running, do it now
+    if (processQueued) {
+      processQueued = false;
+      processPage();
+    }
   }
 
   function hideCard(card, videoId) {
@@ -371,24 +388,32 @@ window._ytWatchedHider = (() => {
     const videoIds = candidates.map(c => c.videoId);
     const existing = await WatchedDB.checkMultiple(videoIds);
 
-    let imported = 0;
+    // Collect new records for batch import
+    const newRecords = [];
     for (const { card, videoId } of candidates) {
       if (existing[videoId]) continue;
 
       const title = getHistoryTitle(card);
       const channel = getHistoryChannel(card);
-
-      try {
-        await WatchedDB.addWatched(videoId, title, 'history', channel);
-        watchedCache.add(videoId);
-        imported++;
-      } catch (e) {
-        // skip individual failures
-      }
+      newRecords.push({
+        videoId,
+        title,
+        channel: channel || '',
+        watchedAt: Date.now(),
+        firstWatchedAt: Date.now(),
+        playCount: 0,
+        source: 'history',
+      });
     }
 
-    if (imported > 0) {
-      console.log(`[YT-Watched-Hider] Imported ${imported} new videos from history`);
+    if (newRecords.length > 0) {
+      try {
+        await WatchedDB.importData(newRecords);
+        for (const r of newRecords) watchedCache.add(r.videoId);
+        console.log(`[YT-Watched-Hider] Imported ${newRecords.length} new videos from history`);
+      } catch (e) {
+        console.error('[YT-Watched-Hider] History batch import failed:', e);
+      }
     }
   }
 
@@ -466,6 +491,7 @@ window._ytWatchedHider = (() => {
 
   async function checkRecommendations() {
     if (!enabled || location.pathname !== '/watch') return;
+    if (document.hidden) return; // skip while tab is not visible
     if (recoChecking) return; // prevent overlap
     recoChecking = true;
 
