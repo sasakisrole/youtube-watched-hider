@@ -90,6 +90,7 @@ input:checked + .slider::before {
   font-weight: 700;
   color: #ff4444;
   display: block;
+  cursor: default;
 }
 
 .stats .label {

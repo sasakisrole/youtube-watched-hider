@@ -21,6 +21,7 @@ const lastBackupInfo = document.getElementById('lastBackupInfo');
 const viewerBtn = document.getElementById('viewerBtn');
 const aboutBtn = document.getElementById('aboutBtn');
 const aboutPanel = document.getElementById('aboutPanel');
+const nextBackupInfo = document.getElementById('nextBackupInfo');
 
 let allHistoryData = [];
 
@@ -40,13 +41,25 @@ function formatDate(timestamp) {
 
 // Load stats with retry (content script may not be ready yet)
 function loadStats(retries = 3) {
+  countEl.textContent = '...';
+  countEl.title = '';
   chrome.runtime.sendMessage({ type: 'GET_STATS' }, (response) => {
-    if (response && typeof response.count === 'number' && response.count > 0) {
+    if (chrome.runtime.lastError) {
+      countEl.textContent = '--';
+      countEl.title = 'Service worker error';
+      showStatus('SW error: ' + chrome.runtime.lastError.message, true);
+      return;
+    }
+    if (response && typeof response.count === 'number') {
       countEl.textContent = response.count.toLocaleString();
+      countEl.title = '';
     } else if (retries > 0) {
+      countEl.title = 'Connecting... (' + retries + ')';
       setTimeout(() => loadStats(retries - 1), 1000);
     } else {
-      countEl.textContent = '0';
+      countEl.textContent = '--';
+      countEl.title = 'No YouTube tab responded';
+      showStatus('YouTubeタブを開いてリロードしてください', true);
     }
   });
 }
@@ -172,6 +185,14 @@ chrome.runtime.sendMessage({ type: 'GET_ENABLED' }, (response) => {
       const dateStr = `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
       lastBackupInfo.textContent = ` (last: ${dateStr}, ${response.lastBackupCount} records)`;
     }
+    if (response.nextBackup) {
+      const nd = new Date(response.nextBackup);
+      const h = String(nd.getHours()).padStart(2, '0');
+      const m = String(nd.getMinutes()).padStart(2, '0');
+      const mm = nd.getMonth() + 1;
+      const dd = nd.getDate();
+      nextBackupInfo.textContent = `Next: ${mm}/${dd} ${h}:${m}`;
+    }
   }
 });
 
@@ -279,8 +300,20 @@ autoBackupToggle.addEventListener('change', () => {
 
 // Backup now
 backupNowBtn.addEventListener('click', () => {
-  chrome.runtime.sendMessage({ type: 'BACKUP_NOW' });
   showStatus('Backup started...');
+  chrome.runtime.sendMessage({ type: 'BACKUP_NOW' }, (result) => {
+    if (!result) {
+      showStatus('No response from SW', true);
+    } else if (result.success) {
+      showStatus(`Backup OK: ${result.count} records`);
+    } else if (result.reason === 'no_data') {
+      showStatus('No data to backup (0 records)', true);
+    } else if (result.reason === 'disabled') {
+      showStatus('Auto backup is disabled', true);
+    } else {
+      showStatus('Backup failed: ' + (result.error || result.reason), true);
+    }
+  });
 });
 
 // About toggle

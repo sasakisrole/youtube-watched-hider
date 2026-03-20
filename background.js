@@ -43,38 +43,28 @@ setInterval(() => {
 const BACKUP_ALARM = 'auto-backup';
 const BACKUP_FILENAME = 'yt-watched-backup.json';
 
-// Re-inject content scripts into existing YouTube tabs on install/update/enable
-async function reinjectContentScripts() {
-  try {
-    const tabs = await chrome.tabs.query({ url: '*://*.youtube.com/*' });
-    for (const tab of tabs) {
-      chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ['db.js', 'content.js']
-      }).catch(() => {});
-    }
-  } catch (e) {
-    // scripting API not available or tabs not accessible
-  }
+// Schedule daily backup at a fixed hour (default: 3:00 AM)
+function scheduleDailyBackup() {
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(3, 0, 0, 0);
+  // If 3:00 AM already passed today, schedule for tomorrow
+  if (next <= now) next.setDate(next.getDate() + 1);
+  const delayInMinutes = Math.max(1, Math.round((next - now) / 60000));
+
+  chrome.alarms.create(BACKUP_ALARM, {
+    delayInMinutes,
+    periodInMinutes: 24 * 60
+  });
 }
 
-// Set up daily backup alarm + re-inject content scripts
 chrome.runtime.onInstalled.addListener(() => {
-  reinjectContentScripts();
-  chrome.alarms.create(BACKUP_ALARM, {
-    periodInMinutes: 24 * 60 // daily
-  });
+  scheduleDailyBackup();
 });
 
-// Also ensure alarm exists on startup + re-inject
 chrome.runtime.onStartup.addListener(() => {
-  reinjectContentScripts();
   chrome.alarms.get(BACKUP_ALARM, (alarm) => {
-    if (!alarm) {
-      chrome.alarms.create(BACKUP_ALARM, {
-        periodInMinutes: 24 * 60
-      });
-    }
+    if (!alarm) scheduleDailyBackup();
   });
 });
 
@@ -104,35 +94,54 @@ async function sendToYouTubeTab(message) {
   throw new Error('No YouTube tab responded');
 }
 
+// Returns a promise with the backup result for callers that need feedback
 function performAutoBackup() {
-  chrome.storage.local.get({ autoBackup: true }, (settings) => {
-    if (!settings.autoBackup) return;
+  return new Promise((resolve) => {
+    chrome.storage.local.get({ autoBackup: true }, (settings) => {
+      if (!settings.autoBackup) {
+        resolve({ success: false, reason: 'disabled' });
+        return;
+      }
 
-    sendToYouTubeTab({ type: 'EXPORT_DATA' })
-      .then((data) => {
-        if (!data || data.length === 0) return;
-
-        const json = JSON.stringify(data, null, 2);
-        const blob = new Blob([json], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-
-        chrome.downloads.download({
-          url,
-          filename: BACKUP_FILENAME,
-          conflictAction: 'overwrite',
-          saveAs: false
-        }, (downloadId) => {
-          if (downloadId) {
-            chrome.storage.local.set({
-              lastBackup: Date.now(),
-              lastBackupCount: data.length
-            });
+      sendToYouTubeTab({ type: 'EXPORT_DATA' })
+        .then((data) => {
+          if (!data || data.length === 0) {
+            console.warn('[YT-Watched] Backup skipped: no data');
+            resolve({ success: false, reason: 'no_data' });
+            return;
           }
-          // Clean up blob URL after a delay
-          setTimeout(() => URL.revokeObjectURL(url), 10000);
+
+          const json = JSON.stringify(data, null, 2);
+          // Use data URL instead of Blob URL (Blob URL not available in Service Worker)
+          const base64 = btoa(unescape(encodeURIComponent(json)));
+          const dataUrl = 'data:application/json;base64,' + base64;
+
+          chrome.downloads.download({
+            url: dataUrl,
+            filename: BACKUP_FILENAME,
+            conflictAction: 'overwrite',
+            saveAs: false
+          }, (downloadId) => {
+            if (chrome.runtime.lastError) {
+              console.error('[YT-Watched] Backup download failed:', chrome.runtime.lastError.message);
+              resolve({ success: false, reason: 'download_error', error: chrome.runtime.lastError.message });
+              return;
+            }
+            if (downloadId) {
+              chrome.storage.local.set({
+                lastBackup: Date.now(),
+                lastBackupCount: data.length
+              });
+              console.log('[YT-Watched] Backup completed:', data.length, 'records');
+              resolve({ success: true, count: data.length });
+            }
+          });
+        })
+        .catch((err) => {
+          console.warn('[YT-Watched] Backup failed:', err.message);
+          resolve({ success: false, reason: 'error', error: err.message });
         });
-      })
-      .catch(() => {});
+    });
   });
 }
 
@@ -174,7 +183,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       lastBackup: null,
       lastBackupCount: 0
     }, (result) => {
-      sendResponse(result);
+      // Include next backup schedule
+      chrome.alarms.get(BACKUP_ALARM, (alarm) => {
+        result.nextBackup = alarm ? alarm.scheduledTime : null;
+        sendResponse(result);
+      });
     });
     return true;
   }
@@ -217,8 +230,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'BACKUP_NOW') {
-    performAutoBackup();
-    sendResponse({ success: true });
+    performAutoBackup().then(sendResponse);
     return true;
   }
 });

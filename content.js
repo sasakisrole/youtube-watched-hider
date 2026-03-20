@@ -1,15 +1,24 @@
 // Content script for YouTube Watched Hider
-// Hides watched videos using dual detection: YouTube seekbar + IndexedDB
-// Records only when video playback completes (ended event)
+// Safe to re-inject: cleans up previous instance before initializing
 
-(() => {
+// Clean up previous instance if re-injected
+if (window._ytWatchedHider) {
+  try {
+    window._ytWatchedHider.cleanup();
+  } catch (e) {
+    // ignore cleanup errors
+  }
+}
+
+window._ytWatchedHider = (() => {
   // Selectors for video card containers (update these if YouTube changes DOM)
   const SELECTORS = {
-    // Video card containers
+    // Video card containers (old + new UI)
     richItem: 'ytd-rich-item-renderer',           // Home page grid
     videoRenderer: 'ytd-video-renderer',           // Search results
-    compactVideo: 'ytd-compact-video-renderer',    // Sidebar / end screen
-    reelItem: 'ytd-rich-grid-media',               // Shorts shelf on home
+    compactVideo: 'ytd-compact-video-renderer',    // Sidebar (old UI)
+    lockup: 'yt-lockup-view-model',               // Recommendations (new UI)
+    playlistItem: 'ytd-playlist-panel-video-renderer', // Playlist panel
 
     // Link containing video ID
     videoLink: 'a[href*="/watch?v="]',
@@ -17,12 +26,15 @@
     // YouTube's own watched indicator (red progress bar on thumbnail)
     seekbar: '#progress',
     resumeOverlay: 'ytd-thumbnail-overlay-resume-playback-renderer',
+    // New YouTube UI progress bar
+    progressBarNew: '.ytThumbnailOverlayProgressBarHostWatchedProgressBarSegment',
   };
 
   const ALL_CARD_SELECTORS = [
     SELECTORS.richItem,
     SELECTORS.videoRenderer,
     SELECTORS.compactVideo,
+    SELECTORS.lockup,
   ].join(', ');
 
   let enabled = true;
@@ -30,6 +42,24 @@
   let processing = false;
   let currentVideoElement = null;
   let endedHandler = null;
+
+  // In-memory cache of watched video IDs to avoid repeated IndexedDB lookups
+  const watchedCache = new Set();
+  let cacheLoaded = false;
+
+  // Load all watched IDs into cache at startup
+  async function loadCache() {
+    try {
+      const all = await WatchedDB.exportAll();
+      for (const record of all) {
+        watchedCache.add(record.videoId);
+      }
+      cacheLoaded = true;
+    } catch (e) {
+      // Fall back to per-query DB access
+    }
+  }
+  loadCache();
 
   // Load settings
   chrome.storage.local.get({ enabled: true, recordWhileOff: false }, (result) => {
@@ -54,7 +84,8 @@
       '#video-title, ' +
       'a#video-title-link, ' +
       'span#video-title, ' +
-      'yt-formatted-string#video-title'
+      'yt-formatted-string#video-title, ' +
+      'h3 a'
     );
     return titleEl ? titleEl.textContent.trim() : '';
   }
@@ -67,18 +98,25 @@
       'ytd-channel-name yt-formatted-string a, ' +
       'ytd-channel-name yt-formatted-string, ' +
       '#channel-name yt-formatted-string a, ' +
-      '#channel-name a'
+      '#channel-name a, ' +
+      '.yt-lockup-metadata-view-model__metadata a'
     );
     return channelEl ? channelEl.textContent.trim() : '';
   }
 
-  // Check if a card has YouTube's seekbar (red progress bar)
+  // Check if a card has YouTube's seekbar (red progress bar on thumbnail)
   function hasYouTubeSeekbar(card) {
+    // Old UI: resume playback overlay
     const resume = card.querySelector(SELECTORS.resumeOverlay);
     if (resume) return true;
 
+    // Old UI: #progress element with width
     const progress = card.querySelector(SELECTORS.seekbar);
     if (progress && progress.style && parseFloat(progress.style.width) > 0) return true;
+
+    // New UI: progress bar segment with width percentage
+    const segment = card.querySelector(SELECTORS.progressBarNew);
+    if (segment && segment.style && parseFloat(segment.style.width) > 0) return true;
 
     return false;
   }
@@ -120,6 +158,7 @@
       const title = getWatchPageTitle();
       const channel = getWatchPageChannel();
       await WatchedDB.addWatched(videoId, title, 'self', channel);
+      watchedCache.add(videoId);
       console.log(`[YT-Watched-Hider] Recorded: ${title || videoId}`);
     } catch (e) {
       console.error('[YT-Watched-Hider] Error recording video:', e);
@@ -190,10 +229,16 @@
         // Check YouTube seekbar first (no DB needed)
         if (hasYouTubeSeekbar(card)) {
           hideCard(card, videoId);
-          // Record with source='seekbar' and grab title/channel from card
+          watchedCache.add(videoId);
           const title = getTitleFromCard(card);
           const channel = getChannelFromCard(card);
           WatchedDB.addWatched(videoId, title, 'seekbar', channel).catch(() => {});
+          continue;
+        }
+
+        // Check in-memory cache first (fast path)
+        if (cacheLoaded && watchedCache.has(videoId)) {
+          hideCard(card, videoId);
           continue;
         }
 
@@ -203,20 +248,21 @@
         cardMap.get(videoId).push(card);
       }
 
-      // Batch check remaining IDs against IndexedDB
+      // Batch check remaining IDs against IndexedDB (only uncached ones)
       const videoIds = Array.from(cardMap.keys());
       if (videoIds.length > 0) {
         const results = await WatchedDB.checkMultiple(videoIds);
         for (const [videoId, isWatched] of Object.entries(results)) {
           const matchingCards = cardMap.get(videoId) || [];
           if (isWatched) {
+            watchedCache.add(videoId);
             for (const card of matchingCards) {
               hideCard(card, videoId);
             }
           } else {
-            // Mark as checked so sidebar polling skips these
+            // Mark as checked with the specific videoId so sidebar polling skips these
             for (const card of matchingCards) {
-              card.dataset.watchedChecked = 'true';
+              card.dataset.watchedCheckedId = videoId;
             }
           }
         }
@@ -244,20 +290,14 @@
   }
 
   // --- History page scraping ---
-  // Scan /feed/history for watched videos and import them into DB
-  // Does NOT hide anything on the history page
-  // YouTube history page uses yt-lockup-view-model (new UI), fallback to ytd-video-renderer
   const HISTORY_CARD_SELECTOR = 'yt-lockup-view-model, ytd-video-renderer';
 
-  // Get title from history card (handles both old and new YouTube UI)
   function getHistoryTitle(card) {
     const el = card.querySelector('h3, #video-title, yt-formatted-string#video-title');
     return el ? el.textContent.trim() : getTitleFromCard(card);
   }
 
-  // Get channel from history card
   function getHistoryChannel(card) {
-    // New UI: channel info in various text elements
     const el = card.querySelector(
       '.yt-content-metadata-view-model-wiz__metadata-text, ' +
       'ytd-channel-name yt-formatted-string a, ' +
@@ -266,22 +306,16 @@
     return el ? el.textContent.trim() : getChannelFromCard(card);
   }
 
-  // Get video link from history card
   function getHistoryVideoLink(card) {
-    // New UI uses a[href*="watch"], same as old
     return card.querySelector('a[href*="watch"], a[href*="/watch?v="]');
   }
 
   // Check if a history card's video was watched to completion (>= 95%)
-  // New YouTube UI uses yt-thumbnail-overlay-progress-bar-view-model with
-  // a child div whose style.width indicates progress percentage.
-  // Returns false if no progress bar found (e.g. live streams) or progress < 95%.
   function isHistoryCardCompleted(card) {
     const segment = card.querySelector(
       '.ytThumbnailOverlayProgressBarHostWatchedProgressBarSegment'
     );
     if (!segment) return false;
-
     const width = parseFloat(segment.style.width);
     return !isNaN(width) && width >= 95;
   }
@@ -290,7 +324,6 @@
     const cards = document.querySelectorAll(HISTORY_CARD_SELECTOR);
     console.log(`[YT-Watched-Hider] History scrape: found ${cards.length} cards`);
 
-    // Collect candidates (only videos watched >= 95%)
     const candidates = [];
     for (const card of cards) {
       if (card.dataset.historyScraped === 'true') continue;
@@ -311,19 +344,19 @@
 
     if (candidates.length === 0) return;
 
-    // Batch check which are already in DB — skip those
     const videoIds = candidates.map(c => c.videoId);
     const existing = await WatchedDB.checkMultiple(videoIds);
 
     let imported = 0;
     for (const { card, videoId } of candidates) {
-      if (existing[videoId]) continue; // already in DB, skip
+      if (existing[videoId]) continue;
 
       const title = getHistoryTitle(card);
       const channel = getHistoryChannel(card);
 
       try {
         await WatchedDB.addWatched(videoId, title, 'history', channel);
+        watchedCache.add(videoId);
         imported++;
       } catch (e) {
         // skip individual failures
@@ -340,9 +373,6 @@
   }
 
   // Observe DOM mutations for dynamically loaded content
-  // NOTE: Only observe childList (new nodes added). Do NOT observe attributes
-  // because YouTube heavily mutates href/attributes during SPA navigation,
-  // which can interfere with background playback and mini-player.
   const observer = new MutationObserver((mutations) => {
     let hasRelevantChange = false;
     for (const mutation of mutations) {
@@ -361,10 +391,8 @@
     if (hasRelevantChange) {
       clearTimeout(observer._debounceTimer);
       if (isHistoryPage()) {
-        // On history page: scrape new cards into DB (no hiding)
         observer._debounceTimer = setTimeout(scrapeHistoryPage, 300);
       } else if (enabled) {
-        // Normal pages: hide watched videos
         observer._debounceTimer = setTimeout(processPage, 300);
       }
     }
@@ -376,100 +404,121 @@
   });
 
   // Listen for YouTube SPA navigation
-  document.addEventListener('yt-navigate-finish', () => {
+  function onNavigateFinish() {
     if (location.pathname === '/watch') {
       attachVideoEndedListener();
+      startRecoPolling();
     }
     // Reset flags on navigation (sidebar content changes)
     for (const card of document.querySelectorAll('[data-watched-hidden="true"]')) {
+      card.style.display = '';
       delete card.dataset.watchedHidden;
+      delete card.dataset.watchedVideoId;
     }
-    for (const card of document.querySelectorAll('[data-watched-checked="true"]')) {
-      delete card.dataset.watchedChecked;
+    for (const card of document.querySelectorAll('[data-watched-checked-id]')) {
+      delete card.dataset.watchedCheckedId;
     }
     if (isHistoryPage()) {
-      // Scrape history page
       setTimeout(scrapeHistoryPage, 500);
     } else if (enabled) {
       setTimeout(processPage, 500);
     }
-  });
+  }
 
-  // Sidebar-specific check: independent of processPage to avoid processing flag deadlock.
-  // YouTube recycles sidebar DOM without adding new nodes, so MutationObserver misses them.
-  const SIDEBAR_SELECTORS = [
-    'ytd-compact-video-renderer',
-    'ytd-video-renderer',
-    'ytd-rich-item-renderer',
-  ].join(', ');
+  document.addEventListener('yt-navigate-finish', onNavigateFinish);
 
-  let sidebarInterval = null;
-  async function checkSidebar() {
+  // Recommendation check: polls for video cards across the entire page.
+  // Covers both normal sidebar (#secondary) AND theater mode (below player).
+  // YouTube often reuses card DOM elements, changing href/content without
+  // creating new nodes — MutationObserver misses this, so we poll.
+  let recoInterval = null;
+  let recoChecking = false;
+
+  // Get the videoId from a card's link, returns null if not found
+  function getCardVideoId(card) {
+    const link = card.querySelector(SELECTORS.videoLink);
+    return link ? getVideoIdFromHref(link.href) : null;
+  }
+
+  async function checkRecommendations() {
     if (!enabled || location.pathname !== '/watch') return;
+    if (recoChecking) return; // prevent overlap
+    recoChecking = true;
 
-    const sidebar = document.querySelector('#secondary, ytd-watch-next-secondary-results-renderer');
-    if (!sidebar) return;
+    try {
+      // Search entire document — covers sidebar, below-player (theater), end screen
+      const cards = document.querySelectorAll(ALL_CARD_SELECTORS);
+      if (cards.length === 0) return;
 
-    const cards = sidebar.querySelectorAll(SIDEBAR_SELECTORS);
-    if (cards.length === 0) return;
+      const unchecked = [];
+      const currentVid = getCurrentVideoId();
 
-    const unchecked = [];
-    const currentVid = getCurrentVideoId();
+      for (const card of cards) {
+        const videoId = getCardVideoId(card);
+        if (!videoId) continue;
+        if (videoId === currentVid) continue;
 
-    for (const card of cards) {
-      if (card.dataset.watchedHidden === 'true') continue;
-      if (card.dataset.watchedChecked === 'true') continue;
+        // Detect recycled DOM: if the card was hidden/checked for a DIFFERENT video,
+        // reset it because YouTube reused this DOM element for new content
+        if (card.dataset.watchedHidden === 'true') {
+          if (card.dataset.watchedVideoId === videoId) continue; // still same video, stay hidden
+          // DOM recycled — un-hide and re-check
+          card.style.display = '';
+          delete card.dataset.watchedHidden;
+          delete card.dataset.watchedVideoId;
+        }
 
-      // Check seekbar first (hide immediately)
-      if (hasYouTubeSeekbar(card)) {
-        const link = card.querySelector(SELECTORS.videoLink);
-        const videoId = link ? getVideoIdFromHref(link.href) : null;
-        if (videoId && videoId !== currentVid) {
+        if (card.dataset.watchedCheckedId === videoId) continue; // already checked this exact video
+
+        // Check YouTube seekbar first (hide immediately, no DB lookup needed)
+        if (hasYouTubeSeekbar(card)) {
           hideCard(card, videoId);
+          watchedCache.add(videoId);
           const title = getTitleFromCard(card);
           const channel = getChannelFromCard(card);
           WatchedDB.addWatched(videoId, title, 'seekbar', channel).catch(() => {});
+          continue;
         }
-        continue;
+
+        // Check in-memory cache (fast path, no DB access)
+        if (cacheLoaded && watchedCache.has(videoId)) {
+          hideCard(card, videoId);
+          continue;
+        }
+
+        unchecked.push({ card, videoId });
       }
 
-      const link = card.querySelector(SELECTORS.videoLink);
-      if (!link) continue;
-      const videoId = getVideoIdFromHref(link.href);
-      if (!videoId || videoId === currentVid) continue;
+      if (unchecked.length === 0) return;
 
-      unchecked.push({ card, videoId });
-    }
-
-    if (unchecked.length === 0) return;
-
-    // Batch check against DB
-    try {
       const ids = unchecked.map(c => c.videoId);
       const results = await WatchedDB.checkMultiple(ids);
       for (const { card, videoId } of unchecked) {
         if (results[videoId]) {
+          watchedCache.add(videoId);
           hideCard(card, videoId);
         } else {
-          card.dataset.watchedChecked = 'true';
+          // Store the checked videoId so we can detect recycling
+          card.dataset.watchedCheckedId = videoId;
         }
       }
     } catch (e) {
       // DB error, will retry on next poll
+    } finally {
+      recoChecking = false;
     }
   }
 
-  function startSidebarPolling() {
-    if (sidebarInterval) return;
-    // Run immediately, then every 2 seconds
-    checkSidebar();
-    sidebarInterval = setInterval(checkSidebar, 2000);
+  function startRecoPolling() {
+    if (recoInterval) clearInterval(recoInterval);
+    checkRecommendations();
+    recoInterval = setInterval(checkRecommendations, 1000);
   }
 
   // Initial processing
   if (location.pathname === '/watch') {
     attachVideoEndedListener();
-    startSidebarPolling();
+    startRecoPolling();
   }
   if (isHistoryPage()) {
     setTimeout(scrapeHistoryPage, 500);
@@ -477,19 +526,9 @@
     setTimeout(processPage, 500);
   }
 
-  // Start polling when navigating to watch page
-  document.addEventListener('yt-navigate-finish', () => {
-    if (location.pathname === '/watch') {
-      startSidebarPolling();
-    }
-  });
-
   // Listen for messages from background script
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  function onMessage(message, sender, sendResponse) {
     if (message.type === 'VIDEO_DETECTED') {
-      // Background detected a URL change to a watch page.
-      // Don't record yet — wait for the ended event.
-      // But do attach the listener if not already attached.
       if (location.pathname === '/watch') {
         attachVideoEndedListener();
       }
@@ -539,5 +578,20 @@
       });
       return true;
     }
-  });
+  }
+
+  chrome.runtime.onMessage.addListener(onMessage);
+
+  // Cleanup function for re-injection
+  function cleanup() {
+    observer.disconnect();
+    if (recoInterval) clearInterval(recoInterval);
+    if (currentVideoElement && endedHandler) {
+      currentVideoElement.removeEventListener('ended', endedHandler);
+    }
+    document.removeEventListener('yt-navigate-finish', onNavigateFinish);
+    chrome.runtime.onMessage.removeListener(onMessage);
+  }
+
+  return { cleanup };
 })();
