@@ -98,6 +98,24 @@ input:checked + .slider::before {
   color: #999;
 }
 
+.db-status {
+  font-size: 10px;
+  margin-top: 4px;
+  color: #666;
+}
+
+.db-status.ready {
+  color: #4caf50;
+}
+
+.db-status.loading {
+  color: #ff9800;
+}
+
+.db-status.error {
+  color: #ff6b6b;
+}
+
 .actions {
   display: flex;
   flex-direction: column;

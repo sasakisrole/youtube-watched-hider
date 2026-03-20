@@ -1,6 +1,7 @@
 // Popup script for YouTube Watched Hider
 
 const countEl = document.getElementById('count');
+const dbStatusEl = document.getElementById('dbStatus');
 const enableToggle = document.getElementById('enableToggle');
 const toggleLabel = document.getElementById('toggleLabel');
 const exportBtn = document.getElementById('exportBtn');
@@ -53,6 +54,16 @@ function loadStats(retries = 3) {
     if (response && typeof response.count === 'number') {
       countEl.textContent = response.count.toLocaleString();
       countEl.title = '';
+      // Show DB status
+      if (response.dbStatus) {
+        const statusMap = {
+          ready: `DB ready (cache: ${(response.cacheSize || 0).toLocaleString()}, ${response.cacheLoadTime || 0}ms)`,
+          loading: 'DB loading...',
+          error: 'DB error',
+        };
+        dbStatusEl.textContent = statusMap[response.dbStatus] || response.dbStatus;
+        dbStatusEl.className = 'db-status ' + response.dbStatus;
+      }
     } else if (retries > 0) {
       countEl.title = 'Connecting... (' + retries + ')';
       setTimeout(() => loadStats(retries - 1), 1000);

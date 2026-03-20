@@ -46,26 +46,38 @@ window._ytWatchedHider = (() => {
   // In-memory cache of watched video IDs to avoid repeated IndexedDB lookups
   const watchedCache = new Set();
   let cacheLoaded = false;
+  let cacheLoadTime = 0;
+  let dbStatus = 'loading'; // 'loading' | 'ready' | 'error'
 
-  // Load all watched IDs into cache at startup
+  // Load all watched IDs into cache at startup (lightweight: keys only)
   async function loadCache() {
+    const t0 = performance.now();
     try {
-      const all = await WatchedDB.exportAll();
-      for (const record of all) {
-        watchedCache.add(record.videoId);
+      const ids = await WatchedDB.getAllIds();
+      for (const id of ids) {
+        watchedCache.add(id);
       }
       cacheLoaded = true;
+      cacheLoadTime = Math.round(performance.now() - t0);
+      dbStatus = 'ready';
+      console.log(`[YT-Watched-Hider] DB ready: ${watchedCache.size} videos cached in ${cacheLoadTime}ms`);
+      // Cache is now ready — run a full pass to catch anything missed during phase 1
+      if (enabled) processPage();
     } catch (e) {
+      cacheLoadTime = Math.round(performance.now() - t0);
+      dbStatus = 'error';
+      console.error(`[YT-Watched-Hider] DB load failed (${cacheLoadTime}ms):`, e);
       // Fall back to per-query DB access
+      cacheLoaded = false;
     }
   }
   loadCache();
 
-  // Load settings
+  // Load settings — start seekbar-only processing immediately (no DB needed)
   chrome.storage.local.get({ enabled: true, recordWhileOff: false }, (result) => {
     enabled = result.enabled;
     recordWhileOff = result.recordWhileOff;
-    if (enabled) processPage();
+    if (enabled) processPage(); // phase 1: seekbar detection works even without cache
   });
 
   // Extract video ID from href
@@ -211,6 +223,10 @@ window._ytWatchedHider = (() => {
         return;
       }
 
+      let hiddenBySeekbar = 0;
+      let hiddenByCache = 0;
+      let hiddenByDb = 0;
+
       // Collect video IDs from cards
       const cardMap = new Map(); // videoId -> [card elements]
       for (const card of cards) {
@@ -233,12 +249,14 @@ window._ytWatchedHider = (() => {
           const title = getTitleFromCard(card);
           const channel = getChannelFromCard(card);
           WatchedDB.addWatched(videoId, title, 'seekbar', channel).catch(() => {});
+          hiddenBySeekbar++;
           continue;
         }
 
         // Check in-memory cache first (fast path)
         if (cacheLoaded && watchedCache.has(videoId)) {
           hideCard(card, videoId);
+          hiddenByCache++;
           continue;
         }
 
@@ -258,6 +276,7 @@ window._ytWatchedHider = (() => {
             watchedCache.add(videoId);
             for (const card of matchingCards) {
               hideCard(card, videoId);
+              hiddenByDb++;
             }
           } else {
             // Mark as checked with the specific videoId so sidebar polling skips these
@@ -266,6 +285,11 @@ window._ytWatchedHider = (() => {
             }
           }
         }
+      }
+
+      const totalHidden = hiddenBySeekbar + hiddenByCache + hiddenByDb;
+      if (totalHidden > 0) {
+        console.log(`[YT-Watched-Hider] Hidden ${totalHidden} videos (seekbar: ${hiddenBySeekbar}, cache: ${hiddenByCache}, db: ${hiddenByDb})`);
       }
     } catch (e) {
       console.error('[YT-Watched-Hider] Error processing page:', e);
@@ -550,7 +574,14 @@ window._ytWatchedHider = (() => {
     }
 
     if (message.type === 'GET_STATS') {
-      WatchedDB.getStats().then(sendResponse).catch(() => sendResponse({ count: 0 }));
+      WatchedDB.getStats().then((stats) => {
+        sendResponse({
+          ...stats,
+          dbStatus,
+          cacheSize: watchedCache.size,
+          cacheLoadTime,
+        });
+      }).catch(() => sendResponse({ count: 0, dbStatus: 'error', cacheSize: 0, cacheLoadTime: 0 }));
       return true;
     }
 
