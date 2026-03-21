@@ -168,6 +168,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'DELETE_VIDEO') {
+    sendToYouTubeTab({ type: 'DELETE_VIDEO', videoId: message.videoId })
+      .then(sendResponse)
+      .catch(() => sendResponse({ success: false }));
+    return true;
+  }
+
   if (message.type === 'CLEAR_DATA') {
     sendToYouTubeTab({ type: 'CLEAR_DATA' })
       .then(sendResponse)

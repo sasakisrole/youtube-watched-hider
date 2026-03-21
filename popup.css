@@ -196,20 +196,42 @@ input:checked + .slider::before {
 .history-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 8px;
   background: #16213e;
   border-radius: 4px;
   font-size: 11px;
-  cursor: pointer;
-  text-decoration: none;
-  color: #e0e0e0;
   transition: background 0.15s;
 }
 
 .history-item:hover {
   background: #1a3a5c;
 }
+
+.history-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  text-decoration: none;
+  color: #e0e0e0;
+}
+
+.history-delete-btn {
+  background: none;
+  border: none;
+  color: #555;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 5px 8px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.history-item:hover .history-delete-btn { opacity: 1; }
+.history-delete-btn:hover { color: #ff4444; }
 
 .history-text {
   flex: 1;

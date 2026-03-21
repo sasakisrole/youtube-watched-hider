@@ -25,6 +25,10 @@ const aboutPanel = document.getElementById('aboutPanel');
 const nextBackupInfo = document.getElementById('nextBackupInfo');
 
 let allHistoryData = [];
+let filteredHistoryData = [];
+let historyRenderedCount = 0;
+let lastHistoryDateGroup = '';
+const HISTORY_PAGE_SIZE = 50;
 
 function showStatus(msg, isError = false) {
   statusEl.textContent = msg;
@@ -91,84 +95,130 @@ function formatTime(timestamp) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-// Render history list
+// Delete a video from history
+function deleteHistoryVideo(videoId, rowEl) {
+  chrome.runtime.sendMessage({ type: 'DELETE_VIDEO', videoId }, (res) => {
+    if (res && res.success) {
+      allHistoryData = allHistoryData.filter(v => v.videoId !== videoId);
+      filteredHistoryData = filteredHistoryData.filter(v => v.videoId !== videoId);
+      rowEl.style.transition = 'opacity 0.2s';
+      rowEl.style.opacity = '0';
+      setTimeout(() => rowEl.remove(), 200);
+      loadStats();
+    }
+  });
+}
+
+// Build a single history item element
+function buildHistoryItem(video) {
+  const row = document.createElement('div');
+  row.className = 'history-item';
+
+  const a = document.createElement('a');
+  a.className = 'history-link';
+  a.href = `https://www.youtube.com/watch?v=${video.videoId}`;
+  a.target = '_blank';
+  a.rel = 'noopener';
+
+  if (video.source === 'seekbar' || video.source === 'history') {
+    const badge = document.createElement('span');
+    badge.className = 'source-badge';
+    badge.textContent = 'YT';
+    badge.title = video.source === 'seekbar'
+      ? 'Detected via YouTube seekbar'
+      : 'Imported from YouTube history';
+    a.appendChild(badge);
+  }
+
+  const count = video.playCount || 1;
+  if (count > 1) {
+    const countBadge = document.createElement('span');
+    countBadge.className = 'play-count-badge';
+    countBadge.textContent = `${count}x`;
+    countBadge.title = `Played ${count} times`;
+    a.appendChild(countBadge);
+  }
+
+  const textWrap = document.createElement('div');
+  textWrap.className = 'history-text';
+
+  const title = document.createElement('span');
+  title.className = 'title';
+  title.textContent = video.title || video.videoId;
+  textWrap.appendChild(title);
+
+  if (video.channel) {
+    const channel = document.createElement('span');
+    channel.className = 'channel';
+    channel.textContent = video.channel;
+    textWrap.appendChild(channel);
+  }
+
+  a.appendChild(textWrap);
+
+  const time = document.createElement('span');
+  time.className = 'meta';
+  time.textContent = formatTime(video.watchedAt);
+  a.appendChild(time);
+
+  row.appendChild(a);
+
+  const delBtn = document.createElement('button');
+  delBtn.className = 'history-delete-btn';
+  delBtn.textContent = '\u00d7';
+  delBtn.title = 'Remove';
+  delBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    deleteHistoryVideo(video.videoId, row);
+  });
+  row.appendChild(delBtn);
+
+  return row;
+}
+
+// Render next batch of history items (incremental)
+function renderHistoryBatch() {
+  if (historyRenderedCount >= filteredHistoryData.length) return;
+
+  const end = Math.min(historyRenderedCount + HISTORY_PAGE_SIZE, filteredHistoryData.length);
+  const fragment = document.createDocumentFragment();
+
+  for (let i = historyRenderedCount; i < end; i++) {
+    const video = filteredHistoryData[i];
+    const dateGroup = formatDateGroup(video.watchedAt);
+    if (dateGroup !== lastHistoryDateGroup) {
+      lastHistoryDateGroup = dateGroup;
+      const header = document.createElement('div');
+      header.className = 'history-date-header';
+      header.textContent = dateGroup;
+      fragment.appendChild(header);
+    }
+    fragment.appendChild(buildHistoryItem(video));
+  }
+
+  historyList.appendChild(fragment);
+  historyRenderedCount = end;
+}
+
+// Render history list (reset + first batch)
 function renderHistory(filter = '') {
   historyList.innerHTML = '';
+  historyRenderedCount = 0;
+  lastHistoryDateGroup = '';
+
   const lowerFilter = filter.toLowerCase();
-  const filtered = filter
+  filteredHistoryData = filter
     ? allHistoryData.filter(v =>
         (v.title || v.videoId).toLowerCase().includes(lowerFilter) ||
         (v.channel || '').toLowerCase().includes(lowerFilter))
     : allHistoryData;
 
-  if (filtered.length === 0) {
+  if (filteredHistoryData.length === 0) {
     historyList.innerHTML = '<div class="history-empty">No videos found</div>';
     return;
   }
 
-  // Group by date
-  let currentDateGroup = '';
-  for (const video of filtered) {
-    const dateGroup = formatDateGroup(video.watchedAt);
-    if (dateGroup !== currentDateGroup) {
-      currentDateGroup = dateGroup;
-      const header = document.createElement('div');
-      header.className = 'history-date-header';
-      header.textContent = dateGroup;
-      historyList.appendChild(header);
-    }
-
-    const a = document.createElement('a');
-    a.className = 'history-item';
-    a.href = `https://www.youtube.com/watch?v=${video.videoId}`;
-    a.target = '_blank';
-    a.rel = 'noopener';
-
-    // Source indicator
-    if (video.source === 'seekbar' || video.source === 'history') {
-      const badge = document.createElement('span');
-      badge.className = 'source-badge';
-      badge.textContent = 'YT';
-      badge.title = video.source === 'seekbar'
-        ? 'Detected via YouTube seekbar'
-        : 'Imported from YouTube history';
-      a.appendChild(badge);
-    }
-
-    // Play count badge
-    const count = video.playCount || 1;
-    if (count > 1) {
-      const countBadge = document.createElement('span');
-      countBadge.className = 'play-count-badge';
-      countBadge.textContent = `${count}x`;
-      countBadge.title = `Played ${count} times`;
-      a.appendChild(countBadge);
-    }
-
-    const textWrap = document.createElement('div');
-    textWrap.className = 'history-text';
-
-    const title = document.createElement('span');
-    title.className = 'title';
-    title.textContent = video.title || video.videoId;
-    textWrap.appendChild(title);
-
-    if (video.channel) {
-      const channel = document.createElement('span');
-      channel.className = 'channel';
-      channel.textContent = video.channel;
-      textWrap.appendChild(channel);
-    }
-
-    a.appendChild(textWrap);
-
-    const time = document.createElement('span');
-    time.className = 'meta';
-    time.textContent = formatTime(video.watchedAt);
-    a.appendChild(time);
-
-    historyList.appendChild(a);
-  }
+  renderHistoryBatch();
 }
 
 // Load and show history
@@ -225,9 +275,19 @@ historyBtn.addEventListener('click', () => {
   }
 });
 
-// History search
+// History scroll: load more when near bottom
+historyList.addEventListener('scroll', () => {
+  if (historyRenderedCount >= filteredHistoryData.length) return;
+  if (historyList.scrollTop + historyList.clientHeight >= historyList.scrollHeight - 100) {
+    renderHistoryBatch();
+  }
+});
+
+// History search (debounced)
+let historySearchTimer;
 historySearch.addEventListener('input', () => {
-  renderHistory(historySearch.value);
+  clearTimeout(historySearchTimer);
+  historySearchTimer = setTimeout(() => renderHistory(historySearch.value), 250);
 });
 
 // Open viewer in new tab

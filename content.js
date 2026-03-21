@@ -645,6 +645,16 @@ window._ytWatchedHider = (() => {
       return true;
     }
 
+    if (message.type === 'DELETE_VIDEO') {
+      WatchedDB.deleteOne(message.videoId).then(() => {
+        watchedCache.delete(message.videoId);
+        sendResponse({ success: true });
+      }).catch((e) => {
+        sendResponse({ success: false, error: e.message });
+      });
+      return true;
+    }
+
     if (message.type === 'CLEAR_DATA') {
       WatchedDB.clearAll().then(() => {
         watchedCache.clear();

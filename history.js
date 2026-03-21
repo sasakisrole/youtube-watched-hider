@@ -57,10 +57,29 @@ function sortData(data, mode) {
   return sorted;
 }
 
+// Delete a video entry
+function deleteVideo(videoId, rowEl) {
+  chrome.runtime.sendMessage({ type: 'DELETE_VIDEO', videoId }, (res) => {
+    if (res && res.success) {
+      // Remove from data arrays
+      allData = allData.filter(v => v.videoId !== videoId);
+      sortedCache = sortedCache.filter(v => v.videoId !== videoId);
+      totalCountEl.textContent = sortedCache.length.toLocaleString();
+      // Fade out and remove from DOM
+      rowEl.style.transition = 'opacity 0.2s';
+      rowEl.style.opacity = '0';
+      setTimeout(() => rowEl.remove(), 200);
+    }
+  });
+}
+
 // Build a single video row element
 function buildVideoRow(video) {
+  const row = document.createElement('div');
+  row.className = 'video-row';
+
   const a = document.createElement('a');
-  a.className = 'video-row';
+  a.className = 'video-link';
   a.href = `https://www.youtube.com/watch?v=${video.videoId}`;
   a.target = '_blank';
   a.rel = 'noopener';
@@ -110,7 +129,19 @@ function buildVideoRow(video) {
   idEl.textContent = video.videoId;
   a.appendChild(idEl);
 
-  return a;
+  row.appendChild(a);
+
+  const delBtn = document.createElement('button');
+  delBtn.className = 'delete-btn';
+  delBtn.textContent = '\u00d7';
+  delBtn.title = 'Remove from history';
+  delBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    deleteVideo(video.videoId, row);
+  });
+  row.appendChild(delBtn);
+
+  return row;
 }
 
 // Render next batch of items (incremental)

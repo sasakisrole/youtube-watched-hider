@@ -223,6 +223,17 @@ if (typeof WatchedDB === 'undefined') {
       });
     }
 
-    return { openDB, addWatched, updateTitle, updateTitleAndChannel, isWatched, checkMultiple, getStats, getAllIds, exportAll, importData, clearAll };
+    async function deleteOne(videoId) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        store.delete(videoId);
+        tx.oncomplete = () => resolve();
+        tx.onerror = (event) => reject(event.target.error);
+      });
+    }
+
+    return { openDB, addWatched, updateTitle, updateTitleAndChannel, isWatched, checkMultiple, getStats, getAllIds, exportAll, importData, clearAll, deleteOne };
   })();
 }
