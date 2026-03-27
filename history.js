@@ -243,7 +243,11 @@ function loadData() {
       clearTimeout(timeout);
 
       if (chrome.runtime.lastError) {
-        content.innerHTML = '<div class="empty">Error: ' + chrome.runtime.lastError.message + '</div>';
+        content.textContent = '';
+        const errDiv = document.createElement('div');
+        errDiv.className = 'empty';
+        errDiv.textContent = 'Error: ' + chrome.runtime.lastError.message;
+        content.appendChild(errDiv);
         return;
       }
 
@@ -257,7 +261,11 @@ function loadData() {
   } catch (e) {
     responded = true;
     clearTimeout(timeout);
-    content.innerHTML = '<div class="empty">Error: ' + e.message + '</div>';
+    content.textContent = '';
+    const errDiv = document.createElement('div');
+    errDiv.className = 'empty';
+    errDiv.textContent = 'Error: ' + e.message;
+    content.appendChild(errDiv);
   }
 }
 

@@ -65,12 +65,21 @@
       <div class="setting-desc" id="nextBackupInfo"></div>
       <button id="backupNowBtn" class="btn">Backup Now</button>
 
+      <div class="setting-item" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #2a2a4a;">
+        <span class="setting-label">Sync (Dropbox)</span>
+      </div>
+      <div class="setting-desc">別PCとデータを同期する（差分マージ）</div>
+      <div class="sync-actions">
+        <button id="syncImportBtn" class="btn btn-sync">Import &amp; Merge</button>
+      </div>
+      <div id="syncStatus" class="sync-status"></div>
+
       <button id="clearBtn" class="btn btn-danger">Clear All Data</button>
 
       <div class="about-section">
         <button id="aboutBtn" class="btn-link about-link">About</button>
         <div id="aboutPanel" style="display:none" class="about-content">
-          <p><strong>YT Watched Hider</strong> <span id="aboutVersion">v1.13.0</span></p>
+          <p><strong>YT Watched Hider</strong> <span id="aboutVersion">v1.14.1</span></p>
           <ul>
             <li>IndexedDB: 容量制限なし（1曲≒300B / 1万曲≒3MB）</li>
             <li>記録: 動画再生完了(ended)で検知</li>
@@ -79,18 +88,17 @@
             <li>履歴: タイトル・再生回数・検出元を記録</li>
           </ul>
           <p class="about-note">
-            <strong>PC買替・移行時の注意:</strong><br>
-            視聴履歴はChrome内部に保存されており、<br>
-            Dropbox等では同期されません。<br>
-            PC移行前に必ず「Export JSON」でバックアップし、<br>
-            新PCで「Import JSON」から復元してください。<br>
-            バックアップしないとデータは失われます。
+            <strong>PC間の同期:</strong><br>
+            Auto Backupで自動保存されたJSONを<br>
+            Dropbox等で共有し、別PCで「Import &amp; Merge」<br>
+            すると差分だけ取り込めます。
           </p>
         </div>
       </div>
     </div>
 
     <input type="file" id="fileInput" accept=".json" style="display:none">
+    <input type="file" id="syncFileInput" accept=".json" style="display:none">
     <div id="status" class="status"></div>
   </div>
 
