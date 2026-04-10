@@ -18,7 +18,6 @@ window._ytWatchedHider = (() => {
     videoRenderer: 'ytd-video-renderer',           // Search results
     compactVideo: 'ytd-compact-video-renderer',    // Sidebar (old UI)
     lockup: 'yt-lockup-view-model',               // Recommendations (new UI)
-    playlistItem: 'ytd-playlist-panel-video-renderer', // Playlist panel
 
     // Link containing video ID
     videoLink: 'a[href*="/watch?v="]',
@@ -39,6 +38,14 @@ window._ytWatchedHider = (() => {
 
   let enabled = true;
   let recordWhileOff = false;
+  let hideShorts = false;
+
+  // Selectors for Shorts content
+  const SHORTS_SELECTORS = {
+    shortsLink: 'a[href*="/shorts/"]',
+    reelShelf: 'ytd-reel-shelf-renderer',         // Shorts shelf on home
+    richShelf: 'ytd-rich-shelf-renderer',          // Rich shelf (may contain Shorts)
+  };
   let processQueued = false;
   let processRunning = false;
   let currentVideoElement = null;
@@ -81,9 +88,10 @@ window._ytWatchedHider = (() => {
   loadCache();
 
   // Load settings — start seekbar-only processing immediately (no DB needed)
-  chrome.storage.local.get({ enabled: true, recordWhileOff: false }, (result) => {
+  chrome.storage.local.get({ enabled: true, recordWhileOff: false, hideShorts: false }, (result) => {
     enabled = result.enabled;
     recordWhileOff = result.recordWhileOff;
+    hideShorts = result.hideShorts;
     if (enabled) processPage(); // phase 1: seekbar detection works even without cache
   });
 
@@ -123,19 +131,22 @@ window._ytWatchedHider = (() => {
     return channelEl ? channelEl.textContent.trim() : '';
   }
 
-  // Check if a card has YouTube's seekbar (red progress bar on thumbnail)
+  // Minimum progress percentage to consider a video "watched"
+  const WATCHED_THRESHOLD = 95;
+
+  // Check if a card has YouTube's seekbar indicating >= 95% watched
   function hasYouTubeSeekbar(card) {
-    // Old UI: resume playback overlay
+    // Old UI: resume playback overlay (YouTube only shows this for completed videos)
     const resume = card.querySelector(SELECTORS.resumeOverlay);
     if (resume) return true;
 
     // Old UI: #progress element with width
     const progress = card.querySelector(SELECTORS.seekbar);
-    if (progress && progress.style && parseFloat(progress.style.width) > 0) return true;
+    if (progress && progress.style && parseFloat(progress.style.width) >= WATCHED_THRESHOLD) return true;
 
     // New UI: progress bar segment with width percentage
     const segment = card.querySelector(SELECTORS.progressBarNew);
-    if (segment && segment.style && parseFloat(segment.style.width) > 0) return true;
+    if (segment && segment.style && parseFloat(segment.style.width) >= WATCHED_THRESHOLD) return true;
 
     return false;
   }
@@ -235,6 +246,9 @@ window._ytWatchedHider = (() => {
     processQueued = false;
 
     try {
+      // Hide Shorts first (independent of watched state)
+      hideShortsCards();
+
       const cards = document.querySelectorAll(ALL_CARD_SELECTORS);
       if (cards.length === 0) {
         processRunning = false;
@@ -336,6 +350,66 @@ window._ytWatchedHider = (() => {
     }
   }
 
+  // --- Shorts hiding ---
+
+  function isCardShorts(card) {
+    // Method 1: card contains a /shorts/ link
+    if (card.querySelector(SHORTS_SELECTORS.shortsLink)) return true;
+
+    // Method 2: badge text says "ショート" (sidebar uses /watch links for Shorts)
+    const badges = card.querySelectorAll('badge-shape');
+    for (const badge of badges) {
+      const text = badge.textContent.trim();
+      if (text === 'ショート' || text === 'SHORTS' || text === 'Shorts') return true;
+    }
+
+    // Method 3: overlay-style="SHORTS" attribute
+    if (card.querySelector('[overlay-style="SHORTS"]')) return true;
+
+    return false;
+  }
+
+  function hideShortsCards() {
+    if (!hideShorts) return;
+
+    // Hide Shorts shelves (entire row)
+    const reelShelves = document.querySelectorAll(SHORTS_SELECTORS.reelShelf);
+    for (const shelf of reelShelves) {
+      if (shelf.dataset.shortsHidden !== 'true') {
+        shelf.style.display = 'none';
+        shelf.dataset.shortsHidden = 'true';
+      }
+    }
+
+    // Hide rich shelves that contain Shorts
+    const richShelves = document.querySelectorAll(SHORTS_SELECTORS.richShelf);
+    for (const shelf of richShelves) {
+      if (shelf.dataset.shortsHidden === 'true') continue;
+      if (shelf.querySelector(SHORTS_SELECTORS.shortsLink) || shelf.querySelector('[overlay-style="SHORTS"]')) {
+        shelf.style.display = 'none';
+        shelf.dataset.shortsHidden = 'true';
+      }
+    }
+
+    // Hide individual cards that link to Shorts
+    const cards = document.querySelectorAll(ALL_CARD_SELECTORS);
+    for (const card of cards) {
+      if (card.dataset.shortsHidden === 'true') continue;
+      if (isCardShorts(card)) {
+        card.style.display = 'none';
+        card.dataset.shortsHidden = 'true';
+      }
+    }
+  }
+
+  function showAllShorts() {
+    const hidden = document.querySelectorAll('[data-shorts-hidden="true"]');
+    for (const el of hidden) {
+      el.style.display = '';
+      delete el.dataset.shortsHidden;
+    }
+  }
+
   // --- History page scraping ---
   const HISTORY_CARD_SELECTOR = 'yt-lockup-view-model, ytd-video-renderer';
 
@@ -364,7 +438,7 @@ window._ytWatchedHider = (() => {
     );
     if (!segment) return false;
     const width = parseFloat(segment.style.width);
-    return !isNaN(width) && width >= 95;
+    return !isNaN(width) && width >= WATCHED_THRESHOLD;
   }
 
   async function scrapeHistoryPage() {
@@ -428,13 +502,16 @@ window._ytWatchedHider = (() => {
   }
 
   // Observe DOM mutations for dynamically loaded content
+  const SHORTS_SHELF_SELECTORS = `${SHORTS_SELECTORS.reelShelf}, ${SHORTS_SELECTORS.richShelf}`;
+
   const observer = new MutationObserver((mutations) => {
     let hasRelevantChange = false;
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (node.nodeType === Node.ELEMENT_NODE) {
           if (node.matches?.(ALL_CARD_SELECTORS) || node.querySelector?.(ALL_CARD_SELECTORS) ||
-              node.matches?.(HISTORY_CARD_SELECTOR) || node.querySelector?.(HISTORY_CARD_SELECTOR)) {
+              node.matches?.(HISTORY_CARD_SELECTOR) || node.querySelector?.(HISTORY_CARD_SELECTOR) ||
+              node.matches?.(SHORTS_SHELF_SELECTORS) || node.querySelector?.(SHORTS_SHELF_SELECTORS)) {
             hasRelevantChange = true;
             break;
           }
@@ -449,6 +526,9 @@ window._ytWatchedHider = (() => {
         observer._debounceTimer = setTimeout(scrapeHistoryPage, 300);
       } else if (enabled) {
         observer._debounceTimer = setTimeout(processPage, 300);
+      } else if (hideShorts) {
+        // Even if main hiding is off, still hide Shorts if that setting is on
+        observer._debounceTimer = setTimeout(hideShortsCards, 300);
       }
     }
   });
@@ -504,6 +584,9 @@ window._ytWatchedHider = (() => {
     recoChecking = true;
 
     try {
+      // Hide Shorts in recommendations too
+      hideShortsCards();
+
       // Search entire document — covers sidebar, below-player (theater), end screen
       const cards = document.querySelectorAll(ALL_CARD_SELECTORS);
       if (cards.length === 0) return;
@@ -605,13 +688,24 @@ window._ytWatchedHider = (() => {
       enabled = message.enabled;
       if (enabled) {
         processPage();
+        if (location.pathname === '/watch') startRecoPolling();
       } else {
         showAllCards();
+        stopRecoPolling();
       }
     }
 
     if (message.type === 'RECORD_WHILE_OFF_CHANGED') {
       recordWhileOff = message.recordWhileOff;
+    }
+
+    if (message.type === 'HIDE_SHORTS_CHANGED') {
+      hideShorts = message.hideShorts;
+      if (hideShorts) {
+        hideShortsCards();
+      } else {
+        showAllShorts();
+      }
     }
 
     if (message.type === 'GET_STATS') {
@@ -633,12 +727,24 @@ window._ytWatchedHider = (() => {
 
     if (message.type === 'IMPORT_DATA') {
       WatchedDB.importData(message.data).then((count) => {
-        // Update cache with imported IDs
         for (const record of message.data) {
           if (record.videoId) watchedCache.add(record.videoId);
         }
         processPage();
         sendResponse({ success: true, count });
+      }).catch((e) => {
+        sendResponse({ success: false, error: e.message });
+      });
+      return true;
+    }
+
+    if (message.type === 'MERGE_IMPORT') {
+      WatchedDB.mergeImport(message.data).then((result) => {
+        for (const record of message.data) {
+          if (record.videoId) watchedCache.add(record.videoId);
+        }
+        processPage();
+        sendResponse({ success: true, added: result.added, skipped: result.skipped, total: result.total });
       }).catch((e) => {
         sendResponse({ success: false, error: e.message });
       });

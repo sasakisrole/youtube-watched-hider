@@ -23,6 +23,10 @@ const viewerBtn = document.getElementById('viewerBtn');
 const aboutBtn = document.getElementById('aboutBtn');
 const aboutPanel = document.getElementById('aboutPanel');
 const nextBackupInfo = document.getElementById('nextBackupInfo');
+const hideShortsToggle = document.getElementById('hideShortsToggle');
+const syncImportBtn = document.getElementById('syncImportBtn');
+const syncFileInput = document.getElementById('syncFileInput');
+const syncStatus = document.getElementById('syncStatus');
 
 let allHistoryData = [];
 let filteredHistoryData = [];
@@ -58,7 +62,6 @@ function loadStats(retries = 3) {
     if (response && typeof response.count === 'number') {
       countEl.textContent = response.count.toLocaleString();
       countEl.title = '';
-      // Show DB status
       if (response.dbStatus) {
         const statusMap = {
           ready: `DB ready (cache: ${(response.cacheSize || 0).toLocaleString()}, ${response.cacheLoadTime || 0}ms)`,
@@ -240,6 +243,7 @@ chrome.runtime.sendMessage({ type: 'GET_ENABLED' }, (response) => {
     enableToggle.checked = response.enabled;
     toggleLabel.textContent = response.enabled ? 'ON' : 'OFF';
     recordWhileOffToggle.checked = response.recordWhileOff || false;
+    hideShortsToggle.checked = response.hideShorts || false;
     autoBackupToggle.checked = response.autoBackup !== false;
     if (response.lastBackup) {
       const d = new Date(response.lastBackup);
@@ -353,6 +357,14 @@ settingsBtn.addEventListener('click', () => {
   settingsPanel.style.display = visible ? 'none' : 'flex';
 });
 
+// Hide Shorts toggle
+hideShortsToggle.addEventListener('change', () => {
+  chrome.runtime.sendMessage({
+    type: 'SET_HIDE_SHORTS',
+    hideShorts: hideShortsToggle.checked
+  });
+});
+
 // Record while OFF toggle
 recordWhileOffToggle.addEventListener('change', () => {
   chrome.runtime.sendMessage({
@@ -409,6 +421,48 @@ clearBtn.addEventListener('click', () => {
       showStatus('Clear failed', true);
     }
   });
+});
+
+// Sync: Import & Merge from file
+syncImportBtn.addEventListener('click', () => {
+  syncFileInput.click();
+});
+
+syncFileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  syncStatus.textContent = 'Reading file...';
+  syncStatus.style.color = '#ff9800';
+
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    try {
+      const data = JSON.parse(event.target.result);
+      if (!Array.isArray(data)) {
+        syncStatus.textContent = 'Invalid JSON format';
+        syncStatus.style.color = '#ff6b6b';
+        return;
+      }
+      syncStatus.textContent = `Merging ${data.length} records...`;
+      chrome.runtime.sendMessage({ type: 'MERGE_IMPORT', data }, (response) => {
+        if (response && response.success) {
+          syncStatus.textContent = `Done: +${response.added} new, ${response.skipped} existing`;
+          syncStatus.style.color = '#4caf50';
+          loadStats();
+          if (historyPanel.style.display !== 'none') loadHistory();
+        } else {
+          syncStatus.textContent = 'Merge failed';
+          syncStatus.style.color = '#ff6b6b';
+        }
+      });
+    } catch {
+      syncStatus.textContent = 'Failed to parse JSON';
+      syncStatus.style.color = '#ff6b6b';
+    }
+  };
+  reader.readAsText(file);
+  syncFileInput.value = '';
 });
 
 // Init

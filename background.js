@@ -41,7 +41,6 @@ setInterval(() => {
 // --- Auto-backup ---
 
 const BACKUP_ALARM = 'auto-backup';
-const BACKUP_FILENAME = 'yt-watched-backup.json';
 
 // Schedule daily backup at a fixed hour (default: 3:00 AM)
 function scheduleDailyBackup() {
@@ -77,7 +76,6 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 // --- Helper: send message to a YouTube tab with retry ---
 // Tries each YouTube tab in order until one responds.
-// Does NOT re-inject content scripts (const redeclaration would crash).
 async function sendToYouTubeTab(message) {
   const tabs = await chrome.tabs.query({ url: '*://*.youtube.com/*' });
   if (tabs.length === 0) throw new Error('No YouTube tab open');
@@ -92,6 +90,15 @@ async function sendToYouTubeTab(message) {
   }
 
   throw new Error('No YouTube tab responded');
+}
+
+// Generate backup filename with date (e.g. yt-watched-backup-2026-04-03.json)
+function getBackupFilename() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `yt-watched-backup-${yyyy}-${mm}-${dd}.json`;
 }
 
 // Returns a promise with the backup result for callers that need feedback
@@ -118,7 +125,7 @@ function performAutoBackup() {
 
           chrome.downloads.download({
             url: dataUrl,
-            filename: BACKUP_FILENAME,
+            filename: getBackupFilename(),
             conflictAction: 'overwrite',
             saveAs: false
           }, (downloadId) => {
@@ -168,6 +175,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'MERGE_IMPORT') {
+    sendToYouTubeTab({ type: 'MERGE_IMPORT', data: message.data })
+      .then(sendResponse)
+      .catch(() => sendResponse({ success: false }));
+    return true;
+  }
+
   if (message.type === 'DELETE_VIDEO') {
     sendToYouTubeTab({ type: 'DELETE_VIDEO', videoId: message.videoId })
       .then(sendResponse)
@@ -186,6 +200,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     chrome.storage.local.get({
       enabled: true,
       recordWhileOff: false,
+      hideShorts: false,
       autoBackup: true,
       lastBackup: null,
       lastBackupCount: 0
@@ -206,6 +221,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           chrome.tabs.sendMessage(tab.id, {
             type: 'ENABLED_CHANGED',
             enabled: message.enabled
+          }).catch(() => {});
+        }
+      });
+      sendResponse({ success: true });
+    });
+    return true;
+  }
+
+  if (message.type === 'SET_HIDE_SHORTS') {
+    chrome.storage.local.set({ hideShorts: message.hideShorts }, () => {
+      chrome.tabs.query({ url: '*://*.youtube.com/*' }, (tabs) => {
+        for (const tab of tabs) {
+          chrome.tabs.sendMessage(tab.id, {
+            type: 'HIDE_SHORTS_CHANGED',
+            hideShorts: message.hideShorts
           }).catch(() => {});
         }
       });

@@ -187,15 +187,21 @@ if (typeof WatchedDB === 'undefined') {
       });
     }
 
+    // Validate a record has required fields
+    function isValidRecord(record) {
+      return record && typeof record.videoId === 'string' && record.videoId.length > 0;
+    }
+
     async function importData(records) {
       const db = await openDB();
+      const valid = records.filter(isValidRecord);
       return new Promise((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, 'readwrite');
         const store = tx.objectStore(STORE_NAME);
-        for (const record of records) {
+        for (const record of valid) {
           store.put(record);
         }
-        tx.oncomplete = () => resolve(records.length);
+        tx.oncomplete = () => resolve(valid.length);
         tx.onerror = (event) => reject(event.target.error);
       });
     }
@@ -234,6 +240,61 @@ if (typeof WatchedDB === 'undefined') {
       });
     }
 
-    return { openDB, addWatched, updateTitle, updateTitleAndChannel, isWatched, checkMultiple, getStats, getAllIds, exportAll, importData, clearAll, deleteOne };
+    // Merge import: only add new records, keep existing ones intact
+    // Returns { added, skipped, total }
+    async function mergeImport(records) {
+      const db = await openDB();
+      const valid = records.filter(isValidRecord);
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        let added = 0;
+        let skipped = 0;
+        let pending = valid.length;
+
+        if (pending === 0) return resolve({ added: 0, skipped: 0, total: 0 });
+
+        for (const record of valid) {
+          const getReq = store.get(record.videoId);
+          getReq.onsuccess = () => {
+            if (!getReq.result) {
+              // New record: add it
+              store.put(record);
+              added++;
+            } else {
+              // Existing: merge playCount and keep newer watchedAt
+              const existing = getReq.result;
+              let updated = false;
+              if (record.playCount > (existing.playCount || 0)) {
+                existing.playCount = record.playCount;
+                updated = true;
+              }
+              if (record.watchedAt > existing.watchedAt) {
+                existing.watchedAt = record.watchedAt;
+                updated = true;
+              }
+              if (record.title && !existing.title) {
+                existing.title = record.title;
+                updated = true;
+              }
+              if (record.channel && !existing.channel) {
+                existing.channel = record.channel;
+                updated = true;
+              }
+              if (updated) store.put(existing);
+              skipped++;
+            }
+            if (--pending === 0) {
+              // will resolve on tx.oncomplete
+            }
+          };
+        }
+
+        tx.oncomplete = () => resolve({ added, skipped, total: valid.length });
+        tx.onerror = (event) => reject(event.target.error);
+      });
+    }
+
+    return { openDB, addWatched, updateTitle, updateTitleAndChannel, isWatched, checkMultiple, getStats, getAllIds, exportAll, importData, mergeImport, clearAll, deleteOne };
   })();
 }
