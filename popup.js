@@ -24,6 +24,7 @@ const aboutBtn = document.getElementById('aboutBtn');
 const aboutPanel = document.getElementById('aboutPanel');
 const nextBackupInfo = document.getElementById('nextBackupInfo');
 const hideShortsToggle = document.getElementById('hideShortsToggle');
+const hideMoviesToggle = document.getElementById('hideMoviesToggle');
 const syncImportBtn = document.getElementById('syncImportBtn');
 const syncFileInput = document.getElementById('syncFileInput');
 const syncStatus = document.getElementById('syncStatus');
@@ -244,6 +245,7 @@ chrome.runtime.sendMessage({ type: 'GET_ENABLED' }, (response) => {
     toggleLabel.textContent = response.enabled ? 'ON' : 'OFF';
     recordWhileOffToggle.checked = response.recordWhileOff || false;
     hideShortsToggle.checked = response.hideShorts || false;
+    hideMoviesToggle.checked = response.hideMovies || false;
     autoBackupToggle.checked = response.autoBackup !== false;
     if (response.lastBackup) {
       const d = new Date(response.lastBackup);
@@ -362,6 +364,14 @@ hideShortsToggle.addEventListener('change', () => {
   chrome.runtime.sendMessage({
     type: 'SET_HIDE_SHORTS',
     hideShorts: hideShortsToggle.checked
+  });
+});
+
+// Hide Movies toggle
+hideMoviesToggle.addEventListener('change', () => {
+  chrome.runtime.sendMessage({
+    type: 'SET_HIDE_MOVIES',
+    hideMovies: hideMoviesToggle.checked
   });
 });
 

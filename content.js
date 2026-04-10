@@ -39,6 +39,7 @@ window._ytWatchedHider = (() => {
   let enabled = true;
   let recordWhileOff = false;
   let hideShorts = false;
+  let hideMovies = false;
 
   // Selectors for Shorts content
   const SHORTS_SELECTORS = {
@@ -88,10 +89,11 @@ window._ytWatchedHider = (() => {
   loadCache();
 
   // Load settings — start seekbar-only processing immediately (no DB needed)
-  chrome.storage.local.get({ enabled: true, recordWhileOff: false, hideShorts: false }, (result) => {
+  chrome.storage.local.get({ enabled: true, recordWhileOff: false, hideShorts: false, hideMovies: false }, (result) => {
     enabled = result.enabled;
     recordWhileOff = result.recordWhileOff;
     hideShorts = result.hideShorts;
+    hideMovies = result.hideMovies;
     if (enabled) processPage(); // phase 1: seekbar detection works even without cache
   });
 
@@ -246,8 +248,9 @@ window._ytWatchedHider = (() => {
     processQueued = false;
 
     try {
-      // Hide Shorts first (independent of watched state)
+      // Hide Shorts and Movies first (independent of watched state)
       hideShortsCards();
+      hideMovieCards();
 
       const cards = document.querySelectorAll(ALL_CARD_SELECTORS);
       if (cards.length === 0) {
@@ -410,6 +413,45 @@ window._ytWatchedHider = (() => {
     }
   }
 
+  // --- Movie/Show hiding ---
+
+  // Rating badges that indicate movie/show content
+  const MOVIE_RATING_BADGES = new Set(['G', 'PG', 'PG-12', 'PG12', 'R', 'R-15', 'R15', 'R-18', 'R18', 'NC-17']);
+
+  function isCardMovie(card) {
+    const badges = card.querySelectorAll('badge-shape');
+    let hasRating = false;
+    let hasFreeOrPaid = false;
+    for (const badge of badges) {
+      const text = badge.textContent.trim();
+      if (MOVIE_RATING_BADGES.has(text)) hasRating = true;
+      if (text === '無料' || text === 'Free' || text === '有料') hasFreeOrPaid = true;
+    }
+    // Must have rating OR "無料/有料" badge (movies always have at least one)
+    return hasRating || hasFreeOrPaid;
+  }
+
+  function hideMovieCards() {
+    if (!hideMovies) return;
+
+    const cards = document.querySelectorAll(ALL_CARD_SELECTORS);
+    for (const card of cards) {
+      if (card.dataset.movieHidden === 'true') continue;
+      if (isCardMovie(card)) {
+        card.style.display = 'none';
+        card.dataset.movieHidden = 'true';
+      }
+    }
+  }
+
+  function showAllMovies() {
+    const hidden = document.querySelectorAll('[data-movie-hidden="true"]');
+    for (const el of hidden) {
+      el.style.display = '';
+      delete el.dataset.movieHidden;
+    }
+  }
+
   // --- History page scraping ---
   const HISTORY_CARD_SELECTOR = 'yt-lockup-view-model, ytd-video-renderer';
 
@@ -526,9 +568,9 @@ window._ytWatchedHider = (() => {
         observer._debounceTimer = setTimeout(scrapeHistoryPage, 300);
       } else if (enabled) {
         observer._debounceTimer = setTimeout(processPage, 300);
-      } else if (hideShorts) {
-        // Even if main hiding is off, still hide Shorts if that setting is on
-        observer._debounceTimer = setTimeout(hideShortsCards, 300);
+      } else if (hideShorts || hideMovies) {
+        // Even if main hiding is off, still hide Shorts/Movies if those settings are on
+        observer._debounceTimer = setTimeout(() => { hideShortsCards(); hideMovieCards(); }, 300);
       }
     }
   });
@@ -584,8 +626,9 @@ window._ytWatchedHider = (() => {
     recoChecking = true;
 
     try {
-      // Hide Shorts in recommendations too
+      // Hide Shorts and Movies in recommendations too
       hideShortsCards();
+      hideMovieCards();
 
       // Search entire document — covers sidebar, below-player (theater), end screen
       const cards = document.querySelectorAll(ALL_CARD_SELECTORS);
@@ -705,6 +748,15 @@ window._ytWatchedHider = (() => {
         hideShortsCards();
       } else {
         showAllShorts();
+      }
+    }
+
+    if (message.type === 'HIDE_MOVIES_CHANGED') {
+      hideMovies = message.hideMovies;
+      if (hideMovies) {
+        hideMovieCards();
+      } else {
+        showAllMovies();
       }
     }
 

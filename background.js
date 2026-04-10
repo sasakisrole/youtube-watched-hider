@@ -201,6 +201,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       enabled: true,
       recordWhileOff: false,
       hideShorts: false,
+      hideMovies: false,
       autoBackup: true,
       lastBackup: null,
       lastBackupCount: 0
@@ -221,6 +222,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           chrome.tabs.sendMessage(tab.id, {
             type: 'ENABLED_CHANGED',
             enabled: message.enabled
+          }).catch(() => {});
+        }
+      });
+      sendResponse({ success: true });
+    });
+    return true;
+  }
+
+  if (message.type === 'SET_HIDE_MOVIES') {
+    chrome.storage.local.set({ hideMovies: message.hideMovies }, () => {
+      chrome.tabs.query({ url: '*://*.youtube.com/*' }, (tabs) => {
+        for (const tab of tabs) {
+          chrome.tabs.sendMessage(tab.id, {
+            type: 'HIDE_MOVIES_CHANGED',
+            hideMovies: message.hideMovies
           }).catch(() => {});
         }
       });
