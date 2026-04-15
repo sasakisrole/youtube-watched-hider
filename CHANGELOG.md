@@ -1,0 +1,50 @@
+# Changelog
+
+## v1.21.0 (2026-04-15)
+- Music Taste Analyzer を history.html に統合
+  - `Analyze` ボタンで分析ビューに切替
+  - アーティスト（-Topic）/ 全チャンネル / キーワード / Claude推薦プロンプト の4タブ
+  - Topic検索 / YT検索 / 類似検索 のワンクリックリンク
+  - プロンプトTop40アーティスト+Top15一般チャンネルをClaudeに渡して推薦取得
+
+## v1.20.1 (2026-04-14)
+- 埋め込み禁止動画（oEmbed 401/403）のフォールバック対応
+  - `fetchWatchPageMeta()`: watchページHTMLから `ytInitialPlayerResponse.videoDetails` の title/author を抽出
+  - `fetchVideoMeta()` で oEmbed → HTML の順に試行
+  - 公式MV・年齢制限・生配信アーカイブ・CM動画等も補正可能に
+
+## v1.20.0 (2026-04-14)
+- 録画時タイトル/チャンネルの取得を堅牢化
+  - `backfillTitleChannel()` を新設：0.5秒間隔で最大12秒 DOM一致を待ち、タイムアウト時は oEmbed API にフォールバック
+  - `recordCurrentVideo()`: DOM不整合 or 空フィールド時に backfill 予約
+  - 視聴開始時の backfill も同関数に統合（単発setTimeoutから堅牢な再試行へ）
+  - シークバー検知経路でカードからtitle/channelが取れなかった場合もoEmbed補完
+
+## v1.19.2 (2026-04-14)
+- Fix: oEmbed URLの `url=` パラメータ未エンコードで全件失敗していたバグ修正
+- エラー時にconsole.warnで詳細を出力
+
+## v1.19.1 (2026-04-14)
+- Fix Channels の進捗をストリーム表示（chrome.runtime.Port）
+  - ステータス欄に「残りN/総件数（更新X / 失敗Y）」をリアルタイム更新
+  - No Channel フィルタ有効時は、補完できた行から即座に一覧から消える
+
+## v1.19.0 (2026-04-14)
+- チャンネル名の補正機能を追加（YouTube oEmbed API経由）
+  - `Fix Channels`: チャンネル未記録エントリをoEmbedで補完
+  - `Fix (force)`: 表示中エントリをoEmbedで上書き補正（誤登録の修復用）
+- db.js `updateTitleAndChannel(..., force)` で強制上書きをサポート
+- background.js で並列5本の oEmbed fetch（レート制限対策）
+
+## v1.18.1 (2026-04-14)
+- history画面に「No Channel」フィルタ追加（チャンネル未記録エントリの洗い出し用）
+
+## v1.18.0 (2026-04-14)
+- Fix: 再生履歴に誤ったチャンネル名が登録されるバグを修正
+  - SPA自動再生時のURL/DOMレースを `watchMetadataMatches()` でガード
+  - `getWatchPageChannel()` を `ytd-watch-metadata` / `#owner` 配下に限定（サイドバー推奨の誤拾い防止）
+  - DOM不整合時は videoId のみ記録し、DOM安定後に backfill
+
+## v1.17.0 以前
+- 履歴タイトル表示・再生回数記録・ended検知（〜2026-03-20）
+- おすすめ動画非表示（v1.9.0 / 2026-03-20）

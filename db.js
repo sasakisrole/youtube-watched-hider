@@ -111,24 +111,26 @@ if (typeof WatchedDB === 'undefined') {
       });
     }
 
-    // Update title and channel (without incrementing playCount)
-    async function updateTitleAndChannel(videoId, title, channel) {
-      if (!title && !channel) return;
+    // Update title and channel (without incrementing playCount).
+    // By default only fills empty fields. Pass force=true to overwrite
+    // existing values (used for oEmbed-based correction).
+    async function updateTitleAndChannel(videoId, title, channel, force = false) {
+      if (!title && !channel) return false;
       const db = await openDB();
       return new Promise((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, 'readwrite');
         const store = tx.objectStore(STORE_NAME);
         const getReq = store.get(videoId);
+        let didUpdate = false;
         getReq.onsuccess = () => {
           const existing = getReq.result;
           if (existing) {
-            let updated = false;
-            if (title && !existing.title) { existing.title = title; updated = true; }
-            if (channel && !existing.channel) { existing.channel = channel; updated = true; }
-            if (updated) store.put(existing);
+            if (title && (force || !existing.title)) { existing.title = title; didUpdate = true; }
+            if (channel && (force || !existing.channel)) { existing.channel = channel; didUpdate = true; }
+            if (didUpdate) store.put(existing);
           }
         };
-        tx.oncomplete = () => resolve();
+        tx.oncomplete = () => resolve(didUpdate);
         tx.onerror = (event) => reject(event.target.error);
       });
     }

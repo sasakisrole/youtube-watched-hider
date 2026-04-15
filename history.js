@@ -9,6 +9,7 @@ const sortBtns = document.querySelectorAll('.sort-btn');
 
 let allData = [];
 let currentSort = 'date-desc';
+let noChannelOnly = false;
 let sortedCache = [];  // cached sorted+filtered result
 const PAGE_SIZE = 100; // render this many items at a time
 let renderedCount = 0;
@@ -178,11 +179,14 @@ function render() {
   const filter = searchInput.value.toLowerCase();
   let filtered = allData;
   if (filter) {
-    filtered = allData.filter(v =>
+    filtered = filtered.filter(v =>
       (v.title || v.videoId).toLowerCase().includes(filter) ||
       (v.channel || '').toLowerCase().includes(filter) ||
       v.videoId.toLowerCase().includes(filter)
     );
+  }
+  if (noChannelOnly) {
+    filtered = filtered.filter(v => !v.channel || v.channel.trim() === '');
   }
 
   sortedCache = sortData(filtered, currentSort);
@@ -208,15 +212,124 @@ window.addEventListener('scroll', () => {
   }
 });
 
-// Sort buttons
+// Sort buttons (exclude filter toggle)
 sortBtns.forEach(btn => {
+  if (btn.id === 'filterNoChannel') return;
   btn.addEventListener('click', () => {
-    sortBtns.forEach(b => b.classList.remove('active'));
+    sortBtns.forEach(b => {
+      if (b.id !== 'filterNoChannel') b.classList.remove('active');
+    });
     btn.classList.add('active');
     currentSort = btn.dataset.sort;
     render();
   });
 });
+
+// No-channel filter toggle
+const filterNoChannelBtn = document.getElementById('filterNoChannel');
+if (filterNoChannelBtn) {
+  filterNoChannelBtn.addEventListener('click', () => {
+    noChannelOnly = !noChannelOnly;
+    filterNoChannelBtn.classList.toggle('active', noChannelOnly);
+    render();
+  });
+}
+
+// Fix channels via oEmbed API
+const fixStatus = document.getElementById('fixStatus');
+
+function runFix(videoIds, force, label) {
+  if (!videoIds.length) {
+    fixStatus.textContent = '対象なし';
+    return;
+  }
+  if (!confirm(`${label}: ${videoIds.length}件のチャンネル名をYouTube oEmbed APIで${force ? '上書き' : '補完'}します。続行しますか？`)) {
+    return;
+  }
+
+  const total = videoIds.length;
+  let remaining = total;
+  fixStatus.textContent = `処理中... 残り${remaining}/${total}（更新0 / 失敗0）`;
+
+  const port = chrome.runtime.connect({ name: 'fix-channels' });
+
+  port.onMessage.addListener((msg) => {
+    if (msg.type === 'PROGRESS') {
+      remaining = msg.total - msg.processed;
+
+      // Live-update the entry in memory and DOM so the user sees it disappear
+      // from the list (when filtered) or update its channel label.
+      if (msg.wasUpdated) {
+        const rec = allData.find(v => v.videoId === msg.videoId);
+        if (rec) {
+          if (msg.channel) rec.channel = msg.channel;
+          if (msg.title && (force || !rec.title)) rec.title = msg.title;
+        }
+        const cacheIdx = sortedCache.findIndex(v => v.videoId === msg.videoId);
+        if (cacheIdx !== -1) {
+          const stillMatches = !noChannelOnly ||
+            (!sortedCache[cacheIdx].channel || sortedCache[cacheIdx].channel.trim() === '');
+          // Under noChannelOnly the updated row no longer qualifies — drop it.
+          if (noChannelOnly && msg.channel) {
+            sortedCache.splice(cacheIdx, 1);
+            const rows = content.querySelectorAll('.video-row');
+            // Find the row whose videoId matches and remove it.
+            for (const row of rows) {
+              const idEl = row.querySelector('.video-id');
+              if (idEl && idEl.textContent === msg.videoId) {
+                row.style.transition = 'opacity 0.2s';
+                row.style.opacity = '0';
+                setTimeout(() => row.remove(), 200);
+                break;
+              }
+            }
+          }
+          stillMatches; // silence lint
+        }
+      }
+
+      totalCountEl.textContent = sortedCache.length.toLocaleString();
+      fixStatus.textContent = `処理中... 残り${remaining}/${total}（更新${msg.updated} / 失敗${msg.failed}）`;
+      return;
+    }
+
+    if (msg.type === 'DONE') {
+      fixStatus.textContent = `完了: 更新${msg.updated}件 / 失敗${msg.failed}件 / 合計${msg.total}件`;
+      // Full reload to re-sort and ensure consistency.
+      setTimeout(loadData, 300);
+      return;
+    }
+
+    if (msg.type === 'ERROR') {
+      fixStatus.textContent = `失敗: ${msg.error || 'unknown'}`;
+      return;
+    }
+  });
+
+  port.onDisconnect.addListener(() => {
+    // no-op; DONE/ERROR already handled above
+  });
+
+  port.postMessage({ type: 'START', videoIds, force });
+}
+
+const fixBtn = document.getElementById('fixChannels');
+if (fixBtn) {
+  fixBtn.addEventListener('click', () => {
+    // Only videos missing channel (across allData, not just visible)
+    const targets = allData.filter(v => !v.channel || v.channel.trim() === '').map(v => v.videoId);
+    runFix(targets, false, 'チャンネル名補完');
+  });
+}
+
+const fixForceBtn = document.getElementById('fixChannelsForce');
+if (fixForceBtn) {
+  fixForceBtn.addEventListener('click', () => {
+    // Force-overwrite for currently visible (filtered+sorted) entries
+    const targets = sortedCache.map(v => v.videoId);
+    runFix(targets, true, '強制上書き補正（表示中の全件）');
+  });
+}
 
 // Search (debounced)
 let searchTimer;

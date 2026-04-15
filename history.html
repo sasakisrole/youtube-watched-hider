@@ -234,12 +234,80 @@
     <button class="sort-btn" data-sort="count-desc">Most Played</button>
     <button class="sort-btn" data-sort="channel">Channel</button>
     <button class="sort-btn" data-sort="title">Title</button>
+    <button class="sort-btn" id="filterNoChannel" title="チャンネル名が未記録の動画だけ表示">No Channel</button>
+    <button class="sort-btn" id="fixChannels" title="oEmbed APIでチャンネル名を補正（未記録のみ）">Fix Channels</button>
+    <button class="sort-btn" id="fixChannelsForce" title="oEmbed APIでチャンネル名を上書き補正（表示中の全件）">Fix (force)</button>
+    <button class="sort-btn" id="toggleAnalyze" title="音楽傾向分析">Analyze</button>
+    <span id="fixStatus" style="margin-left:8px;color:#666;font-size:13px;"></span>
   </div>
 
   <div class="content" id="content">
     <div class="loading">Loading...</div>
   </div>
 
+  <div class="content" id="analyzeView" style="display:none;">
+    <div class="az-stats">
+      <div class="az-stat"><div class="az-n" id="azTotal">0</div><div class="az-l">総視聴</div></div>
+      <div class="az-stat"><div class="az-n" id="azCh">0</div><div class="az-l">チャンネル</div></div>
+      <div class="az-stat"><div class="az-n" id="azArtist">0</div><div class="az-l">アーティスト(Topic)</div></div>
+      <div class="az-stat"><div class="az-n" id="azMusic">0</div><div class="az-l">音楽再生</div></div>
+    </div>
+    <div class="az-tabs">
+      <div class="az-tab active" data-aztab="artists">アーティスト</div>
+      <div class="az-tab" data-aztab="channels">全チャンネル</div>
+      <div class="az-tab" data-aztab="keywords">キーワード</div>
+      <div class="az-tab" data-aztab="prompt">Claude推薦プロンプト</div>
+    </div>
+    <div class="az-panel" id="azArtistsPanel">
+      <div class="az-filter">
+        <input type="text" id="azArtistFilter" placeholder="アーティスト名で絞り込み" class="search-box" style="max-width:260px;">
+        <label style="color:#888;font-size:13px;display:flex;align-items:center;gap:6px;"><input type="checkbox" id="azTopicOnly" checked>-Topicのみ</label>
+      </div>
+      <table class="az-table" id="azArtistsTable"><thead><tr><th style="width:40px;">#</th><th>アーティスト</th><th style="width:60px;">再生</th><th>リンク</th></tr></thead><tbody></tbody></table>
+    </div>
+    <div class="az-panel" id="azChannelsPanel" style="display:none;">
+      <div class="az-filter">
+        <input type="text" id="azChannelFilter" placeholder="チャンネル名で絞り込み" class="search-box" style="max-width:260px;">
+      </div>
+      <table class="az-table" id="azChannelsTable"><thead><tr><th style="width:40px;">#</th><th>チャンネル</th><th style="width:60px;">再生</th></tr></thead><tbody></tbody></table>
+    </div>
+    <div class="az-panel" id="azKeywordsPanel" style="display:none;">
+      <p style="color:#888;font-size:13px;margin-bottom:12px;">Topicチャンネル楽曲のタイトル頻出ワード</p>
+      <div class="az-kwgrid" id="azKwList"></div>
+    </div>
+    <div class="az-panel" id="azPromptPanel" style="display:none;">
+      <p style="color:#888;font-size:13px;margin-bottom:12px;">Claudeに貼って「次に聴くべきアーティスト」を推薦してもらう用</p>
+      <div style="margin-bottom:12px;">
+        <button class="sort-btn" id="azCopyPrompt">プロンプトをコピー</button>
+        <span id="azCopyMsg" style="color:#ff4444;margin-left:12px;font-size:13px;"></span>
+      </div>
+      <pre id="azPromptText" style="background:#0f1629;border:1px solid #2a2a4a;border-radius:6px;padding:14px;white-space:pre-wrap;font-size:12px;color:#bbb;max-height:500px;overflow:auto;"></pre>
+    </div>
+  </div>
+
+  <style>
+    .az-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:20px; }
+    .az-stat { background:#16213e; border:1px solid #2a2a4a; border-radius:6px; padding:12px; }
+    .az-n { font-size:20px; font-weight:700; color:#ff4444; }
+    .az-l { font-size:11px; color:#888; margin-top:4px; }
+    .az-tabs { display:flex; gap:2px; border-bottom:1px solid #2a2a4a; margin-bottom:14px; }
+    .az-tab { padding:8px 14px; cursor:pointer; color:#888; border-bottom:2px solid transparent; font-size:13px; }
+    .az-tab.active { color:#ff4444; border-bottom-color:#ff4444; }
+    .az-filter { display:flex; gap:12px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
+    .az-table { width:100%; border-collapse:collapse; background:#16213e; border:1px solid #2a2a4a; border-radius:6px; overflow:hidden; }
+    .az-table th, .az-table td { padding:8px 12px; text-align:left; border-bottom:1px solid #2a2a4a; font-size:13px; }
+    .az-table th { background:#1a2a4a; color:#888; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+    .az-table tr:last-child td { border-bottom:none; }
+    .az-table td:first-child { color:#666; }
+    .az-table td:nth-child(3) { color:#ff4444; font-weight:600; }
+    .az-table a { color:#888; text-decoration:none; margin-right:10px; font-size:12px; }
+    .az-table a:hover { color:#ff4444; }
+    .az-kwgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:6px; }
+    .az-kw { background:#16213e; border:1px solid #2a2a4a; padding:8px 12px; border-radius:4px; display:flex; justify-content:space-between; font-size:13px; }
+    .az-kw .w { color:#ff4444; font-weight:600; }
+  </style>
+
   <script src="history.js"></script>
+  <script src="analyzer.js"></script>
 </body>
 </html>

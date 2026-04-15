@@ -168,15 +168,69 @@ window._ytWatchedHider = (() => {
     return titleEl ? titleEl.textContent.trim() : '';
   }
 
-  // Get channel name from watch page
+  // Get channel name from watch page.
+  // IMPORTANT: Scope strictly to the primary watch metadata area.
+  // Broad fallbacks like '#channel-name ...' can match sidebar/recommendation
+  // items when ytd-watch-metadata hasn't rendered yet, causing wrong channel.
   function getWatchPageChannel() {
-    const channelEl = document.querySelector(
-      'ytd-watch-metadata ytd-channel-name yt-formatted-string a, ' +
-      '#owner ytd-channel-name yt-formatted-string a, ' +
-      '#channel-name yt-formatted-string a, ' +
-      'ytd-video-owner-renderer ytd-channel-name a'
+    const root =
+      document.querySelector('ytd-watch-metadata') ||
+      document.querySelector('#owner');
+    if (!root) return '';
+    const channelEl = root.querySelector(
+      'ytd-channel-name yt-formatted-string a, ' +
+      'ytd-video-owner-renderer ytd-channel-name a, ' +
+      'ytd-channel-name a'
     );
     return channelEl ? channelEl.textContent.trim() : '';
+  }
+
+  // Verify the watch-metadata DOM currently reflects the given videoId.
+  // Returns true if we can confirm the match, false if uncertain.
+  function watchMetadataMatches(videoId) {
+    if (!videoId) return false;
+    const root = document.querySelector('ytd-watch-metadata');
+    if (!root) return false;
+    // The title link points to /watch?v=<id>
+    const link = root.querySelector('a[href*="/watch?v="]');
+    if (link) {
+      const id = getVideoIdFromHref(link.href);
+      if (id) return id === videoId;
+    }
+    return false;
+  }
+
+  // Poll ytd-watch-metadata until it matches the given videoId, then
+  // backfill title/channel. Falls back to oEmbed (via background) after
+  // timeout so we never leave an entry with empty fields.
+  function backfillTitleChannel(videoId) {
+    if (!videoId) return;
+    const deadline = Date.now() + 12000; // 12s window
+    const INTERVAL = 500;
+
+    const tick = () => {
+      if (watchMetadataMatches(videoId)) {
+        const title = getWatchPageTitle();
+        const channel = getWatchPageChannel();
+        if (title || channel) {
+          WatchedDB.updateTitleAndChannel(videoId, title, channel).catch(() => {});
+          return;
+        }
+      }
+      if (Date.now() < deadline) {
+        setTimeout(tick, INTERVAL);
+      } else {
+        // Last resort: ask background to fetch via oEmbed.
+        try {
+          chrome.runtime.sendMessage({
+            type: 'FIX_CHANNELS',
+            videoIds: [videoId],
+            force: false
+          }, () => { /* ignore */ });
+        } catch (_e) { /* ignore */ }
+      }
+    };
+    tick();
   }
 
   // Record current video as watched (source: 'self')
@@ -187,11 +241,20 @@ window._ytWatchedHider = (() => {
     if (!videoId) return;
 
     try {
-      const title = getWatchPageTitle();
-      const channel = getWatchPageChannel();
+      // Guard against SPA race: on autoplay, URL may already point to the
+      // next video while ytd-watch-metadata still shows the previous one
+      // (or vice versa). Only trust title/channel if the DOM agrees with
+      // the URL's videoId. Otherwise save id only and schedule a backfill.
+      const domAgrees = watchMetadataMatches(videoId);
+      const title = domAgrees ? getWatchPageTitle() : '';
+      const channel = domAgrees ? getWatchPageChannel() : '';
       await WatchedDB.addWatched(videoId, title, 'self', channel);
       watchedCache.add(videoId);
-      console.log(`[YT-Watched-Hider] Recorded: ${title || videoId}`);
+      console.log(`[YT-Watched-Hider] Recorded: ${title || videoId}${domAgrees ? '' : ' (id only, scheduling backfill)'}`);
+
+      if (!domAgrees || !title || !channel) {
+        backfillTitleChannel(videoId);
+      }
     } catch (e) {
       console.error('[YT-Watched-Hider] Error recording video:', e);
     }
@@ -226,15 +289,12 @@ window._ytWatchedHider = (() => {
 
     video.addEventListener('ended', endedHandler);
 
-    // Also update title/channel in DB if we already have the record (from seekbar detection)
+    // Also update title/channel in DB if we already have the record (from seekbar detection).
+    // Use the robust polling backfill (handles slow DOM + oEmbed fallback).
     setTimeout(() => {
       const videoId = getCurrentVideoId();
-      const title = getWatchPageTitle();
-      const channel = getWatchPageChannel();
-      if (videoId && (title || channel)) {
-        WatchedDB.updateTitleAndChannel(videoId, title, channel).catch(() => {});
-      }
-    }, 3000);
+      if (videoId) backfillTitleChannel(videoId);
+    }, 1500);
   }
 
   // Process all visible video cards (with queue to avoid lost updates)
@@ -284,6 +344,18 @@ window._ytWatchedHider = (() => {
           const title = getTitleFromCard(card);
           const channel = getChannelFromCard(card);
           WatchedDB.addWatched(videoId, title, 'seekbar', channel).catch(() => {});
+          // If we couldn't extract title or channel from the card (some
+          // layout variants expose neither), schedule an oEmbed backfill
+          // so the entry doesn't stay blank forever.
+          if (!title || !channel) {
+            try {
+              chrome.runtime.sendMessage({
+                type: 'FIX_CHANNELS',
+                videoIds: [videoId],
+                force: false
+              }, () => { /* ignore */ });
+            } catch (_e) { /* ignore */ }
+          }
           hiddenBySeekbar++;
           continue;
         }
@@ -661,6 +733,18 @@ window._ytWatchedHider = (() => {
           const title = getTitleFromCard(card);
           const channel = getChannelFromCard(card);
           WatchedDB.addWatched(videoId, title, 'seekbar', channel).catch(() => {});
+          // If we couldn't extract title or channel from the card (some
+          // layout variants expose neither), schedule an oEmbed backfill
+          // so the entry doesn't stay blank forever.
+          if (!title || !channel) {
+            try {
+              chrome.runtime.sendMessage({
+                type: 'FIX_CHANNELS',
+                videoIds: [videoId],
+                force: false
+              }, () => { /* ignore */ });
+            } catch (_e) { /* ignore */ }
+          }
           continue;
         }
 
@@ -807,6 +891,21 @@ window._ytWatchedHider = (() => {
       WatchedDB.deleteOne(message.videoId).then(() => {
         watchedCache.delete(message.videoId);
         sendResponse({ success: true });
+      }).catch((e) => {
+        sendResponse({ success: false, error: e.message });
+      });
+      return true;
+    }
+
+    if (message.type === 'UPDATE_TITLE_CHANNEL') {
+      // Force-update title/channel for a given videoId (used by oEmbed correction).
+      WatchedDB.updateTitleAndChannel(
+        message.videoId,
+        message.title || '',
+        message.channel || '',
+        !!message.force
+      ).then((didUpdate) => {
+        sendResponse({ success: true, updated: !!didUpdate });
       }).catch((e) => {
         sendResponse({ success: false, error: e.message });
       });

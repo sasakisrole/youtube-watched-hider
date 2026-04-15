@@ -286,4 +286,167 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     performAutoBackup().then(sendResponse);
     return true;
   }
+
+  if (message.type === 'FIX_CHANNELS') {
+    // message.videoIds: string[]
+    // message.force: boolean (overwrite existing non-empty channel/title)
+    fixChannelsBatch(message.videoIds || [], !!message.force)
+      .then(sendResponse)
+      .catch((e) => sendResponse({ success: false, error: e.message }));
+    return true;
+  }
+});
+
+// --- oEmbed-based channel correction ---
+// YouTube oEmbed endpoint returns {title, author_name, ...} with no auth.
+// We throttle concurrency to avoid rate limiting.
+async function fetchOEmbed(videoId) {
+  try {
+    // IMPORTANT: the `url` query parameter value must itself be URL-encoded,
+    // otherwise YouTube oEmbed returns non-200 (typically 401/404).
+    const target = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
+    const url = `https://www.youtube.com/oembed?url=${encodeURIComponent(target)}&format=json`;
+    const res = await fetch(url);
+    if (!res.ok) return { videoId, ok: false, status: res.status };
+    const json = await res.json();
+    return {
+      videoId,
+      ok: true,
+      title: json.title || '',
+      channel: json.author_name || ''
+    };
+  } catch (e) {
+    return { videoId, ok: false, error: e.message };
+  }
+}
+
+// Fallback: fetch the watch page HTML and extract metadata from
+// ytInitialPlayerResponse. Works for videos where embedding is disabled
+// (oEmbed returns 401/403 for those).
+function decodeJsonStringLiteral(s) {
+  try { return JSON.parse('"' + s + '"'); } catch { return s; }
+}
+
+async function fetchWatchPageMeta(videoId) {
+  try {
+    const url = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
+    const res = await fetch(url, { credentials: 'omit' });
+    if (!res.ok) return { videoId, ok: false, status: res.status };
+    const html = await res.text();
+
+    // Try ytInitialPlayerResponse.videoDetails first (most reliable).
+    // Look for: "title":"...","...":"...","author":"..."
+    // Scoped within a videoDetails block.
+    const vdStart = html.indexOf('"videoDetails":{');
+    if (vdStart !== -1) {
+      const slice = html.slice(vdStart, vdStart + 4000);
+      const titleMatch = slice.match(/"title":"((?:\\.|[^"\\])*)"/);
+      const authorMatch = slice.match(/"author":"((?:\\.|[^"\\])*)"/);
+      const title = titleMatch ? decodeJsonStringLiteral(titleMatch[1]) : '';
+      const channel = authorMatch ? decodeJsonStringLiteral(authorMatch[1]) : '';
+      if (title || channel) {
+        return { videoId, ok: true, title, channel };
+      }
+    }
+
+    // Fallback: og:title meta tag (title only).
+    const ogTitle = html.match(/<meta\s+property="og:title"\s+content="([^"]+)"/);
+    if (ogTitle) {
+      return { videoId, ok: true, title: ogTitle[1], channel: '' };
+    }
+
+    return { videoId, ok: false, status: 'no-metadata' };
+  } catch (e) {
+    return { videoId, ok: false, error: e.message };
+  }
+}
+
+// Unified fetch: try oEmbed, fall back to watch page HTML on failure.
+async function fetchVideoMeta(videoId) {
+  const oe = await fetchOEmbed(videoId);
+  if (oe.ok && (oe.title || oe.channel)) return oe;
+  const wp = await fetchWatchPageMeta(videoId);
+  if (wp.ok) return wp;
+  console.warn('[YT-Watched] metadata fetch failed:', videoId,
+    'oEmbed=', oe.status || oe.error, 'watchPage=', wp.status || wp.error);
+  return { videoId, ok: false };
+}
+
+async function fixChannelsBatch(videoIds, force, onProgress) {
+  if (!videoIds.length) return { success: true, updated: 0, failed: 0, total: 0 };
+
+  const CONCURRENCY = 5;
+  let updated = 0;
+  let failed = 0;
+  let processed = 0;
+  let idx = 0;
+
+  async function worker() {
+    while (idx < videoIds.length) {
+      const vid = videoIds[idx++];
+      const result = await fetchVideoMeta(vid);
+      let wasUpdated = false;
+      if (!result.ok || (!result.title && !result.channel)) {
+        failed++;
+      } else {
+        try {
+          const resp = await sendToYouTubeTab({
+            type: 'UPDATE_TITLE_CHANNEL',
+            videoId: vid,
+            title: result.title,
+            channel: result.channel,
+            force: force
+          });
+          if (resp && resp.success && resp.updated) {
+            updated++;
+            wasUpdated = true;
+          }
+        } catch (_e) {
+          failed++;
+        }
+      }
+      processed++;
+      if (onProgress) {
+        try {
+          onProgress({
+            videoId: vid,
+            processed,
+            updated,
+            failed,
+            total: videoIds.length,
+            channel: result.channel || '',
+            title: result.title || '',
+            wasUpdated
+          });
+        } catch (_e) { /* ignore */ }
+      }
+    }
+  }
+
+  const workers = [];
+  for (let i = 0; i < Math.min(CONCURRENCY, videoIds.length); i++) workers.push(worker());
+  await Promise.all(workers);
+
+  return { success: true, updated, failed, total: videoIds.length };
+}
+
+// Streaming variant via chrome.runtime.Port — emits progress events.
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'fix-channels') return;
+
+  port.onMessage.addListener(async (msg) => {
+    if (msg.type !== 'START') return;
+    const videoIds = msg.videoIds || [];
+    const force = !!msg.force;
+
+    try {
+      const result = await fixChannelsBatch(videoIds, force, (progress) => {
+        try { port.postMessage({ type: 'PROGRESS', ...progress }); } catch (_e) {}
+      });
+      try { port.postMessage({ type: 'DONE', ...result }); } catch (_e) {}
+    } catch (e) {
+      try { port.postMessage({ type: 'ERROR', error: e.message }); } catch (_e) {}
+    }
+    try { port.disconnect(); } catch (_e) {}
+  });
 });
