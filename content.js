@@ -817,7 +817,9 @@ window._ytWatchedHider = (() => {
 
   async function queueOneCard(card) {
     const kebab = card.querySelector(
-      'ytd-menu-renderer yt-icon-button button, ' +
+      'button[aria-label*="その他の操作"], ' +                 // new UI (yt-lockup-view-model)
+      'button[aria-label*="More actions"], ' +                  // English new UI
+      'ytd-menu-renderer yt-icon-button button, ' +             // old UI
       'ytd-menu-renderer button, ' +
       'button.yt-spec-button-shape-next[aria-label*="アクション"], ' +
       'button[aria-label*="アクション メニュー"], ' +
@@ -907,11 +909,19 @@ window._ytWatchedHider = (() => {
       if (queueAllBtn) { queueAllBtn.remove(); queueAllBtn = null; }
       return;
     }
-    const anchor = document.querySelector(
+    // Try multiple anchors (wide sidebar + narrow-layout variants)
+    let anchor = document.querySelector(
       'ytd-watch-next-secondary-results-renderer, ' +
       '#related #items, ' +
-      '#related'
+      '#related, ' +
+      '#secondary-inner, ' +
+      '#secondary'
     );
+    // Fallback: find the common parent of visible yt-lockup-view-model cards
+    if (!anchor) {
+      const firstCard = document.querySelector('yt-lockup-view-model, ytd-compact-video-renderer');
+      if (firstCard) anchor = firstCard.parentNode;
+    }
     if (!anchor) return;
 
     if (queueAllBtn && document.body.contains(queueAllBtn)) {

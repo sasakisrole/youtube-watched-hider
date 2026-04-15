@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.22.1 (2026-04-15)
+- Fix: Queue All が新UI（`yt-lockup-view-model`）で動作しない問題を修正
+  - kebabボタンのセレクタに `aria-label="その他の操作"` / `More actions` を追加
+- 狭いウィンドウ幅でQueue Allボタンが表示されない問題を修正
+  - anchor候補に `#secondary-inner` / `#secondary` を追加、最終フォールバックでカードの親要素を使用
+
 ## v1.22.0 (2026-04-15)
 - Queue All 機能追加
   - watchページの関連動画サイドバー上部に「⏭ キューに追加 (N)」ボタンを挿入
