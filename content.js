@@ -1150,37 +1150,74 @@ window._ytWatchedHider = (() => {
            path.startsWith('/@');
   }
 
+  function findWatchLaterAnchor() {
+    // /watch ページ: 関連動画の先頭（キューボタンの隣に置けるよう同じ親）
+    if (location.pathname === '/watch') {
+      return document.querySelector(
+        'ytd-watch-next-secondary-results-renderer yt-lockup-view-model, ' +
+        'ytd-watch-next-secondary-results-renderer ytd-compact-video-renderer, ' +
+        '#related yt-lockup-view-model, ' +
+        '#related ytd-compact-video-renderer'
+      );
+    }
+    // ホーム・サブスク・検索・チャンネル: 最初のグリッドカード
+    return document.querySelector(
+      'ytd-rich-grid-renderer #contents > ytd-rich-item-renderer, ' +
+      'ytd-section-list-renderer ytd-video-renderer, ' +
+      'ytd-rich-item-renderer, ' +
+      'ytd-video-renderer'
+    );
+  }
+
   function ensureWatchLaterButton() {
     if (!isWatchLaterSupportedPage()) {
       if (watchLaterBtn) { watchLaterBtn.remove(); watchLaterBtn = null; }
       return;
     }
+
+    const anchor = findWatchLaterAnchor();
+    if (!anchor) return;
+
     if (watchLaterBtn && document.body.contains(watchLaterBtn)) {
+      // /watch 以外では先頭カードが動くので再配置
+      if (watchLaterBtn.nextSibling !== anchor && watchLaterBtn.parentNode !== anchor.parentNode) {
+        anchor.parentNode.insertBefore(watchLaterBtn, anchor);
+      } else if (watchLaterBtn.nextSibling !== anchor) {
+        anchor.parentNode.insertBefore(watchLaterBtn, anchor);
+      }
       updateWatchLaterButtonLabel();
       return;
     }
+
     watchLaterBtn = document.createElement('button');
     watchLaterBtn.id = 'yt-watched-hider-watch-later';
     watchLaterBtn.style.cssText = [
-      'position:fixed',
-      'bottom:72px',
-      'right:16px',
-      'z-index:9999',
-      'padding:9px 16px',
+      'display:inline-block',
+      'box-sizing:border-box',
+      'margin:8px 8px 12px 0',
+      'padding:8px 14px',
       'background:#1565c0',
       'color:#fff',
       'border:none',
-      'border-radius:20px',
+      'border-radius:18px',
       'cursor:pointer',
       'font-size:13px',
       'font-weight:500',
       'font-family:Roboto, Arial, sans-serif',
-      'box-shadow:0 2px 8px rgba(0,0,0,0.5)',
+      'line-height:1.2',
+      'width:auto',
+      'height:auto',
+      'max-height:40px',
+      'min-height:32px',
+      'max-width:calc(100% - 24px)',
+      'flex:0 0 auto',
+      'align-self:flex-start',
       'white-space:nowrap',
-      'line-height:1.4'
+      'overflow:hidden',
+      'text-overflow:ellipsis'
     ].join(';') + ';';
     watchLaterBtn.addEventListener('click', onWatchLaterClick);
-    document.body.appendChild(watchLaterBtn);
+    anchor.parentNode.insertBefore(watchLaterBtn, anchor);
     updateWatchLaterButtonLabel();
   }
 
