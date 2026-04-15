@@ -793,6 +793,7 @@ window._ytWatchedHider = (() => {
   let queueAllBtn = null;
   let queueInProgress = false;
   let queueAbort = false;
+  let queueBtnObserver = null;
 
   function sleep(ms) {
     return new Promise(r => setTimeout(r, ms));
@@ -967,6 +968,7 @@ window._ytWatchedHider = (() => {
 
   function ensureQueueAllButton() {
     if (location.pathname !== '/watch') {
+      if (queueBtnObserver) { queueBtnObserver.disconnect(); queueBtnObserver = null; }
       if (queueAllBtn) { queueAllBtn.remove(); queueAllBtn = null; }
       return;
     }
@@ -1022,12 +1024,30 @@ window._ytWatchedHider = (() => {
     queueAllBtn.addEventListener('click', onQueueAllClick);
     firstCard.parentNode.insertBefore(queueAllBtn, firstCard);
     updateQueueButtonLabel();
+
+    // Watch for removal: YouTube sometimes replaces the recommendations container,
+    // which detaches the button. Re-insert within ~100ms instead of waiting up to 1s.
+    if (queueBtnObserver) queueBtnObserver.disconnect();
+    queueBtnObserver = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const n of m.removedNodes) {
+          if (n === queueAllBtn || (n.contains && n.contains(queueAllBtn))) {
+            queueBtnObserver.disconnect();
+            queueBtnObserver = null;
+            setTimeout(ensureQueueAllButton, 100);
+            return;
+          }
+        }
+      }
+    });
+    queueBtnObserver.observe(firstCard.parentNode, { childList: true });
   }
 
   // ===== Watch Later feature =====
   let watchLaterBtn = null;
   let watchLaterInProgress = false;
   let watchLaterAbort = false;
+  let watchLaterBtnObserver = null;
 
   function findWatchLaterableCards() {
     const currentVid = getCurrentVideoId();
@@ -1166,6 +1186,7 @@ window._ytWatchedHider = (() => {
 
   function ensureWatchLaterButton() {
     if (!isWatchLaterSupportedPage()) {
+      if (watchLaterBtnObserver) { watchLaterBtnObserver.disconnect(); watchLaterBtnObserver = null; }
       if (watchLaterBtn) { watchLaterBtn.remove(); watchLaterBtn = null; }
       return;
     }
@@ -1214,6 +1235,21 @@ window._ytWatchedHider = (() => {
     watchLaterBtn.addEventListener('click', onWatchLaterClick);
     anchor.parentNode.insertBefore(watchLaterBtn, anchor);
     updateWatchLaterButtonLabel();
+
+    if (watchLaterBtnObserver) watchLaterBtnObserver.disconnect();
+    watchLaterBtnObserver = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const n of m.removedNodes) {
+          if (n === watchLaterBtn || (n.contains && n.contains(watchLaterBtn))) {
+            watchLaterBtnObserver.disconnect();
+            watchLaterBtnObserver = null;
+            setTimeout(ensureWatchLaterButton, 100);
+            return;
+          }
+        }
+      }
+    });
+    watchLaterBtnObserver.observe(anchor.parentNode, { childList: true });
   }
 
   function startRecoPolling() {
@@ -1233,6 +1269,7 @@ window._ytWatchedHider = (() => {
       clearInterval(recoInterval);
       recoInterval = null;
     }
+    if (queueBtnObserver) { queueBtnObserver.disconnect(); queueBtnObserver = null; }
     if (queueAllBtn) { queueAllBtn.remove(); queueAllBtn = null; }
   }
 
@@ -1383,7 +1420,9 @@ window._ytWatchedHider = (() => {
     }
     document.removeEventListener('yt-navigate-finish', onNavigateFinish);
     chrome.runtime.onMessage.removeListener(onMessage);
+    if (queueBtnObserver) { queueBtnObserver.disconnect(); queueBtnObserver = null; }
     if (queueAllBtn) { queueAllBtn.remove(); queueAllBtn = null; }
+    if (watchLaterBtnObserver) { watchLaterBtnObserver.disconnect(); watchLaterBtnObserver = null; }
     if (watchLaterBtn) { watchLaterBtn.remove(); watchLaterBtn = null; }
   }
 
