@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.22.2 (2026-04-15)
+- Fix: Queue Allボタンが縦方向に引き伸ばされるビジュアル崩れを修正
+  - 親要素のflex/grid stretchを回避するため、最初の関連動画カードの直前に挿入する方式に変更
+  - ボタン自体にmax-height / flex:0 0 auto / align-self:flex-start を明示
+
 ## v1.22.1 (2026-04-15)
 - Fix: Queue All が新UI（`yt-lockup-view-model`）で動作しない問題を修正
   - kebabボタンのセレクタに `aria-label="その他の操作"` / `More actions` を追加

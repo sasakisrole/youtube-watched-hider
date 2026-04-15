@@ -909,31 +909,34 @@ window._ytWatchedHider = (() => {
       if (queueAllBtn) { queueAllBtn.remove(); queueAllBtn = null; }
       return;
     }
-    // Try multiple anchors (wide sidebar + narrow-layout variants)
-    let anchor = document.querySelector(
-      'ytd-watch-next-secondary-results-renderer, ' +
-      '#related #items, ' +
-      '#related, ' +
-      '#secondary-inner, ' +
-      '#secondary'
+    // Insert right before the first visible related video card to avoid
+    // inheriting weird flex/grid sizing from container elements.
+    const firstCard = document.querySelector(
+      'ytd-watch-next-secondary-results-renderer yt-lockup-view-model, ' +
+      'ytd-watch-next-secondary-results-renderer ytd-compact-video-renderer, ' +
+      '#related yt-lockup-view-model, ' +
+      '#related ytd-compact-video-renderer, ' +
+      'yt-lockup-view-model, ' +
+      'ytd-compact-video-renderer'
     );
-    // Fallback: find the common parent of visible yt-lockup-view-model cards
-    if (!anchor) {
-      const firstCard = document.querySelector('yt-lockup-view-model, ytd-compact-video-renderer');
-      if (firstCard) anchor = firstCard.parentNode;
-    }
-    if (!anchor) return;
+    if (!firstCard) return;
 
     if (queueAllBtn && document.body.contains(queueAllBtn)) {
+      // Re-position if first card has moved (e.g., SPA nav)
+      if (queueAllBtn.nextSibling !== firstCard) {
+        firstCard.parentNode.insertBefore(queueAllBtn, firstCard);
+      }
       updateQueueButtonLabel();
       return;
     }
 
+    // Wrap button in a container with fixed styling to isolate from parent layout
     queueAllBtn = document.createElement('button');
     queueAllBtn.id = 'yt-watched-hider-queue-all';
     queueAllBtn.style.cssText = [
-      'display:block',
-      'margin:8px 0 12px',
+      'display:inline-block',
+      'box-sizing:border-box',
+      'margin:8px 12px 12px',
       'padding:8px 14px',
       'background:#ff4444',
       'color:#fff',
@@ -942,11 +945,21 @@ window._ytWatchedHider = (() => {
       'cursor:pointer',
       'font-size:13px',
       'font-weight:500',
-      'font-family:inherit',
-      'width:fit-content'
-    ].join(';');
+      'font-family:Roboto, Arial, sans-serif',
+      'line-height:1.2',
+      'width:auto',
+      'height:auto',
+      'max-height:40px',
+      'min-height:32px',
+      'max-width:calc(100% - 24px)',
+      'flex:0 0 auto',
+      'align-self:flex-start',
+      'white-space:nowrap',
+      'overflow:hidden',
+      'text-overflow:ellipsis'
+    ].join(';') + ';';
     queueAllBtn.addEventListener('click', onQueueAllClick);
-    anchor.parentNode.insertBefore(queueAllBtn, anchor);
+    firstCard.parentNode.insertBefore(queueAllBtn, firstCard);
     updateQueueButtonLabel();
   }
 
