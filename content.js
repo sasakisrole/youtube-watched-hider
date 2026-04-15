@@ -639,10 +639,12 @@ window._ytWatchedHider = (() => {
       if (isHistoryPage()) {
         observer._debounceTimer = setTimeout(scrapeHistoryPage, 300);
       } else if (enabled) {
-        observer._debounceTimer = setTimeout(processPage, 300);
+        observer._debounceTimer = setTimeout(() => { processPage(); updateWatchLaterButtonLabel(); }, 300);
       } else if (hideShorts || hideMovies) {
         // Even if main hiding is off, still hide Shorts/Movies if those settings are on
-        observer._debounceTimer = setTimeout(() => { hideShortsCards(); hideMovieCards(); }, 300);
+        observer._debounceTimer = setTimeout(() => { hideShortsCards(); hideMovieCards(); updateWatchLaterButtonLabel(); }, 300);
+      } else {
+        observer._debounceTimer = setTimeout(updateWatchLaterButtonLabel, 300);
       }
     }
   });
@@ -669,6 +671,7 @@ window._ytWatchedHider = (() => {
     for (const card of document.querySelectorAll('[data-watched-checked-id]')) {
       delete card.dataset.watchedCheckedId;
     }
+    setTimeout(ensureWatchLaterButton, 600);
     if (isHistoryPage()) {
       setTimeout(scrapeHistoryPage, 500);
     } else if (enabled) {
@@ -1019,13 +1022,177 @@ window._ytWatchedHider = (() => {
     updateQueueButtonLabel();
   }
 
+  // ===== Watch Later feature =====
+  let watchLaterBtn = null;
+  let watchLaterInProgress = false;
+  let watchLaterAbort = false;
+
+  function findWatchLaterableCards() {
+    const currentVid = getCurrentVideoId();
+    const cards = document.querySelectorAll(ALL_CARD_SELECTORS);
+    const out = [];
+    for (const card of cards) {
+      if (card.style.display === 'none') continue;
+      if (card.dataset.watchedHidden === 'true') continue;
+      if (card.dataset.shortsHidden === 'true') continue;
+      if (card.dataset.movieHidden === 'true') continue;
+      const link = card.querySelector('a[href*="/watch?v="]');
+      if (!link) continue;
+      if (card.querySelector('a[href*="/shorts/"]')) continue;
+      const liveBadge = card.querySelector(
+        '.badge-style-type-live-now, [aria-label*="ライブ"], [aria-label*="LIVE"]'
+      );
+      if (liveBadge) continue;
+      const videoId = getVideoIdFromHref(link.href);
+      if (videoId && videoId === currentVid) continue;
+      out.push(card);
+    }
+    return out;
+  }
+
+  async function watchLaterOneCard(card) {
+    const kebab = card.querySelector(
+      'button[aria-label*="その他の操作"], ' +
+      'button[aria-label*="More actions"], ' +
+      'ytd-menu-renderer yt-icon-button button, ' +
+      'ytd-menu-renderer button, ' +
+      'button.yt-spec-button-shape-next[aria-label*="アクション"], ' +
+      'button[aria-label*="アクション メニュー"], ' +
+      'button[aria-label*="Action menu"]'
+    );
+    if (!kebab) return { ok: false, reason: 'no-kebab' };
+
+    kebab.click();
+    await sleep(200);
+
+    let item = null;
+    for (let i = 0; i < 15; i++) {
+      const candidates = document.querySelectorAll(
+        'ytd-menu-popup-renderer ytd-menu-service-item-renderer, ' +
+        'ytd-menu-popup-renderer tp-yt-paper-item, ' +
+        'tp-yt-iron-dropdown ytd-menu-service-item-renderer, ' +
+        'yt-list-item-view-model, ' +
+        'yt-contextual-sheet-layout yt-list-item-view-model'
+      );
+      for (const c of candidates) {
+        const text = (c.textContent || '').trim();
+        if (text.includes('後で見る') || text.toLowerCase().includes('watch later')) {
+          item = c;
+          break;
+        }
+      }
+      if (item) break;
+      await sleep(80);
+    }
+
+    if (!item) {
+      document.body.click();
+      await sleep(100);
+      return { ok: false, reason: 'no-watch-later-item' };
+    }
+
+    const clickTarget = item.querySelector('button, [role="menuitem"], .yt-list-item-view-model-wiz__container') || item;
+    clickTarget.click();
+    await sleep(200);
+    return { ok: true };
+  }
+
+  function updateWatchLaterButtonLabel() {
+    if (!watchLaterBtn || watchLaterInProgress) return;
+    const count = findWatchLaterableCards().length;
+    watchLaterBtn.textContent = `後で見る (${count})`;
+    watchLaterBtn.disabled = count === 0;
+    watchLaterBtn.style.opacity = count === 0 ? '0.5' : '1';
+  }
+
+  async function onWatchLaterClick() {
+    if (watchLaterInProgress) {
+      watchLaterAbort = true;
+      watchLaterBtn.textContent = '中止中...';
+      return;
+    }
+    const cards = findWatchLaterableCards();
+    if (cards.length === 0) return;
+    if (!confirm(`${cards.length}件の動画を「後で見る」に追加します。\nメニューが順次開閉します。続行しますか？`)) return;
+
+    watchLaterInProgress = true;
+    watchLaterAbort = false;
+    watchLaterBtn.style.background = '#555';
+    let success = 0, failed = 0;
+
+    for (let i = 0; i < cards.length; i++) {
+      if (watchLaterAbort) break;
+      watchLaterBtn.textContent = `追加中 ${i + 1}/${cards.length}（クリックで中止）`;
+      try {
+        const res = await watchLaterOneCard(cards[i]);
+        if (res.ok) success++; else failed++;
+      } catch (e) {
+        failed++;
+      }
+      await sleep(150);
+    }
+
+    watchLaterInProgress = false;
+    watchLaterAbort = false;
+    watchLaterBtn.style.background = '#1565c0';
+    watchLaterBtn.textContent = `完了: ${success}件追加${failed ? ` / ${failed}件失敗` : ''}`;
+    setTimeout(updateWatchLaterButtonLabel, 4000);
+  }
+
+  function isWatchLaterSupportedPage() {
+    const path = location.pathname;
+    return path === '/' ||
+           path === '/feed/subscriptions' ||
+           path === '/feed/trending' ||
+           path.startsWith('/results') ||
+           path === '/watch' ||
+           path.startsWith('/channel') ||
+           path.startsWith('/@');
+  }
+
+  function ensureWatchLaterButton() {
+    if (!isWatchLaterSupportedPage()) {
+      if (watchLaterBtn) { watchLaterBtn.remove(); watchLaterBtn = null; }
+      return;
+    }
+    if (watchLaterBtn && document.body.contains(watchLaterBtn)) {
+      updateWatchLaterButtonLabel();
+      return;
+    }
+    watchLaterBtn = document.createElement('button');
+    watchLaterBtn.id = 'yt-watched-hider-watch-later';
+    watchLaterBtn.style.cssText = [
+      'position:fixed',
+      'bottom:72px',
+      'right:16px',
+      'z-index:9999',
+      'padding:9px 16px',
+      'background:#1565c0',
+      'color:#fff',
+      'border:none',
+      'border-radius:20px',
+      'cursor:pointer',
+      'font-size:13px',
+      'font-weight:500',
+      'font-family:Roboto, Arial, sans-serif',
+      'box-shadow:0 2px 8px rgba(0,0,0,0.5)',
+      'white-space:nowrap',
+      'line-height:1.4'
+    ].join(';') + ';';
+    watchLaterBtn.addEventListener('click', onWatchLaterClick);
+    document.body.appendChild(watchLaterBtn);
+    updateWatchLaterButtonLabel();
+  }
+
   function startRecoPolling() {
     if (recoInterval) clearInterval(recoInterval);
     checkRecommendations();
     ensureQueueAllButton();
+    ensureWatchLaterButton();
     recoInterval = setInterval(() => {
       checkRecommendations();
       ensureQueueAllButton();
+      updateWatchLaterButtonLabel();
     }, 1000);
   }
 
@@ -1041,6 +1208,8 @@ window._ytWatchedHider = (() => {
   if (location.pathname === '/watch') {
     attachVideoEndedListener();
     startRecoPolling();
+  } else {
+    setTimeout(ensureWatchLaterButton, 600);
   }
   if (isHistoryPage()) {
     setTimeout(scrapeHistoryPage, 500);
@@ -1183,6 +1352,7 @@ window._ytWatchedHider = (() => {
     document.removeEventListener('yt-navigate-finish', onNavigateFinish);
     chrome.runtime.onMessage.removeListener(onMessage);
     if (queueAllBtn) { queueAllBtn.remove(); queueAllBtn = null; }
+    if (watchLaterBtn) { watchLaterBtn.remove(); watchLaterBtn = null; }
   }
 
   return { cleanup };
