@@ -1029,7 +1029,12 @@ window._ytWatchedHider = (() => {
 
   function findWatchLaterableCards() {
     const currentVid = getCurrentVideoId();
-    const cards = document.querySelectorAll(ALL_CARD_SELECTORS);
+    const cards = document.querySelectorAll(
+      '#related ytd-compact-video-renderer, ' +
+      '#related yt-lockup-view-model, ' +
+      'ytd-watch-next-secondary-results-renderer ytd-compact-video-renderer, ' +
+      'ytd-watch-next-secondary-results-renderer yt-lockup-view-model'
+    );
     const out = [];
     for (const card of cards) {
       if (card.style.display === 'none') continue;
