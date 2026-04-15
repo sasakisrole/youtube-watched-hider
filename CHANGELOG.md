@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.24.0 (2026-04-16)
+- Improve: Aboutバージョン表示を `chrome.runtime.getManifest().version` で動的取得に変更
+- Improve: Export形式をversioned envelope（schemaVersion, exportedAt, appVersion, count, records）に変更
+  - 旧形式（raw array）のインポートは引き続き互換あり
+- Improve: Import時にレコードの型を正規化（videoId/title/channel/watchedAt等の型チェック）
+- Improve: 履歴ページからのImport時、セクションヘッダーの日付（今日/昨日/4月14日等）をwatchedAtに使用
+  - 旧: 取り込み時点のDate.now() → 新: 実際の視聴日に近い日付を保持
+- Fix: Watch Later の findWatchLaterAnchor() から /watch 以外の到達不能分岐を削除
+
 ## v1.23.9 (2026-04-16)
 - Fix: キューに追加・後で見るボタンがYouTubeのDOM入れ替えで消える問題を修正
   - ボタン挿入後、親要素をMutationObserverで監視し削除検知後100ms以内に自動再挿入

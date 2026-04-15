@@ -541,6 +541,53 @@ window._ytWatchedHider = (() => {
     return el ? el.textContent.trim() : getChannelFromCard(card);
   }
 
+  // Extract date from the nearest history section header (e.g. "今日", "昨日", "4月14日")
+  function getHistorySectionDate(card) {
+    // Walk up to find the section renderer, then look for the header
+    const section = card.closest('ytd-item-section-renderer');
+    if (!section) return null;
+    const header = section.querySelector('#title, .ytd-item-section-header-renderer');
+    if (!header) return null;
+    const text = header.textContent.trim();
+    if (!text) return null;
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    // "今日" / "Today"
+    if (/^今日$/i.test(text) || /^today$/i.test(text)) return today.getTime();
+    // "昨日" / "Yesterday"
+    if (/^昨日$/i.test(text) || /^yesterday$/i.test(text)) return today.getTime() - 86400000;
+
+    // "4月14日" pattern (Japanese)
+    const jaMatch = text.match(/(\d{1,2})月(\d{1,2})日/);
+    if (jaMatch) {
+      const m = parseInt(jaMatch[1], 10) - 1;
+      const d = parseInt(jaMatch[2], 10);
+      let year = now.getFullYear();
+      const candidate = new Date(year, m, d);
+      if (candidate > now) year--;
+      return new Date(year, m, d).getTime();
+    }
+
+    // "Apr 14" / "April 14" pattern (English)
+    const enMatch = text.match(/^([A-Za-z]+)\s+(\d{1,2})$/);
+    if (enMatch) {
+      const months = { jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11 };
+      const mKey = enMatch[1].slice(0, 3).toLowerCase();
+      if (mKey in months) {
+        const m = months[mKey];
+        const d = parseInt(enMatch[2], 10);
+        let year = now.getFullYear();
+        const candidate = new Date(year, m, d);
+        if (candidate > now) year--;
+        return new Date(year, m, d).getTime();
+      }
+    }
+
+    return null;
+  }
+
   function getHistoryVideoLink(card) {
     return card.querySelector('a[href*="watch"], a[href*="/watch?v="]');
   }
@@ -589,12 +636,13 @@ window._ytWatchedHider = (() => {
 
       const title = getHistoryTitle(card);
       const channel = getHistoryChannel(card);
+      const sectionDate = getHistorySectionDate(card) || Date.now();
       newRecords.push({
         videoId,
         title,
         channel: channel || '',
-        watchedAt: Date.now(),
-        firstWatchedAt: Date.now(),
+        watchedAt: sectionDate,
+        firstWatchedAt: sectionDate,
         playCount: 0,
         source: 'history',
       });
@@ -1166,21 +1214,12 @@ window._ytWatchedHider = (() => {
   }
 
   function findWatchLaterAnchor() {
-    // /watch ページ: 関連動画の先頭（キューボタンの隣に置けるよう同じ親）
-    if (location.pathname === '/watch') {
-      return document.querySelector(
-        'ytd-watch-next-secondary-results-renderer yt-lockup-view-model, ' +
-        'ytd-watch-next-secondary-results-renderer ytd-compact-video-renderer, ' +
-        '#related yt-lockup-view-model, ' +
-        '#related ytd-compact-video-renderer'
-      );
-    }
-    // ホーム・サブスク・検索・チャンネル: 最初のグリッドカード
+    // /watch ページ専用: 関連動画の先頭（キューボタンの隣に置けるよう同じ親）
     return document.querySelector(
-      'ytd-rich-grid-renderer #contents > ytd-rich-item-renderer, ' +
-      'ytd-section-list-renderer ytd-video-renderer, ' +
-      'ytd-rich-item-renderer, ' +
-      'ytd-video-renderer'
+      'ytd-watch-next-secondary-results-renderer yt-lockup-view-model, ' +
+      'ytd-watch-next-secondary-results-renderer ytd-compact-video-renderer, ' +
+      '#related yt-lockup-view-model, ' +
+      '#related ytd-compact-video-renderer'
     );
   }
 

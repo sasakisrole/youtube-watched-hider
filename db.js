@@ -189,21 +189,56 @@ if (typeof WatchedDB === 'undefined') {
       });
     }
 
-    // Validate a record has required fields
+    // Current export schema version
+    const SCHEMA_VERSION = 1;
+
+    // Wrap records in versioned envelope for export
+    function wrapExport(records) {
+      return {
+        schemaVersion: SCHEMA_VERSION,
+        exportedAt: new Date().toISOString(),
+        appVersion: (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getManifest)
+          ? chrome.runtime.getManifest().version : 'unknown',
+        count: records.length,
+        records,
+      };
+    }
+
+    // Unwrap import data: accept both envelope format and legacy raw array
+    function unwrapImport(data) {
+      if (Array.isArray(data)) return data;
+      if (data && typeof data === 'object' && Array.isArray(data.records)) return data.records;
+      return null;
+    }
+
+    // Validate and normalize a record
     function isValidRecord(record) {
-      return record && typeof record.videoId === 'string' && record.videoId.length > 0;
+      if (!record || typeof record.videoId !== 'string' || record.videoId.length === 0) return false;
+      return true;
+    }
+
+    function normalizeRecord(record) {
+      return {
+        videoId: String(record.videoId),
+        title: typeof record.title === 'string' ? record.title : '',
+        channel: typeof record.channel === 'string' ? record.channel : '',
+        watchedAt: typeof record.watchedAt === 'number' && record.watchedAt > 0 ? record.watchedAt : Date.now(),
+        firstWatchedAt: typeof record.firstWatchedAt === 'number' && record.firstWatchedAt > 0 ? record.firstWatchedAt : (typeof record.watchedAt === 'number' ? record.watchedAt : Date.now()),
+        playCount: typeof record.playCount === 'number' && record.playCount >= 0 ? record.playCount : 0,
+        source: typeof record.source === 'string' ? record.source : 'unknown',
+      };
     }
 
     async function importData(records) {
       const db = await openDB();
-      const valid = records.filter(isValidRecord);
+      const normalized = records.filter(isValidRecord).map(normalizeRecord);
       return new Promise((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, 'readwrite');
         const store = tx.objectStore(STORE_NAME);
-        for (const record of valid) {
+        for (const record of normalized) {
           store.put(record);
         }
-        tx.oncomplete = () => resolve(valid.length);
+        tx.oncomplete = () => resolve(normalized.length);
         tx.onerror = (event) => reject(event.target.error);
       });
     }
@@ -246,7 +281,7 @@ if (typeof WatchedDB === 'undefined') {
     // Returns { added, skipped, total }
     async function mergeImport(records) {
       const db = await openDB();
-      const valid = records.filter(isValidRecord);
+      const valid = records.filter(isValidRecord).map(normalizeRecord);
       return new Promise((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, 'readwrite');
         const store = tx.objectStore(STORE_NAME);
@@ -297,6 +332,6 @@ if (typeof WatchedDB === 'undefined') {
       });
     }
 
-    return { openDB, addWatched, updateTitle, updateTitleAndChannel, isWatched, checkMultiple, getStats, getAllIds, exportAll, importData, mergeImport, clearAll, deleteOne };
+    return { openDB, addWatched, updateTitle, updateTitleAndChannel, isWatched, checkMultiple, getStats, getAllIds, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport };
   })();
 }

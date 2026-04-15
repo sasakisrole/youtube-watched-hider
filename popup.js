@@ -301,14 +301,21 @@ viewerBtn.addEventListener('click', () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('history.html') });
 });
 
-// Export
+// Export (versioned envelope format)
 exportBtn.addEventListener('click', () => {
   chrome.runtime.sendMessage({ type: 'EXPORT_DATA' }, (data) => {
     if (!data || data.length === 0) {
       showStatus('No data to export', true);
       return;
     }
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const envelope = {
+      schemaVersion: 1,
+      exportedAt: new Date().toISOString(),
+      appVersion: chrome.runtime.getManifest().version,
+      count: data.length,
+      records: data,
+    };
+    const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -324,6 +331,13 @@ importBtn.addEventListener('click', () => {
   fileInput.click();
 });
 
+// Unwrap import data: accept both envelope format and legacy raw array
+function unwrapImportData(parsed) {
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && typeof parsed === 'object' && Array.isArray(parsed.records)) return parsed.records;
+  return null;
+}
+
 fileInput.addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -331,8 +345,9 @@ fileInput.addEventListener('change', (e) => {
   const reader = new FileReader();
   reader.onload = (event) => {
     try {
-      const data = JSON.parse(event.target.result);
-      if (!Array.isArray(data)) {
+      const parsed = JSON.parse(event.target.result);
+      const data = unwrapImportData(parsed);
+      if (!data) {
         showStatus('Invalid JSON format', true);
         return;
       }
@@ -415,6 +430,9 @@ aboutBtn.addEventListener('click', () => {
   aboutPanel.style.display = visible ? 'none' : 'block';
 });
 
+// Set version from manifest
+document.getElementById('aboutVersion').textContent = 'v' + chrome.runtime.getManifest().version;
+
 // Clear
 clearBtn.addEventListener('click', () => {
   if (!confirm('WARNING: All watched history will be permanently deleted.\n\nThis cannot be undone. Continue?')) return;
@@ -448,8 +466,9 @@ syncFileInput.addEventListener('change', (e) => {
   const reader = new FileReader();
   reader.onload = (event) => {
     try {
-      const data = JSON.parse(event.target.result);
-      if (!Array.isArray(data)) {
+      const parsed = JSON.parse(event.target.result);
+      const data = unwrapImportData(parsed);
+      if (!data) {
         syncStatus.textContent = 'Invalid JSON format';
         syncStatus.style.color = '#ff6b6b';
         return;
