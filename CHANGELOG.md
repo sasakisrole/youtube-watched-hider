@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.22.4 (2026-04-15)
+- Fix: Queue All で関連動画が現在再生中の動画より上に追加されるのを修正
+  - 処理開始時にまず現在再生中の動画をキューに追加してシード（`seedQueueWithCurrentVideo()`）
+  - 以降の関連動画は現在の動画の下に順次追加される
+
 ## v1.22.3 (2026-04-15)
 - Fix: Queue All で全件失敗していた問題を修正
   - 新UIのメニュー項目 `yt-list-item-view-model` をセレクタに追加（旧UIの `tp-yt-paper-item` のみヒットしなくなっていた）

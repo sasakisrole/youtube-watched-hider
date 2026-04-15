@@ -815,6 +815,47 @@ window._ytWatchedHider = (() => {
     return out;
   }
 
+  async function seedQueueWithCurrentVideo() {
+    // Click the "..." button next to the current video (below the player).
+    const moreBtn = document.querySelector(
+      'ytd-watch-metadata #button-shape button[aria-label*="その他"], ' +
+      'ytd-watch-metadata button[aria-label*="その他の操作"], ' +
+      'ytd-menu-renderer.ytd-watch-metadata button[aria-label*="その他"], ' +
+      'ytd-watch-metadata button[aria-label*="More actions"]'
+    );
+    if (!moreBtn) return { ok: false, reason: 'no-more-btn' };
+    moreBtn.click();
+    await sleep(200);
+
+    let queueItem = null;
+    for (let i = 0; i < 12; i++) {
+      const candidates = document.querySelectorAll(
+        'ytd-menu-popup-renderer ytd-menu-service-item-renderer, ' +
+        'ytd-menu-popup-renderer tp-yt-paper-item, ' +
+        'tp-yt-iron-dropdown ytd-menu-service-item-renderer, ' +
+        'yt-list-item-view-model'
+      );
+      for (const c of candidates) {
+        const text = (c.textContent || '').trim();
+        if (text.includes('キューに追加') || text.toLowerCase().includes('add to queue')) {
+          queueItem = c;
+          break;
+        }
+      }
+      if (queueItem) break;
+      await sleep(80);
+    }
+
+    if (!queueItem) {
+      document.body.click();
+      return { ok: false, reason: 'no-queue-item' };
+    }
+    const clickTarget = queueItem.querySelector('button, [role="menuitem"], .yt-list-item-view-model-wiz__container') || queueItem;
+    clickTarget.click();
+    await sleep(200);
+    return { ok: true };
+  }
+
   async function queueOneCard(card) {
     const kebab = card.querySelector(
       'button[aria-label*="その他の操作"], ' +                 // new UI (yt-lockup-view-model)
@@ -887,6 +928,17 @@ window._ytWatchedHider = (() => {
     queueAbort = false;
     queueAllBtn.style.background = '#888';
     let success = 0, failed = 0;
+
+    // Seed the queue with the currently playing video first, so related
+    // videos get appended AFTER it (otherwise YouTube starts a new queue
+    // with the first added video placed above the current one).
+    try {
+      queueAllBtn.textContent = '現在の動画をキューに追加中...';
+      await seedQueueWithCurrentVideo();
+      await sleep(200);
+    } catch (e) {
+      console.warn('[YT-Watched-Hider] seed queue error:', e);
+    }
 
     for (let i = 0; i < cards.length; i++) {
       if (queueAbort) break;
