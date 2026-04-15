@@ -780,6 +780,13 @@ window._ytWatchedHider = (() => {
     }
   }
 
+  // Shared selector for related video cards on watch pages (Queue All / Watch Later)
+  const RELATED_CARD_SELECTORS =
+    '#related ytd-compact-video-renderer, ' +
+    '#related yt-lockup-view-model, ' +
+    'ytd-watch-next-secondary-results-renderer ytd-compact-video-renderer, ' +
+    'ytd-watch-next-secondary-results-renderer yt-lockup-view-model';
+
   // ===== Queue All feature =====
   // Adds a button on watch pages to bulk-enqueue all visible related videos.
   // Works by programmatically clicking each card's kebab menu, then "Add to queue".
@@ -792,12 +799,7 @@ window._ytWatchedHider = (() => {
   }
 
   function findQueueableCards() {
-    const cards = document.querySelectorAll(
-      '#related ytd-compact-video-renderer, ' +
-      '#related yt-lockup-view-model, ' +
-      'ytd-watch-next-secondary-results-renderer ytd-compact-video-renderer, ' +
-      'ytd-watch-next-secondary-results-renderer yt-lockup-view-model'
-    );
+    const cards = document.querySelectorAll(RELATED_CARD_SELECTORS);
     const out = [];
     for (const card of cards) {
       if (card.style.display === 'none') continue;
@@ -1029,12 +1031,7 @@ window._ytWatchedHider = (() => {
 
   function findWatchLaterableCards() {
     const currentVid = getCurrentVideoId();
-    const cards = document.querySelectorAll(
-      '#related ytd-compact-video-renderer, ' +
-      '#related yt-lockup-view-model, ' +
-      'ytd-watch-next-secondary-results-renderer ytd-compact-video-renderer, ' +
-      'ytd-watch-next-secondary-results-renderer yt-lockup-view-model'
-    );
+    const cards = document.querySelectorAll(RELATED_CARD_SELECTORS);
     const out = [];
     for (const card of cards) {
       if (card.style.display === 'none') continue;
