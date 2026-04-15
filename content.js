@@ -777,10 +777,177 @@ window._ytWatchedHider = (() => {
     }
   }
 
+  // ===== Queue All feature =====
+  // Adds a button on watch pages to bulk-enqueue all visible related videos.
+  // Works by programmatically clicking each card's kebab menu, then "Add to queue".
+  let queueAllBtn = null;
+  let queueInProgress = false;
+  let queueAbort = false;
+
+  function sleep(ms) {
+    return new Promise(r => setTimeout(r, ms));
+  }
+
+  function findQueueableCards() {
+    const cards = document.querySelectorAll(
+      '#related ytd-compact-video-renderer, ' +
+      '#related yt-lockup-view-model, ' +
+      'ytd-watch-next-secondary-results-renderer ytd-compact-video-renderer, ' +
+      'ytd-watch-next-secondary-results-renderer yt-lockup-view-model'
+    );
+    const out = [];
+    for (const card of cards) {
+      if (card.style.display === 'none') continue;
+      if (card.dataset.watchedHidden === 'true') continue;
+      const link = card.querySelector('a[href*="/watch?v="]');
+      if (!link) continue;
+      // Skip Shorts
+      if (card.querySelector('a[href*="/shorts/"]')) continue;
+      // Skip Live
+      const liveBadge = card.querySelector(
+        '.badge-style-type-live-now, ' +
+        '[aria-label*="ライブ"], ' +
+        '[aria-label*="LIVE"]'
+      );
+      if (liveBadge) continue;
+      out.push(card);
+    }
+    return out;
+  }
+
+  async function queueOneCard(card) {
+    const kebab = card.querySelector(
+      'ytd-menu-renderer yt-icon-button button, ' +
+      'ytd-menu-renderer button, ' +
+      'button.yt-spec-button-shape-next[aria-label*="アクション"], ' +
+      'button[aria-label*="アクション メニュー"], ' +
+      'button[aria-label*="Action menu"]'
+    );
+    if (!kebab) return { ok: false, reason: 'no-kebab' };
+
+    kebab.click();
+    await sleep(180);
+
+    // Poll for popup items
+    let queueItem = null;
+    for (let i = 0; i < 12; i++) {
+      const candidates = document.querySelectorAll(
+        'ytd-menu-popup-renderer ytd-menu-service-item-renderer, ' +
+        'ytd-menu-popup-renderer tp-yt-paper-item, ' +
+        'tp-yt-iron-dropdown ytd-menu-service-item-renderer'
+      );
+      for (const c of candidates) {
+        const text = (c.textContent || '').trim();
+        if (text.includes('キューに追加') || text.toLowerCase().includes('add to queue')) {
+          queueItem = c;
+          break;
+        }
+      }
+      if (queueItem) break;
+      await sleep(80);
+    }
+
+    if (!queueItem) {
+      // Close menu
+      document.body.click();
+      await sleep(100);
+      return { ok: false, reason: 'no-queue-item' };
+    }
+
+    queueItem.click();
+    await sleep(180);
+    return { ok: true };
+  }
+
+  function updateQueueButtonLabel() {
+    if (!queueAllBtn || queueInProgress) return;
+    const count = findQueueableCards().length;
+    queueAllBtn.textContent = `⏭ キューに追加 (${count})`;
+    queueAllBtn.disabled = count === 0;
+    queueAllBtn.style.opacity = count === 0 ? '0.5' : '1';
+  }
+
+  async function onQueueAllClick() {
+    if (queueInProgress) {
+      queueAbort = true;
+      queueAllBtn.textContent = '中止中...';
+      return;
+    }
+    const cards = findQueueableCards();
+    if (cards.length === 0) return;
+    if (!confirm(`${cards.length}件の関連動画をキューに追加します。\n処理中YouTubeのメニューが順次開閉します。続行しますか？`)) return;
+
+    queueInProgress = true;
+    queueAbort = false;
+    queueAllBtn.style.background = '#888';
+    let success = 0, failed = 0;
+
+    for (let i = 0; i < cards.length; i++) {
+      if (queueAbort) break;
+      queueAllBtn.textContent = `追加中 ${i + 1}/${cards.length}(クリックで中止)`;
+      try {
+        const res = await queueOneCard(cards[i]);
+        if (res.ok) success++; else failed++;
+      } catch (e) {
+        failed++;
+        console.warn('[YT-Watched-Hider] queue error:', e);
+      }
+      await sleep(120);
+    }
+
+    queueInProgress = false;
+    queueAbort = false;
+    queueAllBtn.style.background = '#ff4444';
+    queueAllBtn.textContent = `完了: ${success}件追加${failed ? ` / ${failed}件失敗` : ''}`;
+    setTimeout(updateQueueButtonLabel, 3000);
+  }
+
+  function ensureQueueAllButton() {
+    if (location.pathname !== '/watch') {
+      if (queueAllBtn) { queueAllBtn.remove(); queueAllBtn = null; }
+      return;
+    }
+    const anchor = document.querySelector(
+      'ytd-watch-next-secondary-results-renderer, ' +
+      '#related #items, ' +
+      '#related'
+    );
+    if (!anchor) return;
+
+    if (queueAllBtn && document.body.contains(queueAllBtn)) {
+      updateQueueButtonLabel();
+      return;
+    }
+
+    queueAllBtn = document.createElement('button');
+    queueAllBtn.id = 'yt-watched-hider-queue-all';
+    queueAllBtn.style.cssText = [
+      'display:block',
+      'margin:8px 0 12px',
+      'padding:8px 14px',
+      'background:#ff4444',
+      'color:#fff',
+      'border:none',
+      'border-radius:18px',
+      'cursor:pointer',
+      'font-size:13px',
+      'font-weight:500',
+      'font-family:inherit',
+      'width:fit-content'
+    ].join(';');
+    queueAllBtn.addEventListener('click', onQueueAllClick);
+    anchor.parentNode.insertBefore(queueAllBtn, anchor);
+    updateQueueButtonLabel();
+  }
+
   function startRecoPolling() {
     if (recoInterval) clearInterval(recoInterval);
     checkRecommendations();
-    recoInterval = setInterval(checkRecommendations, 1000);
+    ensureQueueAllButton();
+    recoInterval = setInterval(() => {
+      checkRecommendations();
+      ensureQueueAllButton();
+    }, 1000);
   }
 
   function stopRecoPolling() {
@@ -788,6 +955,7 @@ window._ytWatchedHider = (() => {
       clearInterval(recoInterval);
       recoInterval = null;
     }
+    if (queueAllBtn) { queueAllBtn.remove(); queueAllBtn = null; }
   }
 
   // Initial processing
@@ -935,6 +1103,7 @@ window._ytWatchedHider = (() => {
     }
     document.removeEventListener('yt-navigate-finish', onNavigateFinish);
     chrome.runtime.onMessage.removeListener(onMessage);
+    if (queueAllBtn) { queueAllBtn.remove(); queueAllBtn = null; }
   }
 
   return { cleanup };
