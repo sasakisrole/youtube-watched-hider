@@ -62,7 +62,7 @@
         `<td>${esc(name)}</td>` +
         `<td>${cnt}</td>` +
         `<td>` +
-          `<a href="https://www.youtube.com/results?search_query=${qTopic}&sp=EgIQAQ%3D%3D" target="_blank">Topic検索</a>` +
+          `<a href="https://www.youtube.com/results?search_query=${qTopic}&sp=EgIQAQ==" target="_blank">Topic検索</a>` +
           `<a href="https://www.youtube.com/results?search_query=${qn}" target="_blank">YT</a>` +
           `<a href="https://www.google.com/search?q=${qn}+similar+artists" target="_blank">類似</a>` +
         `</td>`;
