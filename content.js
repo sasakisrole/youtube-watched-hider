@@ -836,7 +836,9 @@ window._ytWatchedHider = (() => {
       const candidates = document.querySelectorAll(
         'ytd-menu-popup-renderer ytd-menu-service-item-renderer, ' +
         'ytd-menu-popup-renderer tp-yt-paper-item, ' +
-        'tp-yt-iron-dropdown ytd-menu-service-item-renderer'
+        'tp-yt-iron-dropdown ytd-menu-service-item-renderer, ' +
+        'yt-list-item-view-model, ' +                              // new UI
+        'yt-contextual-sheet-layout yt-list-item-view-model'
       );
       for (const c of candidates) {
         const text = (c.textContent || '').trim();
@@ -856,7 +858,9 @@ window._ytWatchedHider = (() => {
       return { ok: false, reason: 'no-queue-item' };
     }
 
-    queueItem.click();
+    // For new UI, inner clickable is a button/div; click deepest clickable if present
+    const clickTarget = queueItem.querySelector('button, [role="menuitem"], .yt-list-item-view-model-wiz__container') || queueItem;
+    clickTarget.click();
     await sleep(180);
     return { ok: true };
   }

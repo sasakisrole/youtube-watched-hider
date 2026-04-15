@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.22.3 (2026-04-15)
+- Fix: Queue All で全件失敗していた問題を修正
+  - 新UIのメニュー項目 `yt-list-item-view-model` をセレクタに追加（旧UIの `tp-yt-paper-item` のみヒットしなくなっていた）
+  - クリックターゲットを内側の `button` / `[role="menuitem"]` / `.yt-list-item-view-model-wiz__container` に変更
+
 ## v1.22.2 (2026-04-15)
 - Fix: Queue Allボタンが縦方向に引き伸ばされるビジュアル崩れを修正
   - 親要素のflex/grid stretchを回避するため、最初の関連動画カードの直前に挿入する方式に変更
