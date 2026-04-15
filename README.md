@@ -1,5 +1,13 @@
 # YouTube Watched Hider
 
+> A Chrome extension (Manifest V3) that hides watched videos from YouTube recommendations.
+> Includes a history viewer and a music taste analyzer that summarizes your listening habits from YouTube Topic channels.
+> **Fully local** — no external servers, no tracking, no analytics.
+>
+> **English:** This overview is all that's in English. Full documentation below is in Japanese.
+
+---
+
 YouTubeのおすすめから**視聴済み動画を非表示**にするChrome拡張機能。
 視聴履歴はブラウザのローカルストレージにのみ保存され、外部には一切送信しません。
 
