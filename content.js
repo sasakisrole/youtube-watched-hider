@@ -1140,14 +1140,7 @@ window._ytWatchedHider = (() => {
   }
 
   function isWatchLaterSupportedPage() {
-    const path = location.pathname;
-    return path === '/' ||
-           path === '/feed/subscriptions' ||
-           path === '/feed/trending' ||
-           path.startsWith('/results') ||
-           path === '/watch' ||
-           path.startsWith('/channel') ||
-           path.startsWith('/@');
+    return location.pathname === '/watch';
   }
 
   function findWatchLaterAnchor() {
