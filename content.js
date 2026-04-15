@@ -639,12 +639,12 @@ window._ytWatchedHider = (() => {
       if (isHistoryPage()) {
         observer._debounceTimer = setTimeout(scrapeHistoryPage, 300);
       } else if (enabled) {
-        observer._debounceTimer = setTimeout(() => { processPage(); updateWatchLaterButtonLabel(); }, 300);
+        observer._debounceTimer = setTimeout(() => { processPage(); ensureWatchLaterButton(); }, 300);
       } else if (hideShorts || hideMovies) {
         // Even if main hiding is off, still hide Shorts/Movies if those settings are on
-        observer._debounceTimer = setTimeout(() => { hideShortsCards(); hideMovieCards(); updateWatchLaterButtonLabel(); }, 300);
+        observer._debounceTimer = setTimeout(() => { hideShortsCards(); hideMovieCards(); ensureWatchLaterButton(); }, 300);
       } else {
-        observer._debounceTimer = setTimeout(updateWatchLaterButtonLabel, 300);
+        observer._debounceTimer = setTimeout(ensureWatchLaterButton, 300);
       }
     }
   });
@@ -1229,7 +1229,7 @@ window._ytWatchedHider = (() => {
     recoInterval = setInterval(() => {
       checkRecommendations();
       ensureQueueAllButton();
-      updateWatchLaterButtonLabel();
+      ensureWatchLaterButton();
     }, 1000);
   }
 
