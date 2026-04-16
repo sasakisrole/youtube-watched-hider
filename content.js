@@ -297,6 +297,16 @@ window._ytWatchedHider = (() => {
     }, 1500);
   }
 
+  // Find the card element for a given video ID
+  function findCardByVideoId(videoId) {
+    const cards = document.querySelectorAll(ALL_CARD_SELECTORS);
+    for (const card of cards) {
+      const link = card.querySelector(SELECTORS.videoLink);
+      if (link && getVideoIdFromHref(link.href) === videoId) return card;
+    }
+    return null;
+  }
+
   // Process all visible video cards (with queue to avoid lost updates)
   async function processPage() {
     if (!enabled) return;
@@ -1440,6 +1450,16 @@ window._ytWatchedHider = (() => {
         sendResponse({ success: false, error: e.message });
       });
       return true;
+    }
+
+    if (message.type === 'QUEUE_VIDEO') {
+      const card = findCardByVideoId(message.videoId);
+      if (card) queueOneCard(card).catch(() => {});
+    }
+
+    if (message.type === 'WATCH_LATER_VIDEO') {
+      const card = findCardByVideoId(message.videoId);
+      if (card) watchLaterOneCard(card).catch(() => {});
     }
 
     if (message.type === 'CLEAR_DATA') {

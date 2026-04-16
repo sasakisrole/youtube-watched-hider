@@ -57,8 +57,28 @@ function scheduleDailyBackup() {
   });
 }
 
+function createContextMenus() {
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: 'yt-queue',
+      title: 'キューに追加',
+      contexts: ['link'],
+      documentUrlPatterns: ['*://*.youtube.com/*'],
+      targetUrlPatterns: ['*://*.youtube.com/watch?*'],
+    });
+    chrome.contextMenus.create({
+      id: 'yt-watch-later',
+      title: '後で見る',
+      contexts: ['link'],
+      documentUrlPatterns: ['*://*.youtube.com/*'],
+      targetUrlPatterns: ['*://*.youtube.com/watch?*'],
+    });
+  });
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   scheduleDailyBackup();
+  createContextMenus();
 });
 
 chrome.runtime.onStartup.addListener(() => {
@@ -151,6 +171,16 @@ function performAutoBackup() {
     });
   });
 }
+
+// Context menu click handler
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (!tab) return;
+  const videoId = extractVideoId(info.linkUrl);
+  if (!videoId) return;
+
+  const type = info.menuItemId === 'yt-queue' ? 'QUEUE_VIDEO' : 'WATCH_LATER_VIDEO';
+  chrome.tabs.sendMessage(tab.id, { type, videoId }).catch(() => {});
+});
 
 // Handle messages from content script and popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
