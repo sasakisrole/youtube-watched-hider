@@ -735,6 +735,7 @@ window._ytWatchedHider = (() => {
     for (const card of document.querySelectorAll('[data-watched-checked-id]')) {
       delete card.dataset.watchedCheckedId;
     }
+    setTimeout(ensureQueueAllButton, 600);
     setTimeout(ensureWatchLaterButton, 600);
     if (isHistoryPage()) {
       setTimeout(scrapeHistoryPage, 500);
@@ -1038,20 +1039,16 @@ window._ytWatchedHider = (() => {
     }
     // Insert right before the first visible related video card to avoid
     // inheriting weird flex/grid sizing from container elements.
-    const firstCard = document.querySelector(
-      'ytd-watch-next-secondary-results-renderer yt-lockup-view-model, ' +
-      'ytd-watch-next-secondary-results-renderer ytd-compact-video-renderer, ' +
-      '#related yt-lockup-view-model, ' +
-      '#related ytd-compact-video-renderer, ' +
-      'yt-lockup-view-model, ' +
-      'ytd-compact-video-renderer'
-    );
+    const firstCard = findWatchLaterAnchor();
     if (!firstCard) return;
 
     if (queueAllBtn && document.body.contains(queueAllBtn)) {
-      // Re-position if first card has moved (e.g., SPA nav)
-      if (queueAllBtn.nextSibling !== firstCard) {
+      // Re-position if parent changed (SPA nav, container swap) or first card moved
+      if (queueAllBtn.parentNode !== firstCard.parentNode || queueAllBtn.nextSibling !== firstCard) {
         firstCard.parentNode.insertBefore(queueAllBtn, firstCard);
+        if (queueBtnObserver) queueBtnObserver.disconnect();
+        queueBtnObserver = new MutationObserver(onQueueBtnMutation);
+        queueBtnObserver.observe(firstCard.parentNode, { childList: true });
       }
       updateQueueButtonLabel();
       return;
@@ -1092,19 +1089,20 @@ window._ytWatchedHider = (() => {
     // Watch for removal: YouTube sometimes replaces the recommendations container,
     // which detaches the button. Re-insert within ~100ms instead of waiting up to 1s.
     if (queueBtnObserver) queueBtnObserver.disconnect();
-    queueBtnObserver = new MutationObserver((mutations) => {
-      for (const m of mutations) {
-        for (const n of m.removedNodes) {
-          if (n === queueAllBtn || (n.contains && n.contains(queueAllBtn))) {
-            queueBtnObserver.disconnect();
-            queueBtnObserver = null;
-            setTimeout(ensureQueueAllButton, 100);
-            return;
-          }
+    queueBtnObserver = new MutationObserver(onQueueBtnMutation);
+    queueBtnObserver.observe(firstCard.parentNode, { childList: true });
+  }
+
+  function onQueueBtnMutation(mutations) {
+    for (const m of mutations) {
+      for (const n of m.removedNodes) {
+        if (n === queueAllBtn || (n.contains && n.contains(queueAllBtn))) {
+          if (queueBtnObserver) { queueBtnObserver.disconnect(); queueBtnObserver = null; }
+          setTimeout(ensureQueueAllButton, 100);
+          return;
         }
       }
-    });
-    queueBtnObserver.observe(firstCard.parentNode, { childList: true });
+    }
   }
 
   // ===== Watch Later feature =====

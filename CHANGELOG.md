@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.24.3 (2026-04-17)
+- Fix: 「キューに追加」ボタンが定期的に消える問題を修正
+  - firstCard セレクタの緩いfallbackを廃止し `findWatchLaterAnchor()` に統一
+    - 旧: 関連動画コンテナ外の `yt-lockup-view-model` を拾うと、観測対象の親ノードが
+      YouTube側で破棄されMutationObserverが無効化してボタン消失
+  - 既存ボタン再配置時に親ノードの違いも検知してObserverを再設定
+  - SPAナビ完了時にも `ensureQueueAllButton()` を呼ぶよう追加
+
 ## v1.24.0 (2026-04-16)
 - Improve: Aboutバージョン表示を `chrome.runtime.getManifest().version` で動的取得に変更
 - Improve: Export形式をversioned envelope（schemaVersion, exportedAt, appVersion, count, records）に変更
