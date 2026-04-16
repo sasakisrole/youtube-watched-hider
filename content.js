@@ -594,12 +594,18 @@ window._ytWatchedHider = (() => {
 
   // Check if a history card's video was watched to completion (>= 95%)
   function isHistoryCardCompleted(card) {
-    const segment = card.querySelector(
-      '.ytThumbnailOverlayProgressBarHostWatchedProgressBarSegment'
-    );
-    if (!segment) return false;
-    const width = parseFloat(segment.style.width);
-    return !isNaN(width) && width >= WATCHED_THRESHOLD;
+    // Old UI: resume playback overlay
+    if (card.querySelector(SELECTORS.resumeOverlay)) return true;
+
+    // Old UI: #progress element with width
+    const progress = card.querySelector(SELECTORS.seekbar);
+    if (progress && progress.style && parseFloat(progress.style.width) >= WATCHED_THRESHOLD) return true;
+
+    // New UI: progress bar segment with width percentage
+    const segment = card.querySelector(SELECTORS.progressBarNew);
+    if (segment && segment.style && parseFloat(segment.style.width) >= WATCHED_THRESHOLD) return true;
+
+    return false;
   }
 
   async function scrapeHistoryPage() {
