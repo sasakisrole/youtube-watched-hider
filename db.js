@@ -58,6 +58,7 @@ if (typeof WatchedDB === 'undefined') {
 
         // Check existing record first to preserve title and increment playCount
         const getReq = store.get(videoId);
+        let wasNew = false;
         getReq.onsuccess = () => {
           const existing = getReq.result;
           if (existing) {
@@ -73,6 +74,7 @@ if (typeof WatchedDB === 'undefined') {
               source: existing.source === 'self' ? 'self' : source,
             });
           } else {
+            wasNew = true;
             // New record: seekbar detection = 0 plays (just detected), self = 1 play
             store.put({
               videoId,
@@ -86,7 +88,7 @@ if (typeof WatchedDB === 'undefined') {
           }
         };
 
-        tx.oncomplete = () => resolve();
+        tx.oncomplete = () => resolve({ isNew: wasNew });
         tx.onerror = (event) => reject(event.target.error);
       });
     }

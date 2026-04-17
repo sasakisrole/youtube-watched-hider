@@ -38,6 +38,38 @@ window._ytWatchedHider = (() => {
 
   let enabled = true;
   let recordWhileOff = false;
+
+  // Import toast: shows "+N件 取り込み" when new records are added to DB.
+  // Accumulates count during rapid imports and auto-dismisses after idle.
+  const toastState = { el: null, count: 0, timer: null };
+  function showImportToast(n) {
+    if (!n || n <= 0) return;
+    toastState.count += n;
+    if (!toastState.el) {
+      const el = document.createElement('div');
+      el.id = '__yt_watched_hider_toast';
+      el.style.cssText = [
+        'position:fixed', 'right:20px', 'bottom:20px', 'z-index:2147483647',
+        'background:rgba(30,30,30,0.92)', 'color:#fff', 'padding:10px 16px',
+        'border-radius:8px', 'font:500 13px/1.4 system-ui,sans-serif',
+        'box-shadow:0 4px 12px rgba(0,0,0,0.3)', 'pointer-events:none',
+        'transition:opacity 0.3s', 'opacity:0'
+      ].join(';');
+      document.body.appendChild(el);
+      toastState.el = el;
+      requestAnimationFrame(() => { if (toastState.el) toastState.el.style.opacity = '1'; });
+    }
+    toastState.el.textContent = `+${toastState.count}件 視聴済みに取り込み`;
+    clearTimeout(toastState.timer);
+    toastState.timer = setTimeout(() => {
+      if (!toastState.el) return;
+      toastState.el.style.opacity = '0';
+      setTimeout(() => {
+        if (toastState.el) { toastState.el.remove(); toastState.el = null; }
+        toastState.count = 0;
+      }, 350);
+    }, 3000);
+  }
   let hideShorts = false;
   let hideMovies = false;
 
@@ -353,7 +385,9 @@ window._ytWatchedHider = (() => {
           watchedCache.add(videoId);
           const title = getTitleFromCard(card);
           const channel = getChannelFromCard(card);
-          WatchedDB.addWatched(videoId, title, 'seekbar', channel).catch(() => {});
+          WatchedDB.addWatched(videoId, title, 'seekbar', channel).then((res) => {
+            if (res && res.isNew) showImportToast(1);
+          }).catch(() => {});
           // If we couldn't extract title or channel from the card (some
           // layout variants expose neither), schedule an oEmbed backfill
           // so the entry doesn't stay blank forever.
@@ -668,6 +702,7 @@ window._ytWatchedHider = (() => {
       try {
         await WatchedDB.importData(newRecords);
         for (const r of newRecords) watchedCache.add(r.videoId);
+        showImportToast(newRecords.length);
         console.log(`[YT-Watched-Hider] Imported ${newRecords.length} new videos from history`);
       } catch (e) {
         console.error('[YT-Watched-Hider] History batch import failed:', e);
@@ -800,7 +835,9 @@ window._ytWatchedHider = (() => {
           watchedCache.add(videoId);
           const title = getTitleFromCard(card);
           const channel = getChannelFromCard(card);
-          WatchedDB.addWatched(videoId, title, 'seekbar', channel).catch(() => {});
+          WatchedDB.addWatched(videoId, title, 'seekbar', channel).then((res) => {
+            if (res && res.isNew) showImportToast(1);
+          }).catch(() => {});
           // If we couldn't extract title or channel from the card (some
           // layout variants expose neither), schedule an oEmbed backfill
           // so the entry doesn't stay blank forever.
