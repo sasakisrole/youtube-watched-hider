@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+- Chore: Chrome Web Store 公開準備
+  - `docs/privacy.html` 追加（プライバシーポリシー・GitHub Pagesで公開）
+  - `docs/index.html` 追加（Pages ルート用）
+  - 提出用素材を `store-assets/` に集約（STORE_LISTING / PUBLISH_STEPS / SCREENSHOT_GUIDE）
+
 ## v1.26.1 (2026-04-18)
 - Improve: History Harvest の状態表示を強化
   - 走行中: 赤い点滅ドット＋`Running · +N / M · idle K/6`（停止まで何回残か可視化）
