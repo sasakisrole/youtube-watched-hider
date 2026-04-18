@@ -1,5 +1,8 @@
 generate-icons.html
 
+# Chrome Web Store 提出用素材（公開リポには含めない）
+store-assets/
+
 # OS
 .DS_Store
 Thumbs.db

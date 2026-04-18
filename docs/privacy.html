@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>プライバシーポリシー / Privacy Policy — YouTube Watched Hider</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif;
+    max-width: 720px;
+    margin: 2rem auto;
+    padding: 0 1rem 4rem;
+    line-height: 1.75;
+    color: #222;
+  }
+  h1 { font-size: 1.6rem; border-bottom: 2px solid #ccc; padding-bottom: 0.4rem; }
+  h2 { font-size: 1.2rem; margin-top: 2rem; border-left: 4px solid #4a90e2; padding-left: 0.6rem; }
+  h3 { font-size: 1rem; margin-top: 1.4rem; }
+  code { background: #f3f3f3; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.9em; }
+  hr { margin: 3rem 0; border: none; border-top: 1px solid #ddd; }
+  a { color: #2266cc; }
+  .meta { color: #666; font-size: 0.9rem; }
+  @media (prefers-color-scheme: dark) {
+    body { color: #eee; background: #1a1a1a; }
+    h1 { border-color: #444; }
+    code { background: #2a2a2a; }
+    hr { border-top-color: #333; }
+    a { color: #7ab8ff; }
+    .meta { color: #aaa; }
+  }
+</style>
+</head>
+<body>
+
+<h1>プライバシーポリシー / Privacy Policy — YouTube Watched Hider</h1>
+<p class="meta">最終更新 / Last updated: 2026-04-18</p>
+
+<h2>日本語</h2>
+<p>本拡張機能「YouTube Watched Hider」（以下「本拡張」）は、利用者のプライバシーを最大限尊重します。</p>
+
+<h3>収集するデータ</h3>
+<p>本拡張は、利用者の個人情報・閲覧履歴・操作ログ等を一切収集しません。外部サーバーへの送信・第三者提供・解析ツールへの転送も行いません。</p>
+
+<h3>ローカル保存データ</h3>
+<p>以下のデータを、ブラウザ内（<code>chrome.storage.local</code> および IndexedDB）にのみ保存します。</p>
+<ul>
+  <li>視聴した YouTube 動画の ID・タイトル・チャンネル名・視聴日時</li>
+  <li>本拡張の設定値（非表示トグルの状態など）</li>
+</ul>
+<p>これらは利用者の端末内に閉じており、本拡張の開発者を含む第三者は一切アクセスできません。</p>
+
+<h3>外部通信</h3>
+<p>本拡張は、以下の YouTube 公式公開エンドポイントにのみ通信します。いずれも認証情報（Cookie・トークン等）は送信しません。</p>
+<ul>
+  <li><code>https://www.youtube.com/oembed</code> — 動画タイトル / チャンネル名の補完取得</li>
+  <li><code>https://www.youtube.com/watch?v=...</code> — 埋め込み禁止動画のメタデータ取得フォールバック</li>
+</ul>
+
+<h3>データの削除</h3>
+<p>拡張機能をアンインストールすると、保存された全データは Chrome によって自動的に削除されます。拡張のポップアップ内「Export / Clear」機能からも個別に削除可能です。</p>
+
+<h3>お問い合わせ</h3>
+<p>不具合報告・要望は以下の GitHub Issues までお願いします。<br>
+<a href="https://github.com/sasakisrole/youtube-watched-hider/issues">https://github.com/sasakisrole/youtube-watched-hider/issues</a></p>
+
+<hr>
+
+<h2>English</h2>
+<p>This extension ("YouTube Watched Hider") does <strong>not</strong> collect, transmit, or share any personal data. All watch history and settings are stored locally in the browser (<code>chrome.storage.local</code> / IndexedDB) and never leave the user's device.</p>
+<p>External requests are limited to YouTube's public <code>oembed</code> endpoint and public <code>watch</code> page HTML, used solely to enrich locally-stored titles and channel names. No cookies or authentication tokens are transmitted.</p>
+<p>Uninstalling the extension removes all stored data.</p>
+<p>Contact: <a href="https://github.com/sasakisrole/youtube-watched-hider/issues">https://github.com/sasakisrole/youtube-watched-hider/issues</a></p>
+
+</body>
+</html>
