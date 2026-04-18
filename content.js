@@ -38,6 +38,8 @@ window._ytWatchedHider = (() => {
 
   let enabled = true;
   let recordWhileOff = false;
+  let harvestMode = false;
+  const harvest = { running: false, added: 0, scanned: 0, noNewStreak: 0, timer: null, ui: null, styleEl: null };
 
   // Import toast: shows "+N件 取り込み" when new records are added to DB.
   // Accumulates count during rapid imports and auto-dismisses after idle.
@@ -121,12 +123,14 @@ window._ytWatchedHider = (() => {
   loadCache();
 
   // Load settings — start seekbar-only processing immediately (no DB needed)
-  chrome.storage.local.get({ enabled: true, recordWhileOff: false, hideShorts: false, hideMovies: false }, (result) => {
+  chrome.storage.local.get({ enabled: true, recordWhileOff: false, hideShorts: false, hideMovies: false, harvestMode: false }, (result) => {
     enabled = result.enabled;
     recordWhileOff = result.recordWhileOff;
     hideShorts = result.hideShorts;
     hideMovies = result.hideMovies;
+    harvestMode = result.harvestMode;
     if (enabled) processPage(); // phase 1: seekbar detection works even without cache
+    if (harvestMode && isHistoryPage()) ensureHarvestUI();
   });
 
   // Extract video ID from href
@@ -652,14 +656,17 @@ window._ytWatchedHider = (() => {
     return false;
   }
 
-  async function scrapeHistoryPage() {
+  async function scrapeHistoryPage(options = {}) {
+    const { removeProcessed = false } = options;
     const cards = document.querySelectorAll(HISTORY_CARD_SELECTOR);
     console.log(`[YT-Watched-Hider] History scrape: found ${cards.length} cards`);
 
     const candidates = [];
+    const processedCards = [];
     for (const card of cards) {
       if (card.dataset.historyScraped === 'true') continue;
       card.dataset.historyScraped = 'true';
+      processedCards.push(card);
 
       const link = getHistoryVideoLink(card);
       if (!link) continue;
@@ -674,40 +681,189 @@ window._ytWatchedHider = (() => {
     }
     console.log(`[YT-Watched-Hider] Candidates: ${candidates.length}`);
 
-    if (candidates.length === 0) return;
+    let added = 0;
+    if (candidates.length > 0) {
+      const videoIds = candidates.map(c => c.videoId);
+      const existing = await WatchedDB.checkMultiple(videoIds);
 
-    const videoIds = candidates.map(c => c.videoId);
-    const existing = await WatchedDB.checkMultiple(videoIds);
+      const newRecords = [];
+      for (const { card, videoId } of candidates) {
+        if (existing[videoId]) continue;
 
-    // Collect new records for batch import
-    const newRecords = [];
-    for (const { card, videoId } of candidates) {
-      if (existing[videoId]) continue;
+        const title = getHistoryTitle(card);
+        const channel = getHistoryChannel(card);
+        const sectionDate = getHistorySectionDate(card) || Date.now();
+        newRecords.push({
+          videoId,
+          title,
+          channel: channel || '',
+          watchedAt: sectionDate,
+          firstWatchedAt: sectionDate,
+          playCount: 0,
+          source: 'history',
+        });
+      }
 
-      const title = getHistoryTitle(card);
-      const channel = getHistoryChannel(card);
-      const sectionDate = getHistorySectionDate(card) || Date.now();
-      newRecords.push({
-        videoId,
-        title,
-        channel: channel || '',
-        watchedAt: sectionDate,
-        firstWatchedAt: sectionDate,
-        playCount: 0,
-        source: 'history',
-      });
-    }
-
-    if (newRecords.length > 0) {
-      try {
-        await WatchedDB.importData(newRecords);
-        for (const r of newRecords) watchedCache.add(r.videoId);
-        showImportToast(newRecords.length);
-        console.log(`[YT-Watched-Hider] Imported ${newRecords.length} new videos from history`);
-      } catch (e) {
-        console.error('[YT-Watched-Hider] History batch import failed:', e);
+      if (newRecords.length > 0) {
+        try {
+          await WatchedDB.importData(newRecords);
+          for (const r of newRecords) watchedCache.add(r.videoId);
+          showImportToast(newRecords.length);
+          added = newRecords.length;
+          console.log(`[YT-Watched-Hider] Imported ${added} new videos from history`);
+        } catch (e) {
+          console.error('[YT-Watched-Hider] History batch import failed:', e);
+        }
       }
     }
+
+    if (removeProcessed) {
+      for (const card of processedCards) card.remove();
+    }
+
+    return { added, scanned: processedCards.length };
+  }
+
+  // ---- History Harvest ----
+
+  function injectHarvestStyle() {
+    if (harvest.styleEl) return;
+    const s = document.createElement('style');
+    s.id = '__yt_watched_hider_harvest_style';
+    // Hide thumbnail images but keep the red progress bar (used for 95% detection)
+    s.textContent = `
+      ytd-browse[page-subtype="history"] ytd-thumbnail img,
+      ytd-browse[page-subtype="history"] yt-image img,
+      ytd-browse[page-subtype="history"] img.yt-core-image,
+      ytd-browse[page-subtype="history"] yt-lockup-view-model img { visibility: hidden !important; }
+    `;
+    document.head.appendChild(s);
+    harvest.styleEl = s;
+  }
+
+  function removeHarvestStyle() {
+    if (harvest.styleEl) { harvest.styleEl.remove(); harvest.styleEl = null; }
+  }
+
+  function renderHarvestStatus() {
+    if (!harvest.ui) return;
+    const btn = harvest.ui.querySelector('.yt-hv-btn');
+    const stat = harvest.ui.querySelector('.yt-hv-stat');
+    const dot = harvest.ui.querySelector('.yt-hv-dot');
+    const banner = harvest.ui.querySelector('.yt-hv-banner');
+    btn.textContent = harvest.running ? '■ Stop' : '▶ Start Harvest';
+    btn.style.background = harvest.running ? '#d32f2f' : '#1a73e8';
+    dot.style.background = harvest.running ? '#ff5252' : '#666';
+    dot.style.animation = harvest.running ? 'ythvPulse 1s infinite' : 'none';
+
+    if (harvest.running) {
+      const streakHint = harvest.noNewStreak > 0 ? ` · idle ${harvest.noNewStreak}/6` : '';
+      stat.textContent = `Running · +${harvest.added} / ${harvest.scanned}${streakHint}`;
+      banner.style.display = 'none';
+    } else if (harvest.scanned > 0) {
+      stat.textContent = `+${harvest.added} / ${harvest.scanned}`;
+      banner.textContent = harvest.endReason === 'auto'
+        ? `✅ 完了（履歴末尾） 取込 +${harvest.added} / 走査 ${harvest.scanned}`
+        : `⏸ 停止 取込 +${harvest.added} / 走査 ${harvest.scanned}`;
+      banner.style.background = harvest.endReason === 'auto' ? '#2e7d32' : '#616161';
+      banner.style.display = 'block';
+    } else {
+      stat.textContent = 'Idle';
+      banner.style.display = 'none';
+    }
+  }
+
+  function ensureHarvestUI() {
+    if (harvest.ui || !isHistoryPage() || !harvestMode) return;
+    if (!document.getElementById('__yt_watched_hider_harvest_anim')) {
+      const anim = document.createElement('style');
+      anim.id = '__yt_watched_hider_harvest_anim';
+      anim.textContent = '@keyframes ythvPulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }';
+      document.head.appendChild(anim);
+    }
+    const wrap = document.createElement('div');
+    wrap.id = '__yt_watched_hider_harvest';
+    wrap.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:9999;background:#212121;color:#fff;padding:10px 12px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.4);font:12px/1.4 Roboto,sans-serif;display:flex;flex-direction:column;gap:6px;min-width:220px;';
+    wrap.innerHTML = `
+      <div style="font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <span style="display:flex;align-items:center;gap:6px;">
+          <span class="yt-hv-dot" style="width:8px;height:8px;border-radius:50%;background:#666;display:inline-block;"></span>
+          YT Harvest
+        </span>
+        <span class="yt-hv-stat" style="font-weight:400;opacity:0.85;"></span>
+      </div>
+      <button class="yt-hv-btn" style="background:#1a73e8;color:#fff;border:0;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:12px;"></button>
+      <div class="yt-hv-banner" style="display:none;padding:6px 8px;border-radius:4px;font-size:11px;font-weight:600;text-align:center;"></div>
+      <div style="font-size:10px;opacity:0.6;">サムネ非表示＋自動スクロール＋DOM間引き</div>
+    `;
+    document.body.appendChild(wrap);
+    harvest.ui = wrap;
+    wrap.querySelector('.yt-hv-btn').addEventListener('click', () => {
+      if (harvest.running) stopHarvest('user'); else startHarvest();
+    });
+    renderHarvestStatus();
+  }
+
+  function removeHarvestUI() {
+    stopHarvest();
+    if (harvest.ui) { harvest.ui.remove(); harvest.ui = null; }
+    removeHarvestStyle();
+  }
+
+  function startHarvest() {
+    if (harvest.running || !isHistoryPage()) return;
+    harvest.running = true;
+    harvest.added = 0;
+    harvest.scanned = 0;
+    harvest.noNewStreak = 0;
+    harvest.endReason = null;
+    injectHarvestStyle();
+    renderHarvestStatus();
+    harvestTick();
+  }
+
+  function stopHarvest(reason = 'user') {
+    if (!harvest.running && !harvest.timer) {
+      // Already stopped — only clean up style/UI
+      removeHarvestStyle();
+      renderHarvestStatus();
+      return;
+    }
+    harvest.running = false;
+    harvest.endReason = reason;
+    if (harvest.timer) { clearTimeout(harvest.timer); harvest.timer = null; }
+    removeHarvestStyle();
+    renderHarvestStatus();
+  }
+
+  async function harvestTick() {
+    if (!harvest.running) return;
+
+    // Scroll to bottom to trigger YouTube's infinite scroll
+    window.scrollTo(0, document.documentElement.scrollHeight);
+
+    // Wait for new cards to render
+    await new Promise(r => setTimeout(r, 900));
+    if (!harvest.running) return;
+
+    const { added, scanned } = await scrapeHistoryPage({ removeProcessed: true });
+    harvest.added += added;
+    harvest.scanned += scanned;
+    if (scanned === 0) {
+      harvest.noNewStreak++;
+    } else {
+      harvest.noNewStreak = 0;
+    }
+    renderHarvestStatus();
+
+    // Stop after 6 consecutive empty iterations (~10s of no new content)
+    if (harvest.noNewStreak >= 6) {
+      console.log('[YT-Watched-Hider] Harvest: no new content, stopping');
+      stopHarvest('auto');
+      return;
+    }
+
+    harvest.timer = setTimeout(harvestTick, 400);
   }
 
   function isHistoryPage() {
@@ -774,8 +930,10 @@ window._ytWatchedHider = (() => {
     setTimeout(ensureWatchLaterButton, 600);
     if (isHistoryPage()) {
       setTimeout(scrapeHistoryPage, 500);
-    } else if (enabled) {
-      setTimeout(processPage, 500);
+      if (harvestMode) setTimeout(ensureHarvestUI, 300);
+    } else {
+      removeHarvestUI();
+      if (enabled) setTimeout(processPage, 500);
     }
   }
 
@@ -1410,6 +1568,15 @@ window._ytWatchedHider = (() => {
       }
     }
 
+    if (message.type === 'HARVEST_MODE_CHANGED') {
+      harvestMode = message.harvestMode;
+      if (harvestMode && isHistoryPage()) {
+        ensureHarvestUI();
+      } else {
+        removeHarvestUI();
+      }
+    }
+
     if (message.type === 'HIDE_MOVIES_CHANGED') {
       hideMovies = message.hideMovies;
       if (hideMovies) {
@@ -1519,6 +1686,7 @@ window._ytWatchedHider = (() => {
       currentVideoElement.removeEventListener('ended', endedHandler);
     }
     document.removeEventListener('yt-navigate-finish', onNavigateFinish);
+    removeHarvestUI();
     chrome.runtime.onMessage.removeListener(onMessage);
     if (queueBtnObserver) { queueBtnObserver.disconnect(); queueBtnObserver = null; }
     if (queueAllBtn) { queueAllBtn.remove(); queueAllBtn = null; }

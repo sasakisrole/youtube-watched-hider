@@ -232,6 +232,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       recordWhileOff: false,
       hideShorts: false,
       hideMovies: false,
+      harvestMode: false,
       autoBackup: true,
       lastBackup: null,
       lastBackupCount: 0
@@ -267,6 +268,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           chrome.tabs.sendMessage(tab.id, {
             type: 'HIDE_MOVIES_CHANGED',
             hideMovies: message.hideMovies
+          }).catch(() => {});
+        }
+      });
+      sendResponse({ success: true });
+    });
+    return true;
+  }
+
+  if (message.type === 'SET_HARVEST_MODE') {
+    chrome.storage.local.set({ harvestMode: message.harvestMode }, () => {
+      chrome.tabs.query({ url: '*://*.youtube.com/*' }, (tabs) => {
+        for (const tab of tabs) {
+          chrome.tabs.sendMessage(tab.id, {
+            type: 'HARVEST_MODE_CHANGED',
+            harvestMode: message.harvestMode
           }).catch(() => {});
         }
       });
