@@ -141,7 +141,7 @@
   }
 
   let currentCreditField = 'composer';
-  let currentCreditSource = 'all';
+  let currentCreditSource = 'topic';
 
   function renderCredits(data) {
     const cm = buildCreditCount(data, currentCreditField, currentCreditSource);
@@ -222,14 +222,14 @@
         renderCredits(data);
       };
     });
-    document.querySelectorAll('.az-credit-source').forEach(b => {
-      b.onclick = () => {
-        document.querySelectorAll('.az-credit-source').forEach(x => x.classList.remove('active'));
-        b.classList.add('active');
-        currentCreditSource = b.dataset.source;
+    const includeGenCb = document.getElementById('azIncludeGeneral');
+    if (includeGenCb) {
+      includeGenCb.checked = (currentCreditSource === 'all');
+      includeGenCb.onchange = () => {
+        currentCreditSource = includeGenCb.checked ? 'all' : 'topic';
         renderCredits(data);
       };
-    });
+    }
   }
 
   // Tab switching

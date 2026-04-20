@@ -286,11 +286,7 @@
           <button class="sort-btn az-credit-tab" data-credit="lyricist">作詞</button>
           <button class="sort-btn az-credit-tab" data-credit="arranger">編曲</button>
         </div>
-        <div style="display:flex;gap:4px;">
-          <button class="sort-btn az-credit-source active" data-source="all">全体</button>
-          <button class="sort-btn az-credit-source" data-source="topic">Topic</button>
-          <button class="sort-btn az-credit-source" data-source="general">一般</button>
-        </div>
+        <label style="color:#888;font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;" title="非Topicチャンネルのクレジットも集計対象にする"><input type="checkbox" id="azIncludeGeneral">一般も含める</label>
         <input type="text" id="azCreditFilter" placeholder="名前で絞り込み" class="search-box" style="max-width:260px;">
         <span id="azCreditStats" style="color:#888;font-size:12px;"></span>
       </div>
