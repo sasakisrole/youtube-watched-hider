@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.28.0 (2026-04-20)
+- Feature: Fix Credits を一般チャンネル（MV・公式配信など）にも拡張
+  - ツールバーに `一般も含める` チェックボックス追加（デフォルトOFF＝従来通りTopicのみ）
+  - 抽出は既存の「ラベル付き行のみ」正規表現を流用 → 誤検出を最小化
+  - DB に `creditsSource`（'topic' | 'general'）フィールド追加 → 抽出元を記録
+  - Analyzer「クレジット」パネルに `全体 / Topic / 一般` の絞り込みトグル追加
+  - 既存データ（`creditsSource` 未記録）は channel 名から後方互換で推定
+
 ## v1.27.3 (2026-04-20)
 - Improve: Fix Credits に「チェック済みスキップ」トグル追加（デフォルトON）
   - DBに `creditsCheckedAt`（スキャン日時）フィールド追加

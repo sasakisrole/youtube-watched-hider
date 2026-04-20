@@ -324,12 +324,12 @@ if (fixBtn) {
 
 // Fix credits (composer/lyricist/arranger) for Topic-channel videos.
 let activeCreditsPort = null;
-function runFixCredits(videoIds, label) {
+function runFixCredits(videoIds, sources, label) {
   if (!videoIds.length) {
     fixStatus.textContent = '対象なし';
     return;
   }
-  if (!confirm(`${label}: ${videoIds.length}件のTopic動画から作曲/作詞/編曲を概要欄で補完します。続行しますか？\n\n※YouTubeタブを1つ以上開いたままにしてください（Cookie経由でfetchするため）。`)) {
+  if (!confirm(`${label}: ${videoIds.length}件の動画から作曲/作詞/編曲を概要欄で補完します。続行しますか？\n\n※YouTubeタブを1つ以上開いたままにしてください（Cookie経由でfetchするため）。`)) {
     return;
   }
 
@@ -387,7 +387,7 @@ function runFixCredits(videoIds, label) {
       finish();
     }
   });
-  port.postMessage({ type: 'START', videoIds, force: false });
+  port.postMessage({ type: 'START', videoIds, sources, force: false });
 }
 
 const fixCreditsBtn = document.getElementById('fixCredits');
@@ -398,15 +398,26 @@ if (fixCreditsBtn) {
       fixStatus.textContent = '中止中...';
       return;
     }
-    // Topic channels only (name ends with " - Topic"), and missing at least one credit.
+    // Topicチャンネル優先。「一般も含める」ONなら非Topicも対象。
     const skipChecked = document.getElementById('skipCreditsChecked');
     const skip = !!(skipChecked && skipChecked.checked);
+    const includeGeneral = document.getElementById('includeGeneralCredits');
+    const includeGen = !!(includeGeneral && includeGeneral.checked);
+    const sources = {};
     const targets = allData
-      .filter(v => v.channel && / - Topic$/.test(v.channel))
+      .filter(v => {
+        if (!v.channel) return false;
+        const isTopic = / - Topic$/.test(v.channel);
+        return isTopic || includeGen;
+      })
       .filter(v => !v.composer || !v.lyricist || !v.arranger)
       .filter(v => !(skip && v.creditsCheckedAt))
-      .map(v => v.videoId);
-    runFixCredits(targets, 'Topic動画のクレジット補完');
+      .map(v => {
+        sources[v.videoId] = / - Topic$/.test(v.channel) ? 'topic' : 'general';
+        return v.videoId;
+      });
+    const label = includeGen ? 'クレジット補完（Topic+一般）' : 'Topic動画のクレジット補完';
+    runFixCredits(targets, sources, label);
   });
 }
 

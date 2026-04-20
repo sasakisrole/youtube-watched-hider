@@ -1679,7 +1679,8 @@ window._ytWatchedHider = (() => {
       WatchedDB.updateCredits(
         message.videoId,
         message.credits || {},
-        !!message.force
+        !!message.force,
+        message.creditsSource || ''
       ).then((didUpdate) => {
         sendResponse({ success: true, updated: !!didUpdate });
       }).catch((e) => {

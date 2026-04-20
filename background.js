@@ -531,7 +531,7 @@ async function fetchCreditsFromWatch(videoId) {
   }
 }
 
-async function fixCreditsBatch(videoIds, force, onProgress, abortSignal) {
+async function fixCreditsBatch(videoIds, sources, force, onProgress, abortSignal) {
   if (!videoIds.length) return { success: true, updated: 0, noCredits: 0, fetchFailed: 0, total: 0 };
 
   const CONCURRENCY = 3;
@@ -571,6 +571,7 @@ async function fixCreditsBatch(videoIds, force, onProgress, abortSignal) {
             type: 'UPDATE_CREDITS',
             videoId: vid,
             credits: result.credits,
+            creditsSource: (sources && sources[vid]) || '',
             force: force
           });
           if (resp && resp.success && resp.updated) {
@@ -622,9 +623,10 @@ chrome.runtime.onConnect.addListener((port) => {
     }
     if (msg.type !== 'START') return;
     const videoIds = msg.videoIds || [];
+    const sources = msg.sources || {};
     const force = !!msg.force;
     try {
-      const result = await fixCreditsBatch(videoIds, force, (progress) => {
+      const result = await fixCreditsBatch(videoIds, sources, force, (progress) => {
         try { port.postMessage({ type: 'PROGRESS', ...progress }); } catch (_e) {}
       }, abortSignal);
       try { port.postMessage({ type: 'DONE', ...result }); } catch (_e) {}

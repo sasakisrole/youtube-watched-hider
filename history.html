@@ -237,8 +237,9 @@
     <button class="sort-btn" id="filterNoChannel" title="チャンネル名が未記録の動画だけ表示">No Channel</button>
     <button class="sort-btn" id="fixChannels" title="oEmbed APIでチャンネル名を補正（未記録のみ）">Fix Channels</button>
     <button class="sort-btn" id="fixChannelsForce" title="oEmbed APIでチャンネル名を上書き補正（表示中の全件）">Fix (force)</button>
-    <button class="sort-btn" id="fixCredits" title="Topic動画の作曲・作詞・編曲を概要欄から補完">Fix Credits</button>
+    <button class="sort-btn" id="fixCredits" title="動画の作曲・作詞・編曲を概要欄から補完（ラベル行のみ採用）">Fix Credits</button>
     <label style="color:#888;font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;" title="前回「情報なし」だった動画は除外して取得"><input type="checkbox" id="skipCreditsChecked" checked>チェック済みスキップ</label>
+    <label style="color:#888;font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;" title="非Topicチャンネル（MV・公式配信など）も対象にする。ラベル付き行のみ採用"><input type="checkbox" id="includeGeneralCredits">一般も含める</label>
     <button class="sort-btn" id="toggleAnalyze" title="音楽傾向分析">Analyze</button>
     <span id="fixStatus" style="margin-left:8px;color:#666;font-size:13px;"></span>
   </div>
@@ -284,6 +285,11 @@
           <button class="sort-btn az-credit-tab active" data-credit="composer">作曲</button>
           <button class="sort-btn az-credit-tab" data-credit="lyricist">作詞</button>
           <button class="sort-btn az-credit-tab" data-credit="arranger">編曲</button>
+        </div>
+        <div style="display:flex;gap:4px;">
+          <button class="sort-btn az-credit-source active" data-source="all">全体</button>
+          <button class="sort-btn az-credit-source" data-source="topic">Topic</button>
+          <button class="sort-btn az-credit-source" data-source="general">一般</button>
         </div>
         <input type="text" id="azCreditFilter" placeholder="名前で絞り込み" class="search-box" style="max-width:260px;">
         <span id="azCreditStats" style="color:#888;font-size:12px;"></span>

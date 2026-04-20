@@ -114,7 +114,8 @@ if (typeof WatchedDB === 'undefined') {
     }
 
     // Update credits (composer/lyricist/arranger). Force overwrites non-empty.
-    async function updateCredits(videoId, credits, force = false) {
+    // source: 'topic' | 'general' — 抽出元を記録（集計で分離するため）
+    async function updateCredits(videoId, credits, force = false, source = '') {
       const db = await openDB();
       return new Promise((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -130,6 +131,9 @@ if (typeof WatchedDB === 'undefined') {
               existing[k] = v;
               didUpdate = true;
             }
+          }
+          if (source && (force || !existing.creditsSource)) {
+            existing.creditsSource = source;
           }
           // Always stamp "checked" so we can skip already-scanned videos next run.
           existing.creditsCheckedAt = Date.now();
@@ -278,6 +282,7 @@ if (typeof WatchedDB === 'undefined') {
         lyricist: typeof record.lyricist === 'string' ? record.lyricist : '',
         arranger: typeof record.arranger === 'string' ? record.arranger : '',
         creditsCheckedAt: typeof record.creditsCheckedAt === 'number' && record.creditsCheckedAt > 0 ? record.creditsCheckedAt : 0,
+        creditsSource: typeof record.creditsSource === 'string' ? record.creditsSource : '',
       };
     }
 

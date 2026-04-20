@@ -111,11 +111,19 @@
       .filter(Boolean);
   }
 
-  // Build credit -> {count, selfArrangeCount} for a given field among Topic videos.
-  function buildCreditCount(data, field) {
+  // 動画の creditsSource を判定（未記録は channel から後方互換推定）
+  function sourceOf(d) {
+    if (d.creditsSource === 'topic' || d.creditsSource === 'general') return d.creditsSource;
+    if (d.channel && / - Topic$/.test(d.channel)) return 'topic';
+    return 'general';
+  }
+
+  // Build credit -> {count, selfArrangeCount} filtered by source ('all'|'topic'|'general').
+  function buildCreditCount(data, field, sourceFilter) {
     const m = new Map();
     for (const d of data) {
-      if (!d.channel || !/ - Topic$/.test(d.channel)) continue;
+      if (!d.composer && !d.lyricist && !d.arranger) continue;
+      if (sourceFilter && sourceFilter !== 'all' && sourceOf(d) !== sourceFilter) continue;
       const names = splitCreditField(d[field]);
       if (!names.length) continue;
       const composers = new Set(splitCreditField(d.composer));
@@ -133,9 +141,10 @@
   }
 
   let currentCreditField = 'composer';
+  let currentCreditSource = 'all';
 
   function renderCredits(data) {
-    const cm = buildCreditCount(data, currentCreditField);
+    const cm = buildCreditCount(data, currentCreditField, currentCreditSource);
     const q = document.getElementById('azCreditFilter').value.trim().toLowerCase();
     let list = [...cm.entries()];
     if (q) list = list.filter(([k]) => k.toLowerCase().includes(q));
@@ -210,6 +219,14 @@
         document.querySelectorAll('.az-credit-tab').forEach(x => x.classList.remove('active'));
         b.classList.add('active');
         currentCreditField = b.dataset.credit;
+        renderCredits(data);
+      };
+    });
+    document.querySelectorAll('.az-credit-source').forEach(b => {
+      b.onclick = () => {
+        document.querySelectorAll('.az-credit-source').forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
+        currentCreditSource = b.dataset.source;
         renderCredits(data);
       };
     });
