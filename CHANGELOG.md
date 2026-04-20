@@ -1,5 +1,37 @@
 # Changelog
 
+## v1.27.3 (2026-04-20)
+- Improve: Fix Credits に「チェック済みスキップ」トグル追加（デフォルトON）
+  - DBに `creditsCheckedAt`（スキャン日時）フィールド追加
+  - 取得成功時（情報有り/無し問わず）にタイムスタンプを記録
+  - トグルON時は前回スキャン済みのvideoIdを対象から除外 → 再実行が軽くなる
+  - 新メッセージ `MARK_CREDITS_CHECKED`（no-credits時に呼ばれる）
+
+## v1.27.2 (2026-04-20)
+- Fix: Fix Credits が Google の bot 検知（`google.com/sorry/index` リダイレクト）で全件失敗する問題を修正
+  - watch HTML 取得を拡張オリジン直接 fetch から **content script 経由プロキシ** に変更
+    - YouTubeタブのCookie付き same-origin リクエストとして飛ぶためbot検知されにくい
+    - 新メッセージ `FETCH_WATCH_HTML`（content.js がfetch実行しHTMLを返す）
+  - `sorry-redirect` 検知で **バッチ自動停止**（レート制限を深掘りしないため）
+  - `Fix Credits` ボタンが処理中は **「■ 中止」** に切替、クリックで即停止
+  - 完了ステータスに「⚠ 自動停止」「⏸ 中止」の区別を表示
+  - 実行前確認ダイアログに「YouTubeタブを開いたままに」の注意書き追加
+
+## v1.27.1 (2026-04-20)
+- Improve: Fix Credits の診断強化
+  - 失敗を「情報なし（クレジット行がそもそも無い）」と「取得失敗（HTTP/redirect/DB）」に分類表示
+  - HTMLスライス窓を 20,000→100,000 文字に拡大（keywords等で押し出されるケース対策）
+  - 抽出ラベル拡張（`Music` / `Composed by` / `Written by` / `Arranged by` / `Composition` 等）
+  - 並列数 5→3 に抑制（スロットリング回避）
+  - 完了時に失敗理由の内訳をステータスバー＋コンソールに出力
+
+## v1.27.0 (2026-04-20)
+- Add: Topic動画のクレジット（作曲・作詞・編曲）補完機能
+  - `Fix Credits` ボタン：Topicチャンネルの動画のみを対象にwatchページ概要欄から `Composer:` `Lyricist:` `Arranger:` を抽出
+  - DBスキーマv3：`composer` / `lyricist` / `arranger` フィールド追加
+  - Analyzeに「クレジット」タブ新設：作曲/作詞/編曲の切替＋名義同一率（作曲者＝編曲者）表示
+  - `background.js` で並列5本の watch HTML fetch（Fix Channelsと同構造）
+
 ## Unreleased
 - Chore: Chrome Web Store 公開準備
   - `docs/privacy.html` 追加（プライバシーポリシー・GitHub Pagesで公開）

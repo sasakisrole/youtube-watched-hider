@@ -322,6 +322,94 @@ if (fixBtn) {
   });
 }
 
+// Fix credits (composer/lyricist/arranger) for Topic-channel videos.
+let activeCreditsPort = null;
+function runFixCredits(videoIds, label) {
+  if (!videoIds.length) {
+    fixStatus.textContent = '対象なし';
+    return;
+  }
+  if (!confirm(`${label}: ${videoIds.length}件のTopic動画から作曲/作詞/編曲を概要欄で補完します。続行しますか？\n\n※YouTubeタブを1つ以上開いたままにしてください（Cookie経由でfetchするため）。`)) {
+    return;
+  }
+
+  const total = videoIds.length;
+  let remaining = total;
+  const fixCreditsBtn = document.getElementById('fixCredits');
+  fixStatus.textContent = `処理中... 残り${remaining}/${total}（更新0 / 失敗0）`;
+  if (fixCreditsBtn) {
+    fixCreditsBtn.textContent = '■ 中止';
+    fixCreditsBtn.dataset.mode = 'abort';
+  }
+
+  const port = chrome.runtime.connect({ name: 'fix-credits' });
+  activeCreditsPort = port;
+  const finish = () => {
+    activeCreditsPort = null;
+    if (fixCreditsBtn) {
+      fixCreditsBtn.textContent = 'Fix Credits';
+      fixCreditsBtn.dataset.mode = '';
+    }
+  };
+  port.onDisconnect.addListener(finish);
+  port.onMessage.addListener((msg) => {
+    if (msg.type === 'PROGRESS') {
+      remaining = msg.total - msg.processed;
+      if (msg.wasUpdated && msg.credits) {
+        const rec = allData.find(v => v.videoId === msg.videoId);
+        if (rec) {
+          if (msg.credits.composer && !rec.composer) rec.composer = msg.credits.composer;
+          if (msg.credits.lyricist && !rec.lyricist) rec.lyricist = msg.credits.lyricist;
+          if (msg.credits.arranger && !rec.arranger) rec.arranger = msg.credits.arranger;
+        }
+      }
+      fixStatus.textContent = `処理中... 残り${remaining}/${total}（更新${msg.updated} / 情報なし${msg.noCredits} / 取得失敗${msg.fetchFailed}）`;
+      if (msg.processed % 50 === 0 && msg.failReasons) {
+        console.log('[Fix Credits] progress', msg.processed, 'failReasons:', msg.failReasons);
+      }
+      return;
+    }
+    if (msg.type === 'DONE') {
+      const reasons = msg.failReasons && Object.keys(msg.failReasons).length
+        ? ` [${Object.entries(msg.failReasons).map(([k, v]) => `${k}:${v}`).join(', ')}]`
+        : '';
+      let prefix = '完了';
+      if (msg.autoStopped) prefix = '⚠ 自動停止（Googleのbot検知 / 時間を空けて再実行）';
+      else if (msg.aborted) prefix = '⏸ 中止';
+      fixStatus.textContent = `${prefix}: 更新${msg.updated} / 情報なし${msg.noCredits} / 取得失敗${msg.fetchFailed} / 処理${msg.processed || 0}/${msg.total}${reasons}`;
+      console.log('[Fix Credits] failReasons:', msg.failReasons);
+      setTimeout(loadData, 300);
+      finish();
+      return;
+    }
+    if (msg.type === 'ERROR') {
+      fixStatus.textContent = `失敗: ${msg.error || 'unknown'}`;
+      finish();
+    }
+  });
+  port.postMessage({ type: 'START', videoIds, force: false });
+}
+
+const fixCreditsBtn = document.getElementById('fixCredits');
+if (fixCreditsBtn) {
+  fixCreditsBtn.addEventListener('click', () => {
+    if (fixCreditsBtn.dataset.mode === 'abort' && activeCreditsPort) {
+      try { activeCreditsPort.postMessage({ type: 'ABORT' }); } catch (_e) {}
+      fixStatus.textContent = '中止中...';
+      return;
+    }
+    // Topic channels only (name ends with " - Topic"), and missing at least one credit.
+    const skipChecked = document.getElementById('skipCreditsChecked');
+    const skip = !!(skipChecked && skipChecked.checked);
+    const targets = allData
+      .filter(v => v.channel && / - Topic$/.test(v.channel))
+      .filter(v => !v.composer || !v.lyricist || !v.arranger)
+      .filter(v => !(skip && v.creditsCheckedAt))
+      .map(v => v.videoId);
+    runFixCredits(targets, 'Topic動画のクレジット補完');
+  });
+}
+
 const fixForceBtn = document.getElementById('fixChannelsForce');
 if (fixForceBtn) {
   fixForceBtn.addEventListener('click', () => {

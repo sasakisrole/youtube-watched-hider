@@ -3,7 +3,7 @@
 if (typeof WatchedDB === 'undefined') {
   var WatchedDB = (() => {
     const DB_NAME = 'YouTubeWatchedDB';
-    const DB_VERSION = 2;
+    const DB_VERSION = 3;
     const STORE_NAME = 'watchedVideos';
 
     let dbInstance = null;
@@ -109,6 +109,52 @@ if (typeof WatchedDB === 'undefined') {
           }
         };
         tx.oncomplete = () => resolve();
+        tx.onerror = (event) => reject(event.target.error);
+      });
+    }
+
+    // Update credits (composer/lyricist/arranger). Force overwrites non-empty.
+    async function updateCredits(videoId, credits, force = false) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const getReq = store.get(videoId);
+        let didUpdate = false;
+        getReq.onsuccess = () => {
+          const existing = getReq.result;
+          if (!existing) return;
+          for (const k of ['composer', 'lyricist', 'arranger']) {
+            const v = credits && credits[k];
+            if (v && (force || !existing[k])) {
+              existing[k] = v;
+              didUpdate = true;
+            }
+          }
+          // Always stamp "checked" so we can skip already-scanned videos next run.
+          existing.creditsCheckedAt = Date.now();
+          store.put(existing);
+        };
+        tx.oncomplete = () => resolve(didUpdate);
+        tx.onerror = (event) => reject(event.target.error);
+      });
+    }
+
+    // Mark a video as credit-scanned even if no credits were found.
+    // Lets the UI skip it on the next Fix Credits run.
+    async function markCreditsChecked(videoId) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const getReq = store.get(videoId);
+        getReq.onsuccess = () => {
+          const existing = getReq.result;
+          if (!existing) return;
+          existing.creditsCheckedAt = Date.now();
+          store.put(existing);
+        };
+        tx.oncomplete = () => resolve(true);
         tx.onerror = (event) => reject(event.target.error);
       });
     }
@@ -228,6 +274,10 @@ if (typeof WatchedDB === 'undefined') {
         firstWatchedAt: typeof record.firstWatchedAt === 'number' && record.firstWatchedAt > 0 ? record.firstWatchedAt : (typeof record.watchedAt === 'number' ? record.watchedAt : Date.now()),
         playCount: typeof record.playCount === 'number' && record.playCount >= 0 ? record.playCount : 0,
         source: typeof record.source === 'string' ? record.source : 'unknown',
+        composer: typeof record.composer === 'string' ? record.composer : '',
+        lyricist: typeof record.lyricist === 'string' ? record.lyricist : '',
+        arranger: typeof record.arranger === 'string' ? record.arranger : '',
+        creditsCheckedAt: typeof record.creditsCheckedAt === 'number' && record.creditsCheckedAt > 0 ? record.creditsCheckedAt : 0,
       };
     }
 
@@ -334,6 +384,6 @@ if (typeof WatchedDB === 'undefined') {
       });
     }
 
-    return { openDB, addWatched, updateTitle, updateTitleAndChannel, isWatched, checkMultiple, getStats, getAllIds, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport };
+    return { openDB, addWatched, updateTitle, updateTitleAndChannel, updateCredits, markCreditsChecked, isWatched, checkMultiple, getStats, getAllIds, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport };
   })();
 }

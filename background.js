@@ -476,6 +476,165 @@ async function fixChannelsBatch(videoIds, force, onProgress) {
   return { success: true, updated, failed, total: videoIds.length };
 }
 
+// --- Topic credits (composer/lyricist/arranger) extraction ---
+// Reads ytInitialPlayerResponse.videoDetails.shortDescription from the
+// watch page HTML and parses the auto-generated Topic credit lines.
+function parseCreditsFromDescription(desc) {
+  if (!desc) return { composer: '', lyricist: '', arranger: '' };
+  const pick = (labels) => {
+    for (const label of labels) {
+      const re = new RegExp('(?:^|\\n)\\s*' + label + '\\s*[:：]\\s*([^\\n]+)', 'i');
+      const m = desc.match(re);
+      if (m) return m[1].trim();
+    }
+    return '';
+  };
+  return {
+    composer: pick(['Composer', 'Composers', 'Composed by', 'Composition', 'Music', 'Music by', '作曲', '作曲者']),
+    lyricist: pick(['Lyricist', 'Lyricists', 'Written by', 'Lyrics', 'Lyrics by', '作詞', '作詞者']),
+    arranger: pick(['Arranger', 'Arrangers', 'Arranged by', 'Arrangement', '編曲', '編曲者']),
+  };
+}
+
+async function fetchCreditsFromWatch(videoId) {
+  try {
+    // Route through a YouTube tab so the request carries user cookies and
+    // avoids the google.com/sorry bot challenge.
+    let resp;
+    try {
+      resp = await sendToYouTubeTab({ type: 'FETCH_WATCH_HTML', videoId });
+    } catch (e) {
+      return { videoId, ok: false, reason: 'no-youtube-tab' };
+    }
+    if (!resp || !resp.success) {
+      return { videoId, ok: false, reason: (resp && resp.reason) || 'proxy-failed' };
+    }
+    const html = resp.html || '';
+
+    // Consent/redirect pages lack ytInitialPlayerResponse entirely.
+    if (html.indexOf('ytInitialPlayerResponse') === -1) {
+      return { videoId, ok: false, reason: 'no-playerResponse' };
+    }
+
+    const vdStart = html.indexOf('"videoDetails":{');
+    if (vdStart === -1) return { videoId, ok: false, reason: 'no-videoDetails' };
+    const slice = html.slice(vdStart, vdStart + 100000);
+    const descMatch = slice.match(/"shortDescription":"((?:\\.|[^"\\])*)"/);
+    if (!descMatch) return { videoId, ok: false, reason: 'no-description' };
+    const desc = decodeJsonStringLiteral(descMatch[1]);
+    const credits = parseCreditsFromDescription(desc);
+    const hasAny = credits.composer || credits.lyricist || credits.arranger;
+    if (!hasAny) return { videoId, ok: true, credits, hasAny: false, reason: 'no-credits' };
+    return { videoId, ok: true, credits, hasAny: true };
+  } catch (e) {
+    return { videoId, ok: false, reason: 'fetch-error', error: e.message };
+  }
+}
+
+async function fixCreditsBatch(videoIds, force, onProgress, abortSignal) {
+  if (!videoIds.length) return { success: true, updated: 0, noCredits: 0, fetchFailed: 0, total: 0 };
+
+  const CONCURRENCY = 3;
+  let updated = 0;
+  let noCredits = 0;
+  let fetchFailed = 0;
+  const failReasons = {};
+  let processed = 0;
+  let idx = 0;
+  let autoStopped = false;
+
+  async function worker() {
+    while (idx < videoIds.length) {
+      if (abortSignal && abortSignal.aborted) return;
+      if (autoStopped) return;
+      const vid = videoIds[idx++];
+      const result = await fetchCreditsFromWatch(vid);
+      let wasUpdated = false;
+      if (!result.ok) {
+        fetchFailed++;
+        const r = result.reason || 'unknown';
+        failReasons[r] = (failReasons[r] || 0) + 1;
+        // Bot-challenge detected: stop the whole batch immediately to avoid
+        // digging the rate-limit hole deeper.
+        if (r === 'sorry-redirect') {
+          autoStopped = true;
+        }
+      } else if (!result.hasAny) {
+        noCredits++;
+        // Stamp DB so next run can skip this videoId.
+        try {
+          await sendToYouTubeTab({ type: 'MARK_CREDITS_CHECKED', videoId: vid });
+        } catch (_e) { /* ignore */ }
+      } else {
+        try {
+          const resp = await sendToYouTubeTab({
+            type: 'UPDATE_CREDITS',
+            videoId: vid,
+            credits: result.credits,
+            force: force
+          });
+          if (resp && resp.success && resp.updated) {
+            updated++;
+            wasUpdated = true;
+          }
+        } catch (_e) {
+          fetchFailed++;
+          failReasons['db-error'] = (failReasons['db-error'] || 0) + 1;
+        }
+      }
+      processed++;
+      if (onProgress) {
+        try {
+          onProgress({
+            videoId: vid,
+            processed,
+            updated,
+            noCredits,
+            fetchFailed,
+            failReasons,
+            total: videoIds.length,
+            credits: result.credits || null,
+            wasUpdated
+          });
+        } catch (_e) { /* ignore */ }
+      }
+    }
+  }
+
+  const workers = [];
+  for (let i = 0; i < Math.min(CONCURRENCY, videoIds.length); i++) workers.push(worker());
+  await Promise.all(workers);
+
+  const aborted = !!(abortSignal && abortSignal.aborted);
+  return { success: true, updated, noCredits, fetchFailed, failReasons, total: videoIds.length, processed, aborted, autoStopped };
+}
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'fix-credits') return;
+
+  const abortSignal = { aborted: false };
+  port.onDisconnect.addListener(() => { abortSignal.aborted = true; });
+
+  port.onMessage.addListener(async (msg) => {
+    if (msg.type === 'ABORT') {
+      abortSignal.aborted = true;
+      return;
+    }
+    if (msg.type !== 'START') return;
+    const videoIds = msg.videoIds || [];
+    const force = !!msg.force;
+    try {
+      const result = await fixCreditsBatch(videoIds, force, (progress) => {
+        try { port.postMessage({ type: 'PROGRESS', ...progress }); } catch (_e) {}
+      }, abortSignal);
+      try { port.postMessage({ type: 'DONE', ...result }); } catch (_e) {}
+    } catch (e) {
+      try { port.postMessage({ type: 'ERROR', error: e.message }); } catch (_e) {}
+    }
+    try { port.disconnect(); } catch (_e) {}
+  });
+});
+
 // Streaming variant via chrome.runtime.Port — emits progress events.
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'fix-channels') return;

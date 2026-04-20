@@ -1639,6 +1639,55 @@ window._ytWatchedHider = (() => {
       return true;
     }
 
+    if (message.type === 'FETCH_WATCH_HTML') {
+      // Proxy fetch through the YouTube tab context so the request carries
+      // real user cookies and looks like a normal page navigation. This
+      // avoids the google.com/sorry bot-challenge that extension-origin
+      // credentials:'omit' fetches trigger after a burst.
+      (async () => {
+        try {
+          const url = `https://www.youtube.com/watch?v=${encodeURIComponent(message.videoId)}`;
+          const res = await fetch(url);
+          const finalUrl = res.url || '';
+          if (/google\.com\/sorry/i.test(finalUrl)) {
+            sendResponse({ success: false, reason: 'sorry-redirect', finalUrl });
+            return;
+          }
+          if (!res.ok) {
+            sendResponse({ success: false, reason: 'http-' + res.status });
+            return;
+          }
+          const html = await res.text();
+          sendResponse({ success: true, html, finalUrl });
+        } catch (e) {
+          sendResponse({ success: false, reason: 'fetch-error', error: e.message });
+        }
+      })();
+      return true;
+    }
+
+    if (message.type === 'MARK_CREDITS_CHECKED') {
+      WatchedDB.markCreditsChecked(message.videoId).then(() => {
+        sendResponse({ success: true });
+      }).catch((e) => {
+        sendResponse({ success: false, error: e.message });
+      });
+      return true;
+    }
+
+    if (message.type === 'UPDATE_CREDITS') {
+      WatchedDB.updateCredits(
+        message.videoId,
+        message.credits || {},
+        !!message.force
+      ).then((didUpdate) => {
+        sendResponse({ success: true, updated: !!didUpdate });
+      }).catch((e) => {
+        sendResponse({ success: false, error: e.message });
+      });
+      return true;
+    }
+
     if (message.type === 'UPDATE_TITLE_CHANNEL') {
       // Force-update title/channel for a given videoId (used by oEmbed correction).
       WatchedDB.updateTitleAndChannel(

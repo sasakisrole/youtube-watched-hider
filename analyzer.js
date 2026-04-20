@@ -102,6 +102,67 @@
     });
   }
 
+  // Split a credit field by common separators ("A, B", "A / B", "A & B", "A・B").
+  function splitCreditField(s) {
+    if (!s) return [];
+    return String(s)
+      .split(/[,、，\/／&＆;；]|\s+and\s+|・/i)
+      .map(x => x.trim())
+      .filter(Boolean);
+  }
+
+  // Build credit -> {count, selfArrangeCount} for a given field among Topic videos.
+  function buildCreditCount(data, field) {
+    const m = new Map();
+    for (const d of data) {
+      if (!d.channel || !/ - Topic$/.test(d.channel)) continue;
+      const names = splitCreditField(d[field]);
+      if (!names.length) continue;
+      const composers = new Set(splitCreditField(d.composer));
+      const arrangers = new Set(splitCreditField(d.arranger));
+      const isSelfArrange = composers.size && arrangers.size &&
+        [...composers].some(c => arrangers.has(c));
+      for (const name of names) {
+        const cur = m.get(name) || { count: 0, self: 0 };
+        cur.count++;
+        if (isSelfArrange) cur.self++;
+        m.set(name, cur);
+      }
+    }
+    return m;
+  }
+
+  let currentCreditField = 'composer';
+
+  function renderCredits(data) {
+    const cm = buildCreditCount(data, currentCreditField);
+    const q = document.getElementById('azCreditFilter').value.trim().toLowerCase();
+    let list = [...cm.entries()];
+    if (q) list = list.filter(([k]) => k.toLowerCase().includes(q));
+    list.sort((a, b) => b[1].count - a[1].count);
+
+    const totalPeople = cm.size;
+    const totalPlays = [...cm.values()].reduce((s, v) => s + v.count, 0);
+    document.getElementById('azCreditStats').textContent =
+      `${totalPeople.toLocaleString()}人 / ${totalPlays.toLocaleString()}再生`;
+
+    const tbody = document.querySelector('#azCreditsTable tbody');
+    tbody.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    list.slice(0, 500).forEach(([name, v], i) => {
+      const tr = document.createElement('tr');
+      const rate = v.count ? Math.round(v.self / v.count * 100) : 0;
+      const selfCell = v.self ? `${v.self} (${rate}%)` : '-';
+      tr.innerHTML =
+        `<td>${i + 1}</td>` +
+        `<td>${esc(name)}</td>` +
+        `<td>${v.count}</td>` +
+        `<td style="color:#888;">${selfCell}</td>`;
+      frag.appendChild(tr);
+    });
+    tbody.appendChild(frag);
+  }
+
   function renderPrompt(chCount) {
     const topic = [...chCount.entries()].filter(([k]) => k.endsWith('- Topic')).sort((a, b) => b[1] - a[1]).slice(0, 40);
     const nonTopic = [...chCount.entries()].filter(([k]) => !k.endsWith('- Topic')).sort((a, b) => b[1] - a[1]).slice(0, 15);
@@ -136,12 +197,22 @@
     renderArtists(chCount);
     renderChannels(chCount);
     renderKeywords(data, chCount);
+    renderCredits(data);
     renderPrompt(chCount);
 
     // Re-wire filters to current chCount
     document.getElementById('azArtistFilter').oninput = () => renderArtists(chCount);
     document.getElementById('azTopicOnly').onchange = () => renderArtists(chCount);
     document.getElementById('azChannelFilter').oninput = () => renderChannels(chCount);
+    document.getElementById('azCreditFilter').oninput = () => renderCredits(data);
+    document.querySelectorAll('.az-credit-tab').forEach(b => {
+      b.onclick = () => {
+        document.querySelectorAll('.az-credit-tab').forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
+        currentCreditField = b.dataset.credit;
+        renderCredits(data);
+      };
+    });
   }
 
   // Tab switching
@@ -149,7 +220,7 @@
     t.addEventListener('click', () => {
       document.querySelectorAll('.az-tab').forEach(x => x.classList.remove('active'));
       t.classList.add('active');
-      const map = { artists: 'azArtistsPanel', channels: 'azChannelsPanel', keywords: 'azKeywordsPanel', prompt: 'azPromptPanel' };
+      const map = { artists: 'azArtistsPanel', channels: 'azChannelsPanel', keywords: 'azKeywordsPanel', credits: 'azCreditsPanel', prompt: 'azPromptPanel' };
       Object.values(map).forEach(id => { document.getElementById(id).style.display = 'none'; });
       document.getElementById(map[t.dataset.aztab]).style.display = '';
     });
