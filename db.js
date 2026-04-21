@@ -72,6 +72,12 @@ if (typeof WatchedDB === 'undefined') {
               firstWatchedAt: existing.firstWatchedAt || existing.watchedAt,
               playCount: shouldIncrement ? (existing.playCount || 1) + 1 : (existing.playCount || 1),
               source: existing.source === 'self' ? 'self' : source,
+              // Preserve credit fields — addWatched must not wipe them on re-watch/seekbar
+              composer: existing.composer || '',
+              lyricist: existing.lyricist || '',
+              arranger: existing.arranger || '',
+              creditsCheckedAt: existing.creditsCheckedAt || 0,
+              creditsSource: existing.creditsSource || '',
             });
           } else {
             wasNew = true;
