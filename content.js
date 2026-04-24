@@ -133,6 +133,16 @@ window._ytWatchedHider = (() => {
     if (harvestMode && isHistoryPage()) ensureHarvestUI();
   });
 
+  // Returns true if the card is a playlist/mix/show container, not a single video card.
+  // These should never be hidden even if they contain /watch?v= links.
+  function isPlaylistCard(card) {
+    return !!(
+      card.querySelector('ytd-grid-playlist-renderer, ytd-playlist-renderer, ytd-radio-renderer') ||
+      card.querySelector('[overlay-style="PLAYLIST"], [overlay-style="MIX"], [overlay-style="SHOW"]') ||
+      card.querySelector('yt-thumbnail-overlay-side-panel-renderer, #overlays .thumbnail-overlay-badge-shape[aria-label]')
+    );
+  }
+
   // Extract video ID from href
   function getVideoIdFromHref(href) {
     try {
@@ -373,6 +383,9 @@ window._ytWatchedHider = (() => {
       for (const card of cards) {
         // Skip already-processed hidden cards
         if (card.dataset.watchedHidden === 'true') continue;
+
+        // Skip playlist/mix cards — they contain /watch?v= links but are not single videos
+        if (isPlaylistCard(card)) continue;
 
         const link = card.querySelector(SELECTORS.videoLink);
         if (!link) continue;
@@ -971,6 +984,8 @@ window._ytWatchedHider = (() => {
       const currentVid = getCurrentVideoId();
 
       for (const card of cards) {
+        if (isPlaylistCard(card)) continue;
+
         const videoId = getCardVideoId(card);
         if (!videoId) continue;
         if (videoId === currentVid) continue;
