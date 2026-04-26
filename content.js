@@ -1798,6 +1798,24 @@ window._ytWatchedHider = (() => {
       return true;
     }
 
+    if (message.type === 'CLEAN_ALL_CREDITS') {
+      WatchedDB.cleanAllCredits().then((result) => {
+        sendResponse({ success: true, ...result });
+      }).catch((e) => {
+        sendResponse({ success: false, error: e.message });
+      });
+      return true;
+    }
+
+    if (message.type === 'MARK_CREDITS_FAILED') {
+      WatchedDB.markCreditsFailed(message.videoId, message.reason || 'unknown').then(() => {
+        sendResponse({ success: true });
+      }).catch((e) => {
+        sendResponse({ success: false, error: e.message });
+      });
+      return true;
+    }
+
     if (message.type === 'UPDATE_CREDITS') {
       WatchedDB.updateCredits(
         message.videoId,

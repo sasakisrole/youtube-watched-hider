@@ -157,7 +157,7 @@ if (typeof WatchedDB === 'undefined') {
         getReq.onsuccess = () => {
           const existing = getReq.result;
           if (!existing) return;
-          for (const k of ['composer', 'lyricist', 'arranger']) {
+          for (const k of ['composer', 'lyricist', 'arranger', 'creditsRaw']) {
             const v = credits && credits[k];
             if (v && (force || !existing[k])) {
               existing[k] = v;
@@ -169,6 +169,10 @@ if (typeof WatchedDB === 'undefined') {
           }
           // Always stamp "checked" so we can skip already-scanned videos next run.
           existing.creditsCheckedAt = Date.now();
+          // Clear any prior failure reason — this attempt succeeded.
+          if (existing.creditsFetchFailReason) {
+            existing.creditsFetchFailReason = '';
+          }
           store.put(existing);
         };
         tx.oncomplete = () => resolve(didUpdate);
@@ -188,6 +192,77 @@ if (typeof WatchedDB === 'undefined') {
           const existing = getReq.result;
           if (!existing) return;
           existing.creditsCheckedAt = Date.now();
+          if (existing.creditsFetchFailReason) {
+            existing.creditsFetchFailReason = '';
+          }
+          store.put(existing);
+        };
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = (event) => reject(event.target.error);
+      });
+    }
+
+    // Strip URLs / Twitter handles from credit-line text. Mirrors the same
+    // function in background.js — credits arrive cleaned from new fetches,
+    // but old records may have been saved before this regex was added.
+    function _cleanCreditLine(s) {
+      if (!s) return '';
+      let out = s;
+      out = out.replace(/[\(（][^()（）]*(?:https?:\/\/|twitter\.com|x\.com|t\.co\/|Twitter\s*[:：])[^()（）]*[\)）]/gi, '');
+      out = out.replace(/https?:\/\/\S+/gi, '');
+      out = out.replace(/\s+/g, ' ').replace(/\s*([,、，\/／])\s*/g, '$1').replace(/[,、，\/／]+$/, '').trim();
+      out = out.replace(/[\s\-–—·]+$/, '').trim();
+      if (out.toUpperCase() === '#N/A' || out.toUpperCase() === '#REF!' || out === '-') return '';
+      return out;
+    }
+
+    // One-time cleanup: re-apply cleanCreditLine to existing credit fields.
+    // Returns { scanned, changed } counts.
+    async function cleanAllCredits() {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        let scanned = 0;
+        let changed = 0;
+        const cursorReq = store.openCursor();
+        cursorReq.onsuccess = (e) => {
+          const cursor = e.target.result;
+          if (!cursor) return;
+          scanned++;
+          const r = cursor.value;
+          let dirty = false;
+          for (const k of ['composer', 'lyricist', 'arranger', 'creditsRaw']) {
+            const before = r[k];
+            if (typeof before === 'string' && before) {
+              const after = _cleanCreditLine(before);
+              if (after !== before) { r[k] = after; dirty = true; }
+            }
+          }
+          if (dirty) { cursor.update(r); changed++; }
+          cursor.continue();
+        };
+        tx.oncomplete = () => resolve({ scanned, changed });
+        tx.onerror = (event) => reject(event.target.error);
+      });
+    }
+
+    // Mark a Fix Credits attempt as failed for a specific videoId.
+    // Reason is recorded so we can later analyze why retrieval failed.
+    // creditsCheckedAt is intentionally NOT stamped — the videoId remains
+    // eligible for the next Fix Credits run (per-video issues may resolve
+    // when a description is added later, etc.).
+    async function markCreditsFailed(videoId, reason) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const getReq = store.get(videoId);
+        getReq.onsuccess = () => {
+          const existing = getReq.result;
+          if (!existing) return;
+          existing.creditsFetchFailReason = String(reason || 'unknown');
+          existing.creditsFetchAttemptedAt = Date.now();
           store.put(existing);
         };
         tx.oncomplete = () => resolve(true);
@@ -315,6 +390,9 @@ if (typeof WatchedDB === 'undefined') {
         arranger: typeof record.arranger === 'string' ? record.arranger : '',
         creditsCheckedAt: typeof record.creditsCheckedAt === 'number' && record.creditsCheckedAt > 0 ? record.creditsCheckedAt : 0,
         creditsSource: typeof record.creditsSource === 'string' ? record.creditsSource : '',
+        creditsRaw: typeof record.creditsRaw === 'string' ? record.creditsRaw : '',
+        creditsFetchFailReason: typeof record.creditsFetchFailReason === 'string' ? record.creditsFetchFailReason : '',
+        creditsFetchAttemptedAt: typeof record.creditsFetchAttemptedAt === 'number' && record.creditsFetchAttemptedAt > 0 ? record.creditsFetchAttemptedAt : 0,
       };
     }
 
@@ -411,7 +489,7 @@ if (typeof WatchedDB === 'undefined') {
                 existing.firstWatchedAt = record.firstWatchedAt;
                 updated = true;
               }
-              for (const field of ['composer', 'lyricist', 'arranger']) {
+              for (const field of ['composer', 'lyricist', 'arranger', 'creditsRaw']) {
                 if (record[field] && !existing[field]) {
                   existing[field] = record[field];
                   updated = true;
@@ -423,6 +501,11 @@ if (typeof WatchedDB === 'undefined') {
               }
               if (record.creditsSource && !existing.creditsSource) {
                 existing.creditsSource = record.creditsSource;
+                updated = true;
+              }
+              if (record.creditsFetchAttemptedAt > (existing.creditsFetchAttemptedAt || 0)) {
+                existing.creditsFetchFailReason = record.creditsFetchFailReason || '';
+                existing.creditsFetchAttemptedAt = record.creditsFetchAttemptedAt;
                 updated = true;
               }
               if (updated) store.put(existing);
@@ -514,7 +597,7 @@ if (typeof WatchedDB === 'undefined') {
       return { total: all.length, accounts: [...accounts.entries()] };
     }
 
-    return { openDB, addWatched, updateTitle, updateTitleAndChannel, updateCredits, markCreditsChecked, isWatched, checkMultiple, getStats, getAllIds, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport,
+    return { openDB, addWatched, updateTitle, updateTitleAndChannel, updateCredits, markCreditsChecked, markCreditsFailed, cleanAllCredits, isWatched, checkMultiple, getStats, getAllIds, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport,
       upsertLiked, getAllLiked, clearLikedByAccount, getLikedStats };
   })();
 }

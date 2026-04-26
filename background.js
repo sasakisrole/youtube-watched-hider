@@ -523,24 +523,113 @@ function cleanCreditLine(s) {
   out = out.replace(/https?:\/\/\S+/gi, '');
   // Collapse whitespace and trailing separator junk
   out = out.replace(/\s+/g, ' ').replace(/\s*([,、，\/／])\s*/g, '$1').replace(/[,、，\/／]+$/, '').trim();
+  // Strip trailing dashes/middots left over after URL removal
+  // (e.g. "Foo - https://..." -> "Foo -" -> "Foo")
+  out = out.replace(/[\s\-–—·]+$/, '').trim();
+  // Spreadsheet error sentinels — never a real name
+  if (out.toUpperCase() === '#N/A' || out.toUpperCase() === '#REF!' || out === '-') return '';
   return out;
 }
 
+// Role keywords. Each line of form "<label>: <value>" is checked: if the
+// label part contains any keyword for a role, the value is assigned to that
+// role. This handles compound labels like "Composer, Writer:" (comma) and
+// "Composer Lyricist:" (space) and "Recording Arranger:" (prefix).
+const CREDIT_ROLE_KEYWORDS = {
+  composer: ['composers', 'composed by', 'composition', 'composer', 'music by', 'music composer', 'music', '作曲家', '作曲者', '作曲'],
+  lyricist: ['lyricists', 'lyrics by', 'written by', 'lyricist', 'lyrics', 'songwriter', 'writer', 'author', '作詞家', '作詞者', '作詞'],
+  arranger: ['arrangers', 'arranged by', 'arrangement', 'recording arranger', 'arranger', '編曲家', '編曲者', '編曲'],
+};
+
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function labelHasKeyword(labelLower, kw) {
+  // ASCII keywords: word-boundary match. Japanese keywords: substring match.
+  if (/^[\x20-\x7E]+$/.test(kw)) {
+    const re = new RegExp('(?:^|[^a-z])' + escapeRegex(kw) + '(?:[^a-z]|$)', 'i');
+    return re.test(labelLower);
+  }
+  return labelLower.includes(kw);
+}
+
+// Find the first non-empty line after "Provided to YouTube by ...". This is
+// where Topic-channel auto-generated descriptions place the · separated
+// credits row (e.g. "Title · Artist · Composer · Lyricist · Arranger").
+function findTopicCreditsLine(desc) {
+  const lines = desc.split('\n');
+  let foundProvided = false;
+  for (const line of lines) {
+    if (/Provided to YouTube by/i.test(line)) { foundProvided = true; continue; }
+    if (!foundProvided) continue;
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (trimmed.includes('·')) return trimmed;
+    return null;
+  }
+  return null;
+}
+
 function parseCreditsFromDescription(desc) {
-  if (!desc) return { composer: '', lyricist: '', arranger: '' };
-  const pick = (labels) => {
-    for (const label of labels) {
-      const re = new RegExp('(?:^|\\n)\\s*' + label + '\\s*[:：]\\s*([^\\n]+)', 'i');
-      const m = desc.match(re);
-      if (m) return cleanCreditLine(m[1]);
+  if (!desc) return { composer: '', lyricist: '', arranger: '', creditsRaw: '' };
+
+  // Phase A: parse explicit "<role>: <name>" labeled lines. Handles compound
+  // labels like "Composer, Writer:" / "Composer Lyricist:" / "Recording Arranger:".
+  const found = { composer: [], lyricist: [], arranger: [] };
+  const lines = desc.split('\n');
+  for (const line of lines) {
+    const m = line.match(/^\s*([^:：]+?)\s*[:：]\s*(.+)$/);
+    if (!m) continue;
+    const labelPart = m[1].toLowerCase();
+    const valuePart = cleanCreditLine(m[2]);
+    if (!valuePart) continue;
+    for (const role of Object.keys(CREDIT_ROLE_KEYWORDS)) {
+      for (const kw of CREDIT_ROLE_KEYWORDS[role]) {
+        if (labelHasKeyword(labelPart, kw)) {
+          if (!found[role].includes(valuePart)) found[role].push(valuePart);
+          break;
+        }
+      }
     }
-    return '';
-  };
-  return {
-    composer: pick(['Composer', 'Composers', 'Composed by', 'Composition', 'Music', 'Music by', '作曲', '作曲者']),
-    lyricist: pick(['Lyricist', 'Lyricists', 'Written by', 'Lyrics', 'Lyrics by', '作詞', '作詞者']),
-    arranger: pick(['Arranger', 'Arrangers', 'Arranged by', 'Arrangement', '編曲', '編曲者']),
-  };
+  }
+  let composer = found.composer.join(', ');
+  let lyricist = found.lyricist.join(', ');
+  let arranger = found.arranger.join(', ');
+
+  // Phase B: Topic-channel · separated row. Position-based role assignment is
+  // unreliable (varies by distributor: NexTone vs King Records vs JVCKENWOOD
+  // place fields in different orders), so we record contributors as raw text
+  // unless every credit slot is the same name (in which case all 3 roles are
+  // safely assigned to that single person).
+  let creditsRaw = '';
+  const topicLine = findTopicCreditsLine(desc);
+  if (topicLine) {
+    const fields = topicLine.split(/\s*·\s*/).map(s => s.trim()).filter(s => s && !/^[\-–—]+$/.test(s));
+    if (fields.length >= 3) {
+      // Include position 1 (artist) and onward as contributors. Some
+      // distributors place the actual composer at position 1 and a publisher
+      // at position 2 (e.g. NexTone "Yuki Matsumura · KOEI TECMO SOUND"), so
+      // limiting to position 2+ would lose the real creator.
+      const seen = new Set();
+      const creditNames = [];
+      for (let i = 1; i < fields.length; i++) {
+        if (!seen.has(fields[i])) { seen.add(fields[i]); creditNames.push(fields[i]); }
+      }
+      creditsRaw = creditNames.join(' · ');
+
+      // Same-name detection: if positions 1..end (artist + all credit slots)
+      // are all the same name, that person handled every role.
+      const allSame = fields.slice(1).every(n => n === fields[1]);
+      if (allSame && !composer && !lyricist && !arranger) {
+        composer = fields[1];
+        lyricist = fields[1];
+        arranger = fields[1];
+      }
+    }
+  }
+
+  return { composer, lyricist, arranger, creditsRaw };
 }
 
 async function fetchCreditsFromWatch(videoId) {
@@ -570,7 +659,7 @@ async function fetchCreditsFromWatch(videoId) {
     if (!descMatch) return { videoId, ok: false, reason: 'no-description' };
     const desc = decodeJsonStringLiteral(descMatch[1]);
     const credits = parseCreditsFromDescription(desc);
-    const hasAny = credits.composer || credits.lyricist || credits.arranger;
+    const hasAny = credits.composer || credits.lyricist || credits.arranger || credits.creditsRaw;
     if (!hasAny) return { videoId, ok: true, credits, hasAny: false, reason: 'no-credits' };
     return { videoId, ok: true, credits, hasAny: true };
   } catch (e) {
@@ -578,10 +667,41 @@ async function fetchCreditsFromWatch(videoId) {
   }
 }
 
+// One-time pass to clean URL/Twitter pollution from records saved before
+// cleanCreditLine was strict enough. Runs at most once per install (gated by
+// chrome.storage flag). Safe to retry: cleanAllCredits is idempotent.
+async function runCreditsCleanupOnce() {
+  try {
+    const flag = await chrome.storage.local.get('creditsCleanupV1Done');
+    if (flag.creditsCleanupV1Done) return null;
+    const resp = await sendToYouTubeTab({ type: 'CLEAN_ALL_CREDITS' });
+    if (resp && resp.success) {
+      await chrome.storage.local.set({ creditsCleanupV1Done: true });
+      console.log('[Credits cleanup]', resp);
+      return resp;
+    }
+  } catch (e) {
+    console.warn('[Credits cleanup] skipped:', e.message);
+  }
+  return null;
+}
+
 async function fixCreditsBatch(videoIds, sources, force, onProgress, abortSignal) {
   if (!videoIds.length) return { success: true, updated: 0, noCredits: 0, fetchFailed: 0, total: 0 };
 
-  const CONCURRENCY = 3;
+  // Best-effort: clean polluted records once before this batch starts.
+  await runCreditsCleanupOnce();
+
+  // Politeness settings — too aggressive trips YouTube's bot challenge,
+  // which then blocks the user's whole session (not just this extension's
+  // requests). Empirically CONCURRENCY=3 with no delay caused repeated
+  // sorry-redirects when running ~7,500 fetches.
+  const CONCURRENCY = 2;
+  const DELAY_MS = 500;
+  const JITTER_MS = 200;
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const politeWait = () => sleep(DELAY_MS + Math.floor(Math.random() * JITTER_MS));
+
   let updated = 0;
   let noCredits = 0;
   let fetchFailed = 0;
@@ -605,6 +725,14 @@ async function fixCreditsBatch(videoIds, sources, force, onProgress, abortSignal
         // digging the rate-limit hole deeper.
         if (r === 'sorry-redirect') {
           autoStopped = true;
+        }
+        // Persist per-video failure reason so we can analyze later.
+        // Skip environment-level reasons (not video-specific).
+        const ENV_REASONS = new Set(['no-youtube-tab', 'sorry-redirect', 'proxy-failed']);
+        if (!ENV_REASONS.has(r)) {
+          try {
+            await sendToYouTubeTab({ type: 'MARK_CREDITS_FAILED', videoId: vid, reason: r });
+          } catch (_e) { /* ignore */ }
         }
       } else if (!result.hasAny) {
         noCredits++;
@@ -645,6 +773,11 @@ async function fixCreditsBatch(videoIds, sources, force, onProgress, abortSignal
             wasUpdated
           });
         } catch (_e) { /* ignore */ }
+      }
+      // Politeness delay between fetches in the same worker. Skip when the
+      // queue is drained or the batch is being aborted.
+      if (idx < videoIds.length && !autoStopped && !(abortSignal && abortSignal.aborted)) {
+        await politeWait();
       }
     }
   }

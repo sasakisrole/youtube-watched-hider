@@ -1,5 +1,60 @@
 # Changelog
 
+## v1.34.3 (2026-04-27)
+- Fix: Fix Credits の取得ペースを下げて bot 判定回避を強化
+  - 並列数 3 → 2 に削減
+  - 各 worker でフェッチ完了後に 500ms ± 200ms ジッターのウェイトを挟む
+  - 実効レート: 約 4 req/秒（従来は無遅延で 3 同時）
+  - 7,500件級の一括処理で実セッションが「動画再生不可」になる症状の対策
+
+## v1.34.2 (2026-04-27)
+- Fix: Fix Credits の対象選定ロジックで、`creditsRaw` を持つ動画も「処理済」として除外
+  - 従来は `composer / lyricist / arranger` のいずれかが空なら対象に含めていたため、Phase B で `·` 区切り異名パターンを `creditsRaw` に保存した動画（978件＋部分的に1,715件）が毎回再処理されていた
+  - 再フェッチしても同じ説明文から同じ結果しか得られないため無駄
+  - 役割フィールド or `creditsRaw` のいずれかに値があれば対象外に変更
+
+## v1.34.1 (2026-04-27)
+- Fix: 過去バージョンで保存された URL/Twitter ハンドル混入レコードを自動クリーンアップ
+  - 例: `composer="KARUT (Twitter: https://twitter.com/triplebullets)"` → `KARUT`
+  - 約368件相当（全クレジット記録の4.6%）が `twitter.com` `https://...` 等を含んだまま保存されていた
+  - 次回 Fix Credits 実行開始時にワンタイムで `cleanCreditLine` を全レコードに再適用
+  - `chrome.storage.local` のフラグで二重実行防止
+- Improve: `cleanCreditLine` を強化
+  - 末尾のダッシュ・中黒（`-` `–` `—` `·`）と空白を除去（URL剥離後の残骸対応、例: `Foo -` → `Foo`）
+  - スプレッドシートエラーリテラル `#N/A` `#REF!` および単独 `-` は空文字に変換
+  - 日本語長音符「ー」や `K-On!` の中間ハイフン、`[Alexandros]` のような角括弧バンド名は保持
+- Improve: Topic `·` 区切り行のフィールド分割で、単独 `-` `–` `—` のフィールドを creditsRaw から除外
+
+## v1.34.0 (2026-04-26)
+- Feature: Topicチャンネルの `·` 区切りクレジット行を解析（Phase B）
+  - 新フィールド `creditsRaw` を追加。`·` 区切りの全名前を重複排除して保存（役割不明）
+  - **同名検出**: `·` 区切り全要素が同一人物の場合のみ composer/lyricist/arranger に同名割当（誤割当ゼロ）
+    - 例: `Aiobahn · Aiobahn`, `Yoko Shimomura ×3`, `Endorfin. ×4` → 全役割同人物として確定
+  - 異なる名前混在の場合は creditsRaw のみ保存（位置ベース分配は配給会社依存で危険なため見送り）
+  - 検証20サンプル中、ROLE割当8件・creditsRaw保存7件・情報なし4件
+- Improve: `Author` ラベルを lyricist キーワードに追加（Universal Music系列で使われる作詞表記）
+- Improve: 既存DB上で「クレジットなし」と判定済みの動画は v1.34.0 以降の Fix Credits（チェック済スキップOFF）で再走査することで新パーサが適用される
+
+## v1.33.0 (2026-04-26)
+- Improve: Fix Credits の解析を行ベース＋複合ラベル対応に刷新
+  - `Composer, Writer: 麗`（カンマ複合）→ composer/lyricist 両方に割当
+  - `Composer Lyricist: Daichi Yoshioka`（スペース複合）→ 両方に
+  - `Recording Arranger:`（接頭辞付き）→ arranger に
+  - 同役割で複数行ある場合はカンマ区切りで連結
+  - 役割キーワード辞書を拡張（songwriter / writer / music composer / 作曲家 等）
+  - 既存ラベル形式（`作曲：` `Composer:` `Music:`）は完全互換
+  - **既存DB上で「クレジットなし」と判定済みの動画には適用されない**。再走査するには `creditsCheckedAt` をスキップせず Fix Credits を回す必要あり
+  - Topicチャンネルの `·` 区切り型は引き続き未対応（Phase B で `creditsRaw` フィールド追加予定）
+
+## v1.32.0 (2026-04-26)
+- Feature: Fix Credits の失敗理由を videoId ごとに永続化（取得率改善のためのデータ収集）
+  - 新フィールド `creditsFetchFailReason` / `creditsFetchAttemptedAt` を追加
+  - 環境系理由（`no-youtube-tab` / `sorry-redirect` / `proxy-failed`）は動画固有の問題ではないため記録対象外
+  - 成功時（`updateCredits` / `markCreditsChecked`）は過去の失敗理由をクリア
+  - `creditsCheckedAt` は失敗時にスタンプしないため、次回 Fix Credits で再試行される
+  - エクスポート/マージインポートのスキーマも追従
+  - 後続バージョンで history.html に内訳分析タブを追加予定
+
 ## v1.31.4 (2026-04-26)
 - Improve: Codexコードレビューの低リスク改修を反映（critical無し）
   - XSS耐性: Analyzer/Popup/Historyの動的レンダリングを `innerHTML` → DOM API + `textContent` に置換

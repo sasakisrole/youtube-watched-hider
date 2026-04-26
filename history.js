@@ -414,7 +414,11 @@ if (fixCreditsBtn) {
         const isTopic = / - Topic$/.test(v.channel);
         return isTopic || includeGen;
       })
-      .filter(v => !v.composer || !v.lyricist || !v.arranger)
+      // Re-fetching a video that already has any extracted credit info
+      // (role fields OR creditsRaw) yields the same data, so skip it. This
+      // includes records where Phase B captured the · separator line into
+      // creditsRaw without resolving roles.
+      .filter(v => !(v.composer || v.lyricist || v.arranger || v.creditsRaw))
       .filter(v => !(skip && v.creditsCheckedAt))
       .map(v => {
         sources[v.videoId] = / - Topic$/.test(v.channel) ? 'topic' : 'general';
