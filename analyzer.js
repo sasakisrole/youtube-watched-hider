@@ -121,11 +121,12 @@
     });
   }
 
-  // Split a credit field by common separators ("A, B", "A / B", "A & B", "A・B").
+  // Split a credit field by common separators ("A, B", "A / B", "A & B", "A・B", "A · B").
+  // U+00B7 (· middle dot, used by Topic Phase B `creditsRaw`) and U+30FB (・ Japanese middle dot) are both handled.
   function splitCreditField(s) {
     if (!s) return [];
     return String(s)
-      .split(/[,、，\/／&＆;；]|\s+and\s+|・/i)
+      .split(/[,、，\/／&＆;；]|\s+and\s+|[・·]/i)
       .map(x => x.trim())
       .filter(Boolean);
   }
@@ -138,12 +139,20 @@
   }
 
   // Build credit -> {count, selfArrangeCount} filtered by source ('all'|'topic'|'general').
+  // field === 'raw' = role-unassigned creditsRaw names (Phase B `·` parser output that did not resolve to a role).
   function buildCreditCount(data, field, sourceFilter) {
     const m = new Map();
+    const isRaw = field === 'raw';
     for (const d of data) {
-      if (!d.composer && !d.lyricist && !d.arranger) continue;
+      if (isRaw) {
+        // Show only records where creditsRaw exists AND no role got assigned (raw-only).
+        if (!d.creditsRaw) continue;
+        if (d.composer || d.lyricist || d.arranger) continue;
+      } else {
+        if (!d.composer && !d.lyricist && !d.arranger) continue;
+      }
       if (sourceFilter && sourceFilter !== 'all' && sourceOf(d) !== sourceFilter) continue;
-      const names = splitCreditField(d[field]);
+      const names = splitCreditField(isRaw ? d.creditsRaw : d[field]);
       if (!names.length) continue;
       const composers = new Set(splitCreditField(d.composer));
       const arrangers = new Set(splitCreditField(d.arranger));
