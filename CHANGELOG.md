@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.31.2 (2026-04-26)
+- Fix: continuation token抽出のフォールバックを追加
+  - 標準パスの `continuationItemRenderer` が見つからない場合、`stringify(ytInitialData)` および raw HTML 全体を正規表現でスキャン
+  - 既知の構造変化に追従
+
 ## v1.31.1 (2026-04-26)
 - Fix: ページング取得が初回100件で止まる問題を修正
   - 原因: continuation API への送信 context が最小構成 (`client.clientName/clientVersion`) で、YouTube側がリクエストを拒否していた可能性

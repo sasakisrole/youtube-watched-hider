@@ -813,6 +813,21 @@ function parseLikedPlaylistHtml(html) {
   for (const it of ext.items) items.push({ ...it, playlistIndex: it.playlistIndex || items.length + 1 });
   continuation = ext.continuation;
 
+  // Fallback 1: scan parsed JSON via stringify+regex if walker missed it
+  if (!continuation) {
+    try {
+      const s = JSON.stringify(data);
+      const m2 = s.match(/"continuationCommand":\{"token":"([^"]+)"/);
+      if (m2) continuation = m2[1];
+    } catch (_) {}
+  }
+
+  // Fallback 2: scan raw HTML
+  if (!continuation) {
+    const m3 = html.match(/"continuationCommand":\{"token":"([^"]+)"/);
+    if (m3) continuation = m3[1];
+  }
+
   return { items, ownerName, ownerHandle, ownerChannelId, continuation };
 }
 
