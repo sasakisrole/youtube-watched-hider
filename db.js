@@ -407,6 +407,24 @@ if (typeof WatchedDB === 'undefined') {
                 existing.channel = record.channel;
                 updated = true;
               }
+              if (record.firstWatchedAt && (!existing.firstWatchedAt || record.firstWatchedAt < existing.firstWatchedAt)) {
+                existing.firstWatchedAt = record.firstWatchedAt;
+                updated = true;
+              }
+              for (const field of ['composer', 'lyricist', 'arranger']) {
+                if (record[field] && !existing[field]) {
+                  existing[field] = record[field];
+                  updated = true;
+                }
+              }
+              if (record.creditsCheckedAt > (existing.creditsCheckedAt || 0)) {
+                existing.creditsCheckedAt = record.creditsCheckedAt;
+                updated = true;
+              }
+              if (record.creditsSource && !existing.creditsSource) {
+                existing.creditsSource = record.creditsSource;
+                updated = true;
+              }
               if (updated) store.put(existing);
               skipped++;
             }
@@ -439,7 +457,7 @@ if (typeof WatchedDB === 'undefined') {
               videoId: it.videoId,
               title: it.title || (existing && existing.title) || '',
               channel: it.channel || (existing && existing.channel) || '',
-              likedAt: it.likedAt || (existing && existing.likedAt) || Date.now(),
+              likedAt: (existing && existing.likedAt) || it.likedAt || Date.now(),
               accountId: accountId || (existing && existing.accountId) || '',
               syncedAt: Date.now(),
               playlistIndex: typeof it.playlistIndex === 'number' ? it.playlistIndex : (existing && existing.playlistIndex) || 0,

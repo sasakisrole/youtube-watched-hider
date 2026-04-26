@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.31.4 (2026-04-26)
+- Improve: Codexコードレビューの低リスク改修を反映（critical無し）
+  - XSS耐性: Analyzer/Popup/Historyの動的レンダリングを `innerHTML` → DOM API + `textContent` に置換
+  - 外部検索リンクに `rel="noopener"` 追加
+  - 動画リンク生成で `videoId` を `encodeURIComponent`（URL injection防止）
+  - `EXPORT_DATA` がエラー時に空配列でなく `{__error, message}` を返すよう統一（背景・history・popup）
+  - `mergeImport` が既存レコードに不足する `firstWatchedAt`・credit系フィールドを補完
+  - 高評価再同期時に既存 `likedAt` を上書きしない（並び順維持）
+  - 高評価同期前に `videoId` 重複排除
+  - README/privacy.html を v1.31.x の機能（IndexedDB/日次バックアップ/Fix Credits/高評価同期/contextMenus権限/認証付き同一オリジン通信）に追従
+
 ## v1.31.3 (2026-04-26)
 - Fix: 高評価プレイリスト（LL）ページングの本格修正
   - 原因1: 認証ヘッダ不足。LL は private playlist のため `Authorization: SAPISIDHASH` が必須

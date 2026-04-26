@@ -42,6 +42,14 @@ function showStatus(msg, isError = false) {
   setTimeout(() => { statusEl.textContent = ''; }, 3000);
 }
 
+function getExportRecords(data) {
+  if (data && data.__error) {
+    showStatus('DB error: ' + (data.message || 'unknown'), true);
+    return null;
+  }
+  return Array.isArray(data) ? data : [];
+}
+
 // Format date
 function formatDate(timestamp) {
   const d = new Date(timestamp);
@@ -121,7 +129,7 @@ function buildHistoryItem(video) {
 
   const a = document.createElement('a');
   a.className = 'history-link';
-  a.href = `https://www.youtube.com/watch?v=${video.videoId}`;
+  a.href = `https://www.youtube.com/watch?v=${encodeURIComponent(video.videoId)}`;
   a.target = '_blank';
   a.rel = 'noopener';
 
@@ -207,7 +215,7 @@ function renderHistoryBatch() {
 
 // Render history list (reset + first batch)
 function renderHistory(filter = '') {
-  historyList.innerHTML = '';
+  historyList.textContent = '';
   historyRenderedCount = 0;
   lastHistoryDateGroup = '';
 
@@ -219,7 +227,10 @@ function renderHistory(filter = '') {
     : allHistoryData;
 
   if (filteredHistoryData.length === 0) {
-    historyList.innerHTML = '<div class="history-empty">No videos found</div>';
+    const empty = document.createElement('div');
+    empty.className = 'history-empty';
+    empty.textContent = 'No videos found';
+    historyList.appendChild(empty);
     return;
   }
 
@@ -229,11 +240,14 @@ function renderHistory(filter = '') {
 // Load and show history
 function loadHistory() {
   chrome.runtime.sendMessage({ type: 'EXPORT_DATA' }, (data) => {
-    if (!data || data.length === 0) {
+    const records = getExportRecords(data);
+    if (!records) {
+      allHistoryData = [];
+    } else if (records.length === 0) {
       allHistoryData = [];
     } else {
       // Sort by most recent first
-      allHistoryData = data.sort((a, b) => b.watchedAt - a.watchedAt);
+      allHistoryData = records.sort((a, b) => b.watchedAt - a.watchedAt);
     }
     renderHistory(historySearch.value);
   });
@@ -306,7 +320,9 @@ viewerBtn.addEventListener('click', () => {
 // Export (versioned envelope format)
 exportBtn.addEventListener('click', () => {
   chrome.runtime.sendMessage({ type: 'EXPORT_DATA' }, (data) => {
-    if (!data || data.length === 0) {
+    const records = getExportRecords(data);
+    if (!records) return;
+    if (records.length === 0) {
       showStatus('No data to export', true);
       return;
     }
@@ -314,8 +330,8 @@ exportBtn.addEventListener('click', () => {
       schemaVersion: 1,
       exportedAt: new Date().toISOString(),
       appVersion: chrome.runtime.getManifest().version,
-      count: data.length,
-      records: data,
+      count: records.length,
+      records,
     };
     const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -324,7 +340,7 @@ exportBtn.addEventListener('click', () => {
     a.download = `yt-watched-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    showStatus(`Exported ${data.length} records`);
+    showStatus(`Exported ${records.length} records`);
   });
 });
 

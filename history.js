@@ -81,7 +81,7 @@ function buildVideoRow(video) {
 
   const a = document.createElement('a');
   a.className = 'video-link';
-  a.href = `https://www.youtube.com/watch?v=${video.videoId}`;
+  a.href = `https://www.youtube.com/watch?v=${encodeURIComponent(video.videoId)}`;
   a.target = '_blank';
   a.rel = 'noopener';
 
@@ -195,11 +195,15 @@ function render() {
   lastDateKeyRendered = '';
 
   if (sortedCache.length === 0) {
-    content.innerHTML = '<div class="empty">No videos found</div>';
+    content.textContent = '';
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = 'No videos found';
+    content.appendChild(empty);
     return;
   }
 
-  content.innerHTML = '';
+  content.textContent = '';
   renderBatch();
 }
 
@@ -444,7 +448,11 @@ function loadData() {
   const timeout = setTimeout(() => {
     if (!responded) {
       responded = true;
-      content.innerHTML = '<div class="empty">Could not load data. Make sure a YouTube tab is open and try reloading this page.</div>';
+      content.textContent = '';
+      const empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = 'Could not load data. Make sure a YouTube tab is open and try reloading this page.';
+      content.appendChild(empty);
     }
   }, 5000);
 
@@ -469,10 +477,11 @@ function loadData() {
         errDiv.className = 'empty';
         errDiv.style.padding = '24px';
         errDiv.style.lineHeight = '1.6';
-        errDiv.innerHTML = 'DB読み込みエラー: ' + (data.message || 'unknown') +
-          '<br><br><strong>復旧手順:</strong><br>' +
-          '1. すべてのYouTubeタブを<strong>閉じる</strong>（リロードではなく閉じる）<br>' +
-          '2. <code>chrome://extensions</code> で拡張をリロード<br>' +
+        errDiv.style.whiteSpace = 'pre-line';
+        errDiv.textContent = 'DB読み込みエラー: ' + (data.message || 'unknown') +
+          '\n\n復旧手順:\n' +
+          '1. すべてのYouTubeタブを閉じる（リロードではなく閉じる）\n' +
+          '2. chrome://extensions で拡張をリロード\n' +
           '3. 新しくYouTubeを開いてからこの画面を再読込';
         content.appendChild(errDiv);
         return;

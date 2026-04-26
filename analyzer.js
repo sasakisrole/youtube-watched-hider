@@ -10,8 +10,21 @@
     'Cover','cover','カバー','Topic','topic'
   ]);
 
-  function esc(s) {
-    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function appendCell(row, value) {
+    const td = document.createElement('td');
+    td.textContent = String(value);
+    row.appendChild(td);
+    return td;
+  }
+
+  function appendLink(cell, href, label) {
+    const a = document.createElement('a');
+    a.href = href;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.textContent = label;
+    cell.appendChild(a);
+    return a;
   }
 
   function extractKeywords(titles) {
@@ -50,22 +63,20 @@
     if (q) list = list.filter(([k]) => k.toLowerCase().includes(q));
     list.sort((a, b) => b[1] - a[1]);
 
-    tbody.innerHTML = '';
+    tbody.textContent = '';
     const frag = document.createDocumentFragment();
     list.slice(0, 300).forEach(([name, cnt], i) => {
       const clean = name.replace(/ - Topic$/, '');
       const qn = encodeURIComponent(clean);
       const qTopic = encodeURIComponent(clean + ' - Topic');
       const tr = document.createElement('tr');
-      tr.innerHTML =
-        `<td>${i + 1}</td>` +
-        `<td>${esc(name)}</td>` +
-        `<td>${cnt}</td>` +
-        `<td>` +
-          `<a href="https://www.youtube.com/results?search_query=${qTopic}&sp=EgIQAQ==" target="_blank">Topic検索</a>` +
-          `<a href="https://www.youtube.com/results?search_query=${qn}" target="_blank">YT</a>` +
-          `<a href="https://www.google.com/search?q=${qn}+similar+artists" target="_blank">類似</a>` +
-        `</td>`;
+      appendCell(tr, i + 1);
+      appendCell(tr, name);
+      appendCell(tr, cnt);
+      const links = appendCell(tr, '');
+      appendLink(links, `https://www.youtube.com/results?search_query=${qTopic}&sp=EgIQAQ==`, 'Topic検索');
+      appendLink(links, `https://www.youtube.com/results?search_query=${qn}`, 'YT');
+      appendLink(links, `https://www.google.com/search?q=${qn}+similar+artists`, '類似');
       frag.appendChild(tr);
     });
     tbody.appendChild(frag);
@@ -78,11 +89,13 @@
     if (q) list = list.filter(([k]) => k.toLowerCase().includes(q));
     list.sort((a, b) => b[1] - a[1]);
 
-    tbody.innerHTML = '';
+    tbody.textContent = '';
     const frag = document.createDocumentFragment();
     list.slice(0, 500).forEach(([name, cnt], i) => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${i + 1}</td><td>${esc(name)}</td><td>${cnt}</td>`;
+      appendCell(tr, i + 1);
+      appendCell(tr, name);
+      appendCell(tr, cnt);
       frag.appendChild(tr);
     });
     tbody.appendChild(frag);
@@ -93,11 +106,17 @@
     const titles = data.filter(d => topicSet.has(d.channel)).map(d => d.title || '');
     const kws = extractKeywords(titles).slice(0, 80);
     const box = document.getElementById('azKwList');
-    box.innerHTML = '';
+    box.textContent = '';
     kws.forEach(([w, c]) => {
       const el = document.createElement('div');
       el.className = 'az-kw';
-      el.innerHTML = `<span>${esc(w)}</span><span class="w">${c}</span>`;
+      const word = document.createElement('span');
+      word.textContent = w;
+      const count = document.createElement('span');
+      count.className = 'w';
+      count.textContent = c;
+      el.appendChild(word);
+      el.appendChild(count);
       box.appendChild(el);
     });
   }
@@ -156,17 +175,16 @@
       `${totalPeople.toLocaleString()}人 / ${totalPlays.toLocaleString()}再生`;
 
     const tbody = document.querySelector('#azCreditsTable tbody');
-    tbody.innerHTML = '';
+    tbody.textContent = '';
     const frag = document.createDocumentFragment();
     list.slice(0, 500).forEach(([name, v], i) => {
       const tr = document.createElement('tr');
       const rate = v.count ? Math.round(v.self / v.count * 100) : 0;
       const selfCell = v.self ? `${v.self} (${rate}%)` : '-';
-      tr.innerHTML =
-        `<td>${i + 1}</td>` +
-        `<td>${esc(name)}</td>` +
-        `<td>${v.count}</td>` +
-        `<td style="color:#888;">${selfCell}</td>`;
+      appendCell(tr, i + 1);
+      appendCell(tr, name);
+      appendCell(tr, v.count);
+      appendCell(tr, selfCell).style.color = '#888';
       frag.appendChild(tr);
     });
     tbody.appendChild(frag);
@@ -242,12 +260,14 @@
     document.getElementById('azLikedArtists').textContent = ch.size.toLocaleString();
 
     const tbody = document.querySelector('#azLikedTable tbody');
-    tbody.innerHTML = '';
+    tbody.textContent = '';
     const list = [...ch.entries()].sort((a, b) => b[1] - a[1]).slice(0, 200);
     const frag = document.createDocumentFragment();
     list.forEach(([name, cnt], i) => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${i + 1}</td><td>${esc(name)}</td><td>${cnt}</td>`;
+      appendCell(tr, i + 1);
+      appendCell(tr, name);
+      appendCell(tr, cnt);
       frag.appendChild(tr);
     });
     tbody.appendChild(frag);

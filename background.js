@@ -194,7 +194,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'EXPORT_DATA') {
     sendToYouTubeTab({ type: 'EXPORT_DATA' })
       .then((data) => sendResponse(data || []))
-      .catch(() => sendResponse([]));
+      .catch((e) => sendResponse({ __error: true, message: e.message || String(e) }));
     return true;
   }
 
@@ -928,6 +928,14 @@ async function syncLikedPlaylist({ confirmAccountChange, maxPages } = {}) {
     continuation = ext.continuation;
   }
 
+  const uniqueItems = [];
+  const seenFinal = new Set();
+  for (const it of allItems) {
+    if (!it.videoId || seenFinal.has(it.videoId)) continue;
+    seenFinal.add(it.videoId);
+    uniqueItems.push({ ...it, playlistIndex: it.playlistIndex || uniqueItems.length + 1 });
+  }
+
   const accountId = parsed.ownerChannelId || parsed.ownerHandle || parsed.ownerName || 'unknown';
 
   // Account-change detection
@@ -937,13 +945,13 @@ async function syncLikedPlaylist({ confirmAccountChange, maxPages } = {}) {
       success: false,
       reason: 'account-changed',
       previous: meta,
-      current: { accountId, ownerName: parsed.ownerName, ownerHandle: parsed.ownerHandle, ownerChannelId: parsed.ownerChannelId, count: allItems.length },
+      current: { accountId, ownerName: parsed.ownerName, ownerHandle: parsed.ownerHandle, ownerChannelId: parsed.ownerChannelId, count: uniqueItems.length },
     };
   }
 
   // Approximate likedAt: assume newest-first ordering; assign decreasing offsets.
   const now = Date.now();
-  const enriched = allItems.map((it, idx) => ({ ...it, likedAt: now - idx * 1000 }));
+  const enriched = uniqueItems.map((it, idx) => ({ ...it, likedAt: now - idx * 1000 }));
 
   const upsertResp = await sendToYouTubeTab({ type: 'UPSERT_LIKED', items: enriched, accountId });
   if (!upsertResp || !upsertResp.success) {
@@ -956,13 +964,13 @@ async function syncLikedPlaylist({ confirmAccountChange, maxPages } = {}) {
     ownerHandle: parsed.ownerHandle,
     ownerChannelId: parsed.ownerChannelId,
     lastSyncedAt: now,
-    count: allItems.length,
+    count: uniqueItems.length,
   };
   await new Promise((r) => chrome.storage.local.set({ likedSyncMeta: newMeta }, r));
 
   return {
     success: true,
-    fetched: allItems.length,
+    fetched: uniqueItems.length,
     added: upsertResp.added || 0,
     pages: page,
     errors,

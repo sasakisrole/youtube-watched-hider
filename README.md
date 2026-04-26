@@ -9,7 +9,7 @@
 ---
 
 YouTubeのおすすめから**視聴済み動画を非表示**にするChrome拡張機能。
-視聴履歴はブラウザのローカルストレージにのみ保存され、外部には一切送信しません。
+視聴履歴はブラウザ内の IndexedDB にのみ保存され、外部には一切送信しません。
 
 ## 主な機能
 
@@ -22,13 +22,15 @@ YouTubeのおすすめから**視聴済み動画を非表示**にするChrome拡
 - 視聴済み動画をカレンダー形式で一覧・検索・ソート
 - 個別削除、再生回数順・チャンネル名順などの並び替え
 - エクスポート／インポート（JSON）で端末間移行も可能
-- **自動バックアップ**：毎週JSONをダウンロードフォルダに書き出し
+- **自動バックアップ**：毎日JSONをダウンロードフォルダに書き出し
 - **Fix Channels**：YouTube oEmbed APIを使ってチャンネル名の欠損を補完
+- **Fix Credits**：概要欄から作曲・作詞・編曲クレジットを補完
 
 ### Music Taste Analyzer（v1.21.0〜）
 Historyビューアーの「Analyze」ボタンから起動する音楽傾向分析ビュー。
 - YouTube Topicチャンネル（`アーティスト名 - Topic`）を抽出してアーティストランキング表示
 - 全チャンネルランキング、タイトル頻出キーワード抽出
+- 高評価プレイリスト（LL）を同期し、高評価チャンネルランキングを表示
 - Top40アーティストを組み込んだ**Claude推薦用プロンプト**を生成（コピー→Claudeに貼るだけ）
 
 ## インストール（開発者モード）
@@ -51,12 +53,13 @@ Historyビューアーの「Analyze」ボタンから起動する音楽傾向分
 
 ## プライバシー
 
-- **データは全てブラウザ内（`chrome.storage.local`）に保存**
+- **データは全てブラウザ内（IndexedDB / `chrome.storage.local`）に保存**
 - 第三者への送信は一切ありません
 - 外部通信は以下のみ：
   - **YouTube oEmbed API**（`https://www.youtube.com/oembed`）：タイトル/チャンネル名の補完
   - **YouTube watchページHTML取得**：埋め込み禁止動画のメタデータ抽出フォールバック
-  - どちらもYouTube公式の公開エンドポイントで、認証情報は一切送信しません
+  - **YouTube playlist / Innertube browse API**：ユーザー操作時の高評価プレイリスト同期
+  - 認証が必要な高評価同期では、YouTubeページ上のcontent scriptからYouTube自身へ同一オリジン通信します。認証ヘッダは外部サーバーには送信・保存しません
 - Analyzeの「プロンプトコピー」は**ローカルのクリップボードに書き込むだけ**。自動送信はしません
 
 ## 必要な権限
@@ -65,15 +68,16 @@ Historyビューアーの「Analyze」ボタンから起動する音楽傾向分
 |---|---|
 | `storage` | 視聴履歴と設定の保存 |
 | `downloads` | 手動エクスポート / 自動バックアップのJSONダウンロード |
-| `alarms` | 週次自動バックアップのスケジュール |
-| `*://*.youtube.com/*` | YouTube内DOMの操作と公式APIアクセス |
+| `alarms` | 日次自動バックアップのスケジュール |
+| `contextMenus` | 動画リンク右クリックメニュー（キューに追加 / 後で見る）の追加 |
+| `*://*.youtube.com/*` | YouTube内DOMの操作とYouTube公式エンドポイントへのアクセス |
 
 ## 技術的な注意
 
 - Manifest V3
 - IndexedDB（`db.js`）で視聴履歴を管理
 - service workerベース（`background.js`）
-- バックアップは `chrome.storage.local` 上のBlob URL生成後ダウンロード
+- バックアップは service worker からJSON data URLを生成し、`chrome.downloads.download` で保存
 
 ## 非公式ツールについて
 

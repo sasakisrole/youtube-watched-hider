@@ -34,7 +34,7 @@
 <body>
 
 <h1>プライバシーポリシー / Privacy Policy — YouTube Watched Hider</h1>
-<p class="meta">最終更新 / Last updated: 2026-04-18</p>
+<p class="meta">最終更新 / Last updated: 2026-04-26</p>
 
 <h2>日本語</h2>
 <p>本拡張機能「YouTube Watched Hider」（以下「本拡張」）は、利用者のプライバシーを最大限尊重します。</p>
@@ -46,16 +46,19 @@
 <p>以下のデータを、ブラウザ内（<code>chrome.storage.local</code> および IndexedDB）にのみ保存します。</p>
 <ul>
   <li>視聴した YouTube 動画の ID・タイトル・チャンネル名・視聴日時</li>
+  <li>ユーザー操作により同期した高評価動画の ID・タイトル・チャンネル名・同期日時</li>
   <li>本拡張の設定値（非表示トグルの状態など）</li>
 </ul>
 <p>これらは利用者の端末内に閉じており、本拡張の開発者を含む第三者は一切アクセスできません。</p>
 
 <h3>外部通信</h3>
-<p>本拡張は、以下の YouTube 公式公開エンドポイントにのみ通信します。いずれも認証情報（Cookie・トークン等）は送信しません。</p>
+<p>本拡張は、機能実行に必要な範囲で YouTube 公式エンドポイントにのみ通信します。</p>
 <ul>
   <li><code>https://www.youtube.com/oembed</code> — 動画タイトル / チャンネル名の補完取得</li>
   <li><code>https://www.youtube.com/watch?v=...</code> — 埋め込み禁止動画のメタデータ取得フォールバック</li>
+  <li><code>https://www.youtube.com/playlist?list=LL</code> および <code>https://www.youtube.com/youtubei/v1/browse</code> — ユーザー操作時の高評価プレイリスト同期</li>
 </ul>
+<p>YouTubeページ上で実行される content script から YouTube 自身へ同一オリジン通信する場合、ブラウザが YouTube の Cookie または認証ヘッダを付与することがあります。これらは YouTube 以外の外部サーバー、本拡張の開発者、第三者には送信・保存されません。</p>
 
 <h3>データの削除</h3>
 <p>拡張機能をアンインストールすると、保存された全データは Chrome によって自動的に削除されます。拡張のポップアップ内「Export / Clear」機能からも個別に削除可能です。</p>
@@ -67,8 +70,8 @@
 <hr>
 
 <h2>English</h2>
-<p>This extension ("YouTube Watched Hider") does <strong>not</strong> collect, transmit, or share any personal data. All watch history and settings are stored locally in the browser (<code>chrome.storage.local</code> / IndexedDB) and never leave the user's device.</p>
-<p>External requests are limited to YouTube's public <code>oembed</code> endpoint and public <code>watch</code> page HTML, used solely to enrich locally-stored titles and channel names. No cookies or authentication tokens are transmitted.</p>
+<p>This extension ("YouTube Watched Hider") does <strong>not</strong> collect, transmit, or share any personal data. Watch history, liked-video sync data, and settings are stored locally in the browser (<code>chrome.storage.local</code> / IndexedDB) and never leave the user's device except for requests made directly to YouTube to provide the requested feature.</p>
+<p>External requests are limited to YouTube endpoints such as <code>oembed</code>, public <code>watch</code> page HTML, <code>playlist?list=LL</code>, and <code>youtubei/v1/browse</code>. When the extension proxies same-origin requests from a YouTube tab, the browser may attach YouTube cookies or an authorization header for YouTube only. These credentials are never sent to the developer or any third party and are not stored by the extension.</p>
 <p>Uninstalling the extension removes all stored data.</p>
 <p>Contact: <a href="https://github.com/sasakisrole/youtube-watched-hider/issues">https://github.com/sasakisrole/youtube-watched-hider/issues</a></p>
 
