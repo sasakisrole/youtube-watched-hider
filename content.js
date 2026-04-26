@@ -1549,6 +1549,28 @@ window._ytWatchedHider = (() => {
     setTimeout(processPage, 500);
   }
 
+  // SAPISIDHASH header for authenticated YouTube Innertube API calls.
+  // Required for private endpoints like the Liked Videos (LL) playlist.
+  // Algorithm: SHA1("<unix_seconds> <SAPISID> https://www.youtube.com")
+  async function computeSapisidHash() {
+    try {
+      const cookies = document.cookie.split(';').map(c => c.trim());
+      const get = (name) => {
+        const f = cookies.find(c => c.startsWith(name + '='));
+        return f ? f.slice(name.length + 1) : '';
+      };
+      const sapisid = get('SAPISID') || get('__Secure-3PAPISID') || get('__Secure-1PAPISID');
+      if (!sapisid) return null;
+      const ts = Math.floor(Date.now() / 1000);
+      const data = `${ts} ${sapisid} https://www.youtube.com`;
+      const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(data));
+      const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+      return `SAPISIDHASH ${ts}_${hash}`;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // Listen for messages from background script
   function onMessage(message, sender, sendResponse) {
     if (message.type === 'VIDEO_DETECTED') {
@@ -1707,13 +1729,23 @@ window._ytWatchedHider = (() => {
     }
 
     if (message.type === 'FETCH_INNERTUBE_BROWSE') {
-      // Proxy POST to youtubei/v1/browse so it carries user cookies (LL is private).
+      // Proxy POST to youtubei/v1/browse with full auth headers (LL is private).
       (async () => {
         try {
           const url = `https://www.youtube.com/youtubei/v1/browse?prettyPrint=false${message.apiKey ? '&key=' + encodeURIComponent(message.apiKey) : ''}`;
+          const headers = {
+            'Content-Type': 'application/json',
+            'X-YouTube-Client-Name': '1',
+            'X-Origin': 'https://www.youtube.com',
+            'X-Goog-AuthUser': '0',
+          };
+          if (message.clientVersion) headers['X-YouTube-Client-Version'] = message.clientVersion;
+          const auth = await computeSapisidHash();
+          if (auth) headers['Authorization'] = auth;
           const res = await fetch(url, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers,
+            credentials: 'include',
             body: JSON.stringify(message.body || {}),
           });
           if (!res.ok) {

@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.31.3 (2026-04-26)
+- Fix: 高評価プレイリスト（LL）ページングの本格修正
+  - 原因1: 認証ヘッダ不足。LL は private playlist のため `Authorization: SAPISIDHASH` が必須
+  - 原因2: `X-YouTube-Client-Version` / `X-Origin` / `X-Goog-AuthUser` ヘッダ不足でinnertube APIに拒否される
+  - 原因3: 初期HTMLに continuation token が無く、初回 `browse?browseId=VLLL` POSTで取得する設計が必要
+  - 原因4: 2024+ で continuation が `commandExecutorCommand.commands[].continuationCommand.token` にラップされる新形式があり、直接 `.continuationCommand.token` 参照だと取りこぼす（yt-dlp PR #12777）
+- 修正:
+  - `content.js` に `computeSapisidHash()` 追加（SAPISID Cookie + SHA-1 で `SAPISIDHASH timestamp_hash` ヘッダを生成）
+  - `FETCH_INNERTUBE_BROWSE` でAuthorization・X-YouTube-Client-Name/Version・X-Origin・X-Goog-AuthUser を送信
+  - `syncLikedPlaylist` で初期HTMLに continuation が無い場合 `browseId: VLLL` で初回POSTを実行
+  - continuation抽出を再帰的に行い `commandExecutorCommand` 配下も走査
+- 参考: yt-dlp `_tab.py` の `generate_api_headers` / Issue #8732 / Issue #25175
+
 ## v1.31.2 (2026-04-26)
 - Fix: continuation token抽出のフォールバックを追加
   - 標準パスの `continuationItemRenderer` が見つからない場合、`stringify(ytInitialData)` および raw HTML 全体を正規表現でスキャン

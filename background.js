@@ -685,6 +685,17 @@ chrome.runtime.onConnect.addListener((port) => {
 });
 
 // --- Liked playlist sync (LL = Liked Videos) ---
+function findFirstContinuationToken(node) {
+  if (!node || typeof node !== 'object') return null;
+  if (node.continuationCommand && node.continuationCommand.token) return node.continuationCommand.token;
+  if (Array.isArray(node)) {
+    for (const v of node) { const t = findFirstContinuationToken(v); if (t) return t; }
+    return null;
+  }
+  for (const k in node) { const t = findFirstContinuationToken(node[k]); if (t) return t; }
+  return null;
+}
+
 // Walks any ytInitialData / continuation response payload and pulls all
 // playlistVideoRenderer items + the next continuation token if present.
 function extractItemsAndContinuation(data) {
@@ -711,9 +722,9 @@ function extractItemsAndContinuation(data) {
       return;
     }
     if (node.continuationItemRenderer) {
-      const t = node.continuationItemRenderer.continuationEndpoint
-        && node.continuationItemRenderer.continuationEndpoint.continuationCommand
-        && node.continuationItemRenderer.continuationEndpoint.continuationCommand.token;
+      // 2024+ structure may wrap the token in commandExecutorCommand.commands[]
+      // (yt-dlp PR #12777). Walk the renderer body for any continuationCommand.token.
+      const t = findFirstContinuationToken(node.continuationItemRenderer);
       if (t && !continuation) continuation = t;
       return;
     }
@@ -857,6 +868,36 @@ async function syncLikedPlaylist({ confirmAccountChange, maxPages } = {}) {
   const baseContext = ytcfg.context
     || { client: { clientName: ytcfg.clientName, clientVersion: ytcfg.clientVersion, hl: 'ja', gl: 'JP' } };
 
+  // If the initial HTML didn't expose a continuation token (LL often doesn't
+  // ship one in the static HTML — it requires an authenticated browse POST),
+  // ask the API for the full LL response which carries the first continuation.
+  if (!continuation) {
+    try {
+      const initResp = await sendToYouTubeTab({
+        type: 'FETCH_INNERTUBE_BROWSE',
+        apiKey: ytcfg.apiKey,
+        clientVersion: ytcfg.clientVersion,
+        body: { context: baseContext, browseId: 'VLLL' },
+      });
+      if (initResp && initResp.success && initResp.data) {
+        const ext0 = extractItemsAndContinuation(initResp.data);
+        // The browse response often carries a fuller item set than HTML; merge dedup.
+        const seen = new Set(allItems.map(x => x.videoId));
+        for (const it of ext0.items) {
+          if (!seen.has(it.videoId)) {
+            allItems.push({ ...it, playlistIndex: it.playlistIndex || allItems.length + 1 });
+            seen.add(it.videoId);
+          }
+        }
+        continuation = ext0.continuation;
+      } else if (initResp && !initResp.success) {
+        errors.push('init-browse: ' + (initResp.reason || 'unknown'));
+      }
+    } catch (e) {
+      errors.push('init-browse: ' + e.message);
+    }
+  }
+
   while (continuation && page < cap) {
     page++;
     let contResp;
@@ -864,6 +905,7 @@ async function syncLikedPlaylist({ confirmAccountChange, maxPages } = {}) {
       contResp = await sendToYouTubeTab({
         type: 'FETCH_INNERTUBE_BROWSE',
         apiKey: ytcfg.apiKey,
+        clientVersion: ytcfg.clientVersion,
         body: { context: baseContext, continuation },
       });
     } catch (e) {
