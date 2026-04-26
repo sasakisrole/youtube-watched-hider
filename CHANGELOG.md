@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.31.1 (2026-04-26)
+- Fix: ページング取得が初回100件で止まる問題を修正
+  - 原因: continuation API への送信 context が最小構成 (`client.clientName/clientVersion`) で、YouTube側がリクエストを拒否していた可能性
+  - 修正: HTMLから `INNERTUBE_CONTEXT` フルオブジェクトをbalanced-brace抽出して送信
+  - 同期完了時に diagnostics（continuation検出有無・apiKey有無・context有無）を console に出力
+
 ## v1.31.0 (2026-04-26)
 - Feature: 高評価プレイリストのページング対応（過去分まで遡れる）
   - `youtubei/v1/browse` API のcontinuation tokenを使って2ページ目以降を取得

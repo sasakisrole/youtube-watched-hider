@@ -723,11 +723,46 @@ function extractItemsAndContinuation(data) {
   return { items, continuation };
 }
 
+// Extract the full INNERTUBE_CONTEXT object from HTML by balanced-matching braces
+// starting at the key. The minimal {client:{clientName,clientVersion}} subset
+// is rejected by some browse endpoints, so we forward the complete context.
+function extractInnertubeContext(html) {
+  const key = '"INNERTUBE_CONTEXT":';
+  const i = html.indexOf(key);
+  if (i === -1) return null;
+  let p = i + key.length;
+  while (p < html.length && html[p] !== '{') p++;
+  if (html[p] !== '{') return null;
+  let depth = 0;
+  let inStr = false;
+  let escape = false;
+  for (let j = p; j < html.length; j++) {
+    const c = html[j];
+    if (escape) { escape = false; continue; }
+    if (inStr) {
+      if (c === '\\') escape = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth === 0) {
+        const slice = html.slice(p, j + 1);
+        try { return JSON.parse(slice); } catch (_) { return null; }
+      }
+    }
+  }
+  return null;
+}
+
 function extractYtcfg(html) {
   const apiKey = (html.match(/"INNERTUBE_API_KEY":"([^"]+)"/) || [])[1] || '';
   const clientName = (html.match(/"INNERTUBE_CLIENT_NAME":"([^"]+)"/) || [])[1] || 'WEB';
   const clientVersion = (html.match(/"INNERTUBE_CLIENT_VERSION":"([^"]+)"/) || [])[1] || '';
-  return { apiKey, clientName, clientVersion };
+  const context = extractInnertubeContext(html);
+  return { apiKey, clientName, clientVersion, context };
 }
 
 // Parses ytInitialData from the playlist HTML and extracts video items + owner identity.
@@ -803,6 +838,10 @@ async function syncLikedPlaylist({ confirmAccountChange, maxPages } = {}) {
   let page = 1;
   const errors = [];
 
+  // Prefer the full INNERTUBE_CONTEXT extracted from HTML; fall back to a minimal one.
+  const baseContext = ytcfg.context
+    || { client: { clientName: ytcfg.clientName, clientVersion: ytcfg.clientVersion, hl: 'ja', gl: 'JP' } };
+
   while (continuation && page < cap) {
     page++;
     let contResp;
@@ -810,10 +849,7 @@ async function syncLikedPlaylist({ confirmAccountChange, maxPages } = {}) {
       contResp = await sendToYouTubeTab({
         type: 'FETCH_INNERTUBE_BROWSE',
         apiKey: ytcfg.apiKey,
-        body: {
-          context: { client: { clientName: ytcfg.clientName, clientVersion: ytcfg.clientVersion, hl: 'ja', gl: 'JP' } },
-          continuation,
-        },
+        body: { context: baseContext, continuation },
       });
     } catch (e) {
       errors.push('page-' + page + ': ' + e.message);
@@ -824,7 +860,11 @@ async function syncLikedPlaylist({ confirmAccountChange, maxPages } = {}) {
       break;
     }
     const ext = extractItemsAndContinuation(contResp.data);
-    if (!ext.items.length) break;
+    if (!ext.items.length) {
+      // No items but maybe continuation came back — log and stop to avoid infinite loops.
+      errors.push('page-' + page + ': empty-page');
+      break;
+    }
     for (const it of ext.items) {
       allItems.push({ ...it, playlistIndex: it.playlistIndex || allItems.length + 1 });
     }
@@ -869,6 +909,12 @@ async function syncLikedPlaylist({ confirmAccountChange, maxPages } = {}) {
     added: upsertResp.added || 0,
     pages: page,
     errors,
+    diagnostics: {
+      initialContinuation: !!parsed.continuation,
+      ytcfgApiKey: !!ytcfg.apiKey,
+      ytcfgContext: !!ytcfg.context,
+      clientVersion: ytcfg.clientVersion,
+    },
     accountId,
     ownerName: parsed.ownerName,
     ownerHandle: parsed.ownerHandle,

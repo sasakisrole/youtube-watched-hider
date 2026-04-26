@@ -448,6 +448,7 @@
         const errTag = resp.errors && resp.errors.length ? ` / 警告${resp.errors.length}件` : '';
         msg.textContent = `同期完了: 取得${resp.fetched}件 / 新規${resp.added}件 / ${resp.pages || 1}ページ${errTag}`;
         if (resp.errors && resp.errors.length) console.warn('[liked-sync errors]', resp.errors);
+        if (resp.diagnostics) console.info('[liked-sync diagnostics]', resp.diagnostics);
         await loadLiked();
         renderLikedPanel();
         // Re-render prompt so the liked section reflects new data
