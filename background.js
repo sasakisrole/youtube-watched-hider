@@ -479,13 +479,25 @@ async function fixChannelsBatch(videoIds, force, onProgress) {
 // --- Topic credits (composer/lyricist/arranger) extraction ---
 // Reads ytInitialPlayerResponse.videoDetails.shortDescription from the
 // watch page HTML and parses the auto-generated Topic credit lines.
+function cleanCreditLine(s) {
+  if (!s) return '';
+  let out = s;
+  // Strip parenthesized URLs / Twitter handles: "(Twitter: https://...)", "(https://t.co/...)", "(twitter.com/...)"
+  out = out.replace(/[\(（][^()（）]*(?:https?:\/\/|twitter\.com|x\.com|t\.co\/|Twitter\s*[:：])[^()（）]*[\)）]/gi, '');
+  // Strip bare URLs that may remain
+  out = out.replace(/https?:\/\/\S+/gi, '');
+  // Collapse whitespace and trailing separator junk
+  out = out.replace(/\s+/g, ' ').replace(/\s*([,、，\/／])\s*/g, '$1').replace(/[,、，\/／]+$/, '').trim();
+  return out;
+}
+
 function parseCreditsFromDescription(desc) {
   if (!desc) return { composer: '', lyricist: '', arranger: '' };
   const pick = (labels) => {
     for (const label of labels) {
       const re = new RegExp('(?:^|\\n)\\s*' + label + '\\s*[:：]\\s*([^\\n]+)', 'i');
       const m = desc.match(re);
-      if (m) return m[1].trim();
+      if (m) return cleanCreditLine(m[1]);
     }
     return '';
   };

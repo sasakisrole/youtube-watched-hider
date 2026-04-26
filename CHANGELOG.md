@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.29.1 (2026-04-26)
+- Fix: Fix Credits 抽出時に Twitter URL・括弧内URLをクリーンアップ
+  - `parseCreditsFromDescription` で `(Twitter: https://...)` 等を抽出時点で除去
+  - Analyzer 側のサニタイズと二重ガード（既存データもAnalyzer側で除外される）
+  - 今後 Fix Credits を再実行した videoId からはノイズが入らなくなる
+
 ## v1.29.0 (2026-04-26)
 - Improve: Analyzer「次に聴くべきアーティスト」プロンプトを大幅刷新
   - 旧「音楽系と思われる一般チャンネル Top15」はクレジット紐づき率40%以上＆5件以上の条件で再フィルタ → 実況・ラジオ等の混入を排除
