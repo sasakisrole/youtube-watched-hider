@@ -685,20 +685,66 @@ chrome.runtime.onConnect.addListener((port) => {
 });
 
 // --- Liked playlist sync (LL = Liked Videos) ---
+// Walks any ytInitialData / continuation response payload and pulls all
+// playlistVideoRenderer items + the next continuation token if present.
+function extractItemsAndContinuation(data) {
+  const items = [];
+  let continuation = '';
+  function walk(node) {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) { for (const v of node) walk(v); return; }
+    if (node.playlistVideoRenderer) {
+      const r = node.playlistVideoRenderer;
+      const videoId = r.videoId;
+      if (videoId) {
+        let title = '';
+        if (r.title && r.title.runs && r.title.runs[0]) title = r.title.runs[0].text || '';
+        else if (r.title && r.title.simpleText) title = r.title.simpleText;
+        let channel = '';
+        if (r.shortBylineText && r.shortBylineText.runs && r.shortBylineText.runs[0]) {
+          channel = r.shortBylineText.runs[0].text || '';
+        }
+        const indexStr = (r.index && r.index.simpleText) || '';
+        const playlistIndex = parseInt(indexStr, 10) || 0;
+        items.push({ videoId, title, channel, playlistIndex });
+      }
+      return;
+    }
+    if (node.continuationItemRenderer) {
+      const t = node.continuationItemRenderer.continuationEndpoint
+        && node.continuationItemRenderer.continuationEndpoint.continuationCommand
+        && node.continuationItemRenderer.continuationEndpoint.continuationCommand.token;
+      if (t && !continuation) continuation = t;
+      return;
+    }
+    for (const k in node) walk(node[k]);
+  }
+  walk(data);
+  return { items, continuation };
+}
+
+function extractYtcfg(html) {
+  const apiKey = (html.match(/"INNERTUBE_API_KEY":"([^"]+)"/) || [])[1] || '';
+  const clientName = (html.match(/"INNERTUBE_CLIENT_NAME":"([^"]+)"/) || [])[1] || 'WEB';
+  const clientVersion = (html.match(/"INNERTUBE_CLIENT_VERSION":"([^"]+)"/) || [])[1] || '';
+  return { apiKey, clientName, clientVersion };
+}
+
 // Parses ytInitialData from the playlist HTML and extracts video items + owner identity.
 function parseLikedPlaylistHtml(html) {
   const items = [];
   let ownerName = '';
   let ownerHandle = '';
   let ownerChannelId = '';
+  let continuation = '';
 
   // Locate ytInitialData JSON (varies between "var ytInitialData = {...};" and "ytInitialData = {...};")
   const m = html.match(/(?:var\s+)?ytInitialData\s*=\s*(\{[\s\S]*?\});\s*<\/script>/);
-  if (!m) return { items, ownerName, ownerHandle, ownerChannelId, error: 'no-ytInitialData' };
+  if (!m) return { items, ownerName, ownerHandle, ownerChannelId, continuation, error: 'no-ytInitialData' };
 
   let data;
   try { data = JSON.parse(m[1]); }
-  catch (e) { return { items, ownerName, ownerHandle, ownerChannelId, error: 'parse-failed' }; }
+  catch (e) { return { items, ownerName, ownerHandle, ownerChannelId, continuation, error: 'parse-failed' }; }
 
   // Owner identity (best-effort across UI variants)
   try {
@@ -728,35 +774,14 @@ function parseLikedPlaylistHtml(html) {
     }
   } catch (_) { /* tolerate structure changes */ }
 
-  // Video items: walk into the playlistVideoListRenderer contents
-  function walk(node) {
-    if (!node || typeof node !== 'object') return;
-    if (Array.isArray(node)) { for (const v of node) walk(v); return; }
-    if (node.playlistVideoRenderer) {
-      const r = node.playlistVideoRenderer;
-      const videoId = r.videoId;
-      if (videoId) {
-        let title = '';
-        if (r.title && r.title.runs && r.title.runs[0]) title = r.title.runs[0].text || '';
-        else if (r.title && r.title.simpleText) title = r.title.simpleText;
-        let channel = '';
-        if (r.shortBylineText && r.shortBylineText.runs && r.shortBylineText.runs[0]) {
-          channel = r.shortBylineText.runs[0].text || '';
-        }
-        const indexStr = (r.index && r.index.simpleText) || '';
-        const playlistIndex = parseInt(indexStr, 10) || items.length + 1;
-        items.push({ videoId, title, channel, playlistIndex });
-        return;
-      }
-    }
-    for (const k in node) walk(node[k]);
-  }
-  walk(data);
+  const ext = extractItemsAndContinuation(data);
+  for (const it of ext.items) items.push({ ...it, playlistIndex: it.playlistIndex || items.length + 1 });
+  continuation = ext.continuation;
 
-  return { items, ownerName, ownerHandle, ownerChannelId };
+  return { items, ownerName, ownerHandle, ownerChannelId, continuation };
 }
 
-async function syncLikedPlaylist({ confirmAccountChange } = {}) {
+async function syncLikedPlaylist({ confirmAccountChange, maxPages } = {}) {
   let resp;
   try {
     resp = await sendToYouTubeTab({ type: 'FETCH_PLAYLIST_HTML', listId: 'LL' });
@@ -766,12 +791,47 @@ async function syncLikedPlaylist({ confirmAccountChange } = {}) {
   if (!resp || !resp.success) {
     return { success: false, reason: (resp && resp.reason) || 'fetch-failed' };
   }
-  const { items, ownerName, ownerHandle, ownerChannelId, error } =
-    parseLikedPlaylistHtml(resp.html || '');
-  if (error) return { success: false, reason: error };
-  if (!items.length) return { success: false, reason: 'no-items' };
+  const html = resp.html || '';
+  const parsed = parseLikedPlaylistHtml(html);
+  if (parsed.error) return { success: false, reason: parsed.error };
+  if (!parsed.items.length) return { success: false, reason: 'no-items' };
 
-  const accountId = ownerChannelId || ownerHandle || ownerName || 'unknown';
+  const ytcfg = extractYtcfg(html);
+  const allItems = [...parsed.items];
+  let continuation = parsed.continuation;
+  const cap = typeof maxPages === 'number' ? maxPages : 50; // 50 pages × ~100 = up to 5000 items
+  let page = 1;
+  const errors = [];
+
+  while (continuation && page < cap) {
+    page++;
+    let contResp;
+    try {
+      contResp = await sendToYouTubeTab({
+        type: 'FETCH_INNERTUBE_BROWSE',
+        apiKey: ytcfg.apiKey,
+        body: {
+          context: { client: { clientName: ytcfg.clientName, clientVersion: ytcfg.clientVersion, hl: 'ja', gl: 'JP' } },
+          continuation,
+        },
+      });
+    } catch (e) {
+      errors.push('page-' + page + ': ' + e.message);
+      break;
+    }
+    if (!contResp || !contResp.success) {
+      errors.push('page-' + page + ': ' + ((contResp && contResp.reason) || 'unknown'));
+      break;
+    }
+    const ext = extractItemsAndContinuation(contResp.data);
+    if (!ext.items.length) break;
+    for (const it of ext.items) {
+      allItems.push({ ...it, playlistIndex: it.playlistIndex || allItems.length + 1 });
+    }
+    continuation = ext.continuation;
+  }
+
+  const accountId = parsed.ownerChannelId || parsed.ownerHandle || parsed.ownerName || 'unknown';
 
   // Account-change detection
   const meta = await new Promise((r) => chrome.storage.local.get({ likedSyncMeta: null }, (x) => r(x.likedSyncMeta)));
@@ -780,37 +840,39 @@ async function syncLikedPlaylist({ confirmAccountChange } = {}) {
       success: false,
       reason: 'account-changed',
       previous: meta,
-      current: { accountId, ownerName, ownerHandle, ownerChannelId, count: items.length },
+      current: { accountId, ownerName: parsed.ownerName, ownerHandle: parsed.ownerHandle, ownerChannelId: parsed.ownerChannelId, count: allItems.length },
     };
   }
 
-  // Approximate likedAt: assume playlist is newest-first; assign decreasing offsets from now.
+  // Approximate likedAt: assume newest-first ordering; assign decreasing offsets.
   const now = Date.now();
-  const enriched = items.map((it, idx) => ({
-    ...it,
-    likedAt: now - idx * 1000, // 1s apart, just for sorting
-  }));
+  const enriched = allItems.map((it, idx) => ({ ...it, likedAt: now - idx * 1000 }));
 
-  // Persist via content.js (which owns the IndexedDB connection)
-  const upsertResp = await sendToYouTubeTab({
-    type: 'UPSERT_LIKED', items: enriched, accountId,
-  });
+  const upsertResp = await sendToYouTubeTab({ type: 'UPSERT_LIKED', items: enriched, accountId });
   if (!upsertResp || !upsertResp.success) {
     return { success: false, reason: 'db-upsert-failed', error: upsertResp && upsertResp.error };
   }
 
   const newMeta = {
-    accountId, ownerName, ownerHandle, ownerChannelId,
+    accountId,
+    ownerName: parsed.ownerName,
+    ownerHandle: parsed.ownerHandle,
+    ownerChannelId: parsed.ownerChannelId,
     lastSyncedAt: now,
-    count: items.length,
+    count: allItems.length,
   };
   await new Promise((r) => chrome.storage.local.set({ likedSyncMeta: newMeta }, r));
 
   return {
     success: true,
-    fetched: items.length,
+    fetched: allItems.length,
     added: upsertResp.added || 0,
-    accountId, ownerName, ownerHandle, ownerChannelId,
+    pages: page,
+    errors,
+    accountId,
+    ownerName: parsed.ownerName,
+    ownerHandle: parsed.ownerHandle,
+    ownerChannelId: parsed.ownerChannelId,
   };
 }
 

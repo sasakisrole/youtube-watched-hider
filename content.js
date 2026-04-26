@@ -1706,6 +1706,29 @@ window._ytWatchedHider = (() => {
       return true;
     }
 
+    if (message.type === 'FETCH_INNERTUBE_BROWSE') {
+      // Proxy POST to youtubei/v1/browse so it carries user cookies (LL is private).
+      (async () => {
+        try {
+          const url = `https://www.youtube.com/youtubei/v1/browse?prettyPrint=false${message.apiKey ? '&key=' + encodeURIComponent(message.apiKey) : ''}`;
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(message.body || {}),
+          });
+          if (!res.ok) {
+            sendResponse({ success: false, reason: 'http-' + res.status });
+            return;
+          }
+          const data = await res.json();
+          sendResponse({ success: true, data });
+        } catch (e) {
+          sendResponse({ success: false, reason: 'fetch-error', error: e.message });
+        }
+      })();
+      return true;
+    }
+
     if (message.type === 'UPSERT_LIKED') {
       WatchedDB.upsertLiked(message.items || [], message.accountId || '')
         .then((r) => sendResponse({ success: true, ...r }))

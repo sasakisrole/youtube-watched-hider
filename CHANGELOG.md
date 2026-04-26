@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.31.0 (2026-04-26)
+- Feature: 高評価プレイリストのページング対応（過去分まで遡れる）
+  - `youtubei/v1/browse` API のcontinuation tokenを使って2ページ目以降を取得
+  - 最大50ページ（≒5000件）まで自動取得
+  - HTMLから `INNERTUBE_API_KEY` / `INNERTUBE_CLIENT_NAME` / `INNERTUBE_CLIENT_VERSION` を抽出してbrowse APIへ
+  - `content.js` に `FETCH_INNERTUBE_BROWSE` 中継ハンドラ追加
+  - 同期完了メッセージにページ数・警告件数を表示
+  - 取得時間目安: 数十秒〜2分（件数による）
+
 ## v1.30.2 (2026-04-26)
 - Fix: DB読み込み無限フリーズ時のフェイルセーフを追加
   - `openDB` に5秒タイムアウト → 旧バージョン接続を握ったタブが居る場合に明示的にreject

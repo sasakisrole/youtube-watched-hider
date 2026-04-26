@@ -426,7 +426,7 @@
       const doSync = (confirm) => new Promise((res) => {
         chrome.runtime.sendMessage({ type: 'SYNC_LIKED', confirmAccountChange: !!confirm }, res);
       });
-      msg.textContent = '同期中...';
+      msg.textContent = '同期中...（全件取得まで数十秒〜2分かかる場合があります）';
       syncLikedBtn.disabled = true;
       try {
         let resp = await doSync(false);
@@ -445,7 +445,9 @@
           msg.textContent = `同期失敗: ${r}（YouTubeタブを開いて再試行してください）`;
           return;
         }
-        msg.textContent = `同期完了: 取得${resp.fetched}件 / 新規${resp.added}件`;
+        const errTag = resp.errors && resp.errors.length ? ` / 警告${resp.errors.length}件` : '';
+        msg.textContent = `同期完了: 取得${resp.fetched}件 / 新規${resp.added}件 / ${resp.pages || 1}ページ${errTag}`;
+        if (resp.errors && resp.errors.length) console.warn('[liked-sync errors]', resp.errors);
         await loadLiked();
         renderLikedPanel();
         // Re-render prompt so the liked section reflects new data
