@@ -172,22 +172,128 @@
     tbody.appendChild(frag);
   }
 
-  function renderPrompt(chCount) {
-    const topic = [...chCount.entries()].filter(([k]) => k.endsWith('- Topic')).sort((a, b) => b[1] - a[1]).slice(0, 40);
-    const nonTopic = [...chCount.entries()].filter(([k]) => !k.endsWith('- Topic')).sort((a, b) => b[1] - a[1]).slice(0, 15);
+  // Music-likeness of a non-Topic channel: ratio of plays that have credits.
+  function buildChannelMusicScore(data) {
+    const total = new Map();
+    const credited = new Map();
+    for (const d of data) {
+      if (!d.channel) continue;
+      if (/ - Topic$/.test(d.channel)) continue;
+      total.set(d.channel, (total.get(d.channel) || 0) + 1);
+      if (d.composer || d.lyricist || d.arranger) {
+        credited.set(d.channel, (credited.get(d.channel) || 0) + 1);
+      }
+    }
+    return { total, credited };
+  }
+
+  // Filter out junk credit names (Twitter URLs, stray parens, etc.) that leak in from upstream extraction.
+  function isCleanCreditName(name) {
+    if (!name || name.length < 2 || name.length > 60) return false;
+    if (/https?:|twitter\.com|x\.com|t\.co\//i.test(name)) return false;
+    if (/^[\(\)\[\]【】（）]/.test(name) || /[\(\[【（][^\)\]】）]*$/.test(name)) return false;
+    if (/^[\)\]】）]/.test(name)) return false;
+    if (/Twitter\s*[:：]/i.test(name)) return false;
+    // Unbalanced parens (e.g. "triplebullets)", "mitsukiyo_5)") signal upstream split errors.
+    const opens = (name.match(/[\(（\[【]/g) || []).length;
+    const closes = (name.match(/[\)）\]】]/g) || []).length;
+    if (opens !== closes) return false;
+    return true;
+  }
+
+  function topCredits(data, field, sourceFilter, limit) {
+    const m = buildCreditCount(data, field, sourceFilter);
+    return [...m.entries()]
+      .filter(([k]) => isCleanCreditName(k))
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, limit);
+  }
+
+  function renderPrompt(data, chCount) {
+    const topic = [...chCount.entries()]
+      .filter(([k]) => k.endsWith('- Topic'))
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 40);
+
+    // Credit-based music channel filter: >=5 credited plays AND >=40% credit coverage.
+    const { total, credited } = buildChannelMusicScore(data);
+    const musicGeneral = [...total.entries()]
+      .map(([k, n]) => {
+        const c = credited.get(k) || 0;
+        return { name: k, plays: n, credited: c, rate: n ? c / n : 0 };
+      })
+      .filter(x => x.credited >= 5 && x.rate >= 0.4)
+      .sort((a, b) => b.plays - a.plays)
+      .slice(0, 15);
+
+    // Recent trend: use the most recent 1/3 of the watched time span
+    // (data may only cover a few weeks, so a fixed N-day window is unreliable).
+    const tsList = data.map(d => d.watchedAt || d.firstWatchedAt || 0).filter(t => t > 0);
+    let topicRecent = [];
+    if (tsList.length) {
+      const maxTs = Math.max(...tsList);
+      const minTs = Math.min(...tsList);
+      const span = maxTs - minTs;
+      const cutoff = span > 0 ? maxTs - span / 3 : 0;
+      const recentCh = new Map();
+      for (const d of data) {
+        if (!d.channel || !d.channel.endsWith(' - Topic')) continue;
+        const ts = d.watchedAt || d.firstWatchedAt || 0;
+        if (ts < cutoff) continue;
+        recentCh.set(d.channel, (recentCh.get(d.channel) || 0) + 1);
+      }
+      topicRecent = [...recentCh.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 15);
+    }
+
+    // Composers / arrangers (topic + general combined)
+    const composers = topCredits(data, 'composer', 'all', 20);
+    const arrangers = topCredits(data, 'arranger', 'all', 10);
+
     const lines = [];
-    lines.push('以下は私のYouTube視聴履歴から抽出した、よく聴く音楽アーティスト（YouTube Topicチャンネル由来）の再生数ランキングです。');
+    lines.push('以下は私のYouTube視聴履歴から抽出した、音楽嗜好データです。');
     lines.push('');
-    lines.push('## 再生数Top40アーティスト');
+    lines.push('## 再生数Top40アーティスト（YouTube Topicチャンネル由来）');
     topic.forEach(([k, v], i) => lines.push(`${i + 1}. ${k.replace(/ - Topic$/, '')} (${v}回)`));
     lines.push('');
-    lines.push('## 音楽系と思われる一般チャンネル Top15（参考）');
-    nonTopic.forEach(([k, v], i) => lines.push(`${i + 1}. ${k} (${v}回)`));
+    if (topicRecent.length) {
+      lines.push('## 直近の傾向 Top15（視聴期間の後半1/3）');
+      topicRecent.forEach(([k, v], i) => lines.push(`${i + 1}. ${k.replace(/ - Topic$/, '')} (${v}回)`));
+      lines.push('');
+    }
+    lines.push('## よく聴いた作曲家 Top20（クレジット集計）');
+    composers.forEach(([name, v], i) => {
+      const rate = v.count ? Math.round(v.self / v.count * 100) : 0;
+      const selfTag = v.self ? `, 自編曲率${rate}%` : '';
+      lines.push(`${i + 1}. ${name} (${v.count}回${selfTag})`);
+    });
     lines.push('');
-    lines.push('この傾向から読み取れる音楽的志向を分析し、私がまだ聴いていない可能性が高い「次に聴くべきアーティスト/作曲家」を10名推薦してください。各推薦には以下を含めてください:');
+    lines.push('## よく聴いた編曲家 Top10');
+    arrangers.forEach(([name, v], i) => lines.push(`${i + 1}. ${name} (${v.count}回)`));
+    lines.push('');
+    if (musicGeneral.length) {
+      lines.push('## 音楽系の一般チャンネル Top15（クレジット紐づき率40%以上）');
+      musicGeneral.forEach((x, i) => {
+        const pct = Math.round(x.rate * 100);
+        lines.push(`${i + 1}. ${x.name} (${x.plays}回, クレジット率${pct}%)`);
+      });
+      lines.push('');
+    }
+    lines.push('---');
+    lines.push('');
+    lines.push('上記の傾向（アーティスト・作曲家・編曲家の偏り、自編曲率、直近トレンド）を分析し、');
+    lines.push('「次に聴くべきアーティスト/作曲家」を10名推薦してください。');
+    lines.push('');
+    lines.push('### 制約');
+    lines.push('- 上記リストに既出の人物・チャンネルは推薦から**除外**してください（既に聴いています）');
+    lines.push('- 作曲家・編曲家など裏方クレジットの人物も推薦対象に含めてOK');
+    lines.push('- 直近6ヶ月のトレンドを優先的に踏まえてください');
+    lines.push('');
+    lines.push('### 各推薦に含める項目');
     lines.push('- アーティスト/作曲家名');
     lines.push('- 代表曲1〜2曲');
-    lines.push('- 既存のお気に入りとの関連性（なぜこの人を勧めるか）');
+    lines.push('- 既存のお気に入りとの関連性（具体的にどの作家・どのアーティストとの近さか）');
     lines.push('- YouTube検索キーワード');
     document.getElementById('azPromptText').textContent = lines.join('\n');
   }
@@ -207,7 +313,7 @@
     renderChannels(chCount);
     renderKeywords(data, chCount);
     renderCredits(data);
-    renderPrompt(chCount);
+    renderPrompt(data, chCount);
 
     // Re-wire filters to current chCount
     document.getElementById('azArtistFilter').oninput = () => renderArtists(chCount);
