@@ -209,6 +209,62 @@
       .slice(0, limit);
   }
 
+  let likedRecords = [];
+
+  function loadLiked() {
+    return new Promise((resolve) => {
+      try {
+        chrome.runtime.sendMessage({ type: 'GET_LIKED' }, (resp) => {
+          likedRecords = (resp && resp.success && resp.rows) ? resp.rows : [];
+          resolve();
+        });
+      } catch (_e) { resolve(); }
+    });
+  }
+
+  function buildLikedArtistCount() {
+    const m = new Map();
+    for (const r of likedRecords) {
+      if (!r.channel) continue;
+      m.set(r.channel, (m.get(r.channel) || 0) + 1);
+    }
+    return m;
+  }
+
+  function renderLikedPanel() {
+    const ch = buildLikedArtistCount();
+    document.getElementById('azLikedTotal').textContent = likedRecords.length.toLocaleString();
+    document.getElementById('azLikedArtists').textContent = ch.size.toLocaleString();
+
+    const tbody = document.querySelector('#azLikedTable tbody');
+    tbody.innerHTML = '';
+    const list = [...ch.entries()].sort((a, b) => b[1] - a[1]).slice(0, 200);
+    const frag = document.createDocumentFragment();
+    list.forEach(([name, cnt], i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${i + 1}</td><td>${esc(name)}</td><td>${cnt}</td>`;
+      frag.appendChild(tr);
+    });
+    tbody.appendChild(frag);
+
+    // Account meta line
+    try {
+      chrome.runtime.sendMessage({ type: 'GET_LIKED_META' }, (resp) => {
+        const meta = resp && resp.meta;
+        const el = document.getElementById('azLikedAccount');
+        if (!meta) { el.textContent = '未同期'; return; }
+        const when = new Date(meta.lastSyncedAt || 0).toLocaleString();
+        const acc = meta.ownerHandle || meta.ownerName || meta.accountId || '(unknown)';
+        el.textContent = `アカウント: ${acc} / 最終同期: ${when} / ${(meta.count || 0).toLocaleString()}件`;
+      });
+    } catch (_) {}
+  }
+
+  function topLikedArtists(limit) {
+    const m = buildLikedArtistCount();
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit);
+  }
+
   function renderPrompt(data, chCount) {
     const topic = [...chCount.entries()]
       .filter(([k]) => k.endsWith('- Topic'))
@@ -272,6 +328,12 @@
     lines.push('## よく聴いた編曲家 Top10');
     arrangers.forEach(([name, v], i) => lines.push(`${i + 1}. ${name} (${v.count}回)`));
     lines.push('');
+    const liked = topLikedArtists(30);
+    if (liked.length) {
+      lines.push('## 高評価Top30アーティスト（YouTubeで高評価した動画のチャンネル別集計）');
+      liked.forEach(([k, v], i) => lines.push(`${i + 1}. ${k.replace(/ - Topic$/, '')} (${v}回)`));
+      lines.push('');
+    }
     if (musicGeneral.length) {
       lines.push('## 音楽系の一般チャンネル Top15（クレジット紐づき率40%以上）');
       musicGeneral.forEach((x, i) => {
@@ -282,7 +344,7 @@
     }
     lines.push('---');
     lines.push('');
-    lines.push('上記の傾向（アーティスト・作曲家・編曲家の偏り、自編曲率、直近トレンド）を分析し、');
+    lines.push('上記の傾向（アーティスト・作曲家・編曲家の偏り、自編曲率、直近トレンド、高評価アーティスト）を分析し、');
     lines.push('「次に聴くべきアーティスト/作曲家」を10名推薦してください。');
     lines.push('');
     lines.push('### 制約');
@@ -298,9 +360,10 @@
     document.getElementById('azPromptText').textContent = lines.join('\n');
   }
 
-  function runAnalysis() {
+  async function runAnalysis() {
     const data = (typeof allData !== 'undefined' && allData) ? allData : [];
     const chCount = buildChannelCount(data);
+    await loadLiked();
     const topicCh = [...chCount.entries()].filter(([k]) => k.endsWith('- Topic'));
     const musicPlays = topicCh.reduce((s, [, v]) => s + v, 0);
 
@@ -313,6 +376,7 @@
     renderChannels(chCount);
     renderKeywords(data, chCount);
     renderCredits(data);
+    renderLikedPanel();
     renderPrompt(data, chCount);
 
     // Re-wire filters to current chCount
@@ -343,11 +407,52 @@
     t.addEventListener('click', () => {
       document.querySelectorAll('.az-tab').forEach(x => x.classList.remove('active'));
       t.classList.add('active');
-      const map = { artists: 'azArtistsPanel', channels: 'azChannelsPanel', keywords: 'azKeywordsPanel', credits: 'azCreditsPanel', prompt: 'azPromptPanel' };
+      const map = { artists: 'azArtistsPanel', channels: 'azChannelsPanel', keywords: 'azKeywordsPanel', credits: 'azCreditsPanel', liked: 'azLikedPanel', prompt: 'azPromptPanel' };
       Object.values(map).forEach(id => { document.getElementById(id).style.display = 'none'; });
       document.getElementById(map[t.dataset.aztab]).style.display = '';
     });
   });
+
+  // Sync liked playlist button
+  const syncLikedBtn = document.getElementById('azSyncLiked');
+  if (syncLikedBtn) {
+    syncLikedBtn.addEventListener('click', async () => {
+      const msg = document.getElementById('azLikedMsg');
+      const doSync = (confirm) => new Promise((res) => {
+        chrome.runtime.sendMessage({ type: 'SYNC_LIKED', confirmAccountChange: !!confirm }, res);
+      });
+      msg.textContent = '同期中...';
+      syncLikedBtn.disabled = true;
+      try {
+        let resp = await doSync(false);
+        if (resp && !resp.success && resp.reason === 'account-changed') {
+          const prev = (resp.previous && (resp.previous.ownerHandle || resp.previous.ownerName)) || resp.previous?.accountId || '(unknown)';
+          const cur = resp.current?.ownerHandle || resp.current?.ownerName || resp.current?.accountId || '(unknown)';
+          const ok = window.confirm(`アカウントが変更されています:\n旧: ${prev}\n新: ${cur}\nこのまま新アカウントの高評価を追加しますか？\n（旧アカウントのデータは保持されます。クリアしたい場合は別途「Clear」操作を追加予定）`);
+          if (!ok) {
+            msg.textContent = 'キャンセルしました';
+            return;
+          }
+          resp = await doSync(true);
+        }
+        if (!resp || !resp.success) {
+          const r = resp && resp.reason ? resp.reason : 'unknown';
+          msg.textContent = `同期失敗: ${r}（YouTubeタブを開いて再試行してください）`;
+          return;
+        }
+        msg.textContent = `同期完了: 取得${resp.fetched}件 / 新規${resp.added}件`;
+        await loadLiked();
+        renderLikedPanel();
+        // Re-render prompt so the liked section reflects new data
+        const data = (typeof allData !== 'undefined' && allData) ? allData : [];
+        renderPrompt(data, buildChannelCount(data));
+      } catch (e) {
+        msg.textContent = '同期エラー: ' + e.message;
+      } finally {
+        syncLikedBtn.disabled = false;
+      }
+    });
+  }
 
   // Copy prompt button
   document.getElementById('azCopyPrompt').addEventListener('click', async () => {

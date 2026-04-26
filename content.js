@@ -1681,6 +1681,57 @@ window._ytWatchedHider = (() => {
       return true;
     }
 
+    if (message.type === 'FETCH_PLAYLIST_HTML') {
+      (async () => {
+        try {
+          const url = `https://www.youtube.com/playlist?list=${encodeURIComponent(message.listId || 'LL')}`;
+          const res = await fetch(url);
+          const finalUrl = res.url || '';
+          if (/google\.com\/sorry/i.test(finalUrl)) {
+            sendResponse({ success: false, reason: 'sorry-redirect', finalUrl });
+            return;
+          }
+          if (!res.ok) {
+            sendResponse({ success: false, reason: 'http-' + res.status });
+            return;
+          }
+          const html = await res.text();
+          sendResponse({ success: true, html, finalUrl });
+        } catch (e) {
+          sendResponse({ success: false, reason: 'fetch-error', error: e.message });
+        }
+      })();
+      return true;
+    }
+
+    if (message.type === 'UPSERT_LIKED') {
+      WatchedDB.upsertLiked(message.items || [], message.accountId || '')
+        .then((r) => sendResponse({ success: true, ...r }))
+        .catch((e) => sendResponse({ success: false, error: e.message }));
+      return true;
+    }
+
+    if (message.type === 'GET_LIKED') {
+      WatchedDB.getAllLiked()
+        .then((rows) => sendResponse({ success: true, rows }))
+        .catch((e) => sendResponse({ success: false, error: e.message }));
+      return true;
+    }
+
+    if (message.type === 'GET_LIKED_STATS') {
+      WatchedDB.getLikedStats()
+        .then((stats) => sendResponse({ success: true, ...stats }))
+        .catch((e) => sendResponse({ success: false, error: e.message }));
+      return true;
+    }
+
+    if (message.type === 'CLEAR_LIKED') {
+      WatchedDB.clearLikedByAccount(message.accountId || '')
+        .then(() => sendResponse({ success: true }))
+        .catch((e) => sendResponse({ success: false, error: e.message }));
+      return true;
+    }
+
     if (message.type === 'MARK_CREDITS_CHECKED') {
       WatchedDB.markCreditsChecked(message.videoId).then(() => {
         sendResponse({ success: true });

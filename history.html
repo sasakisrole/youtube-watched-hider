@@ -260,6 +260,7 @@
       <div class="az-tab" data-aztab="channels">全チャンネル</div>
       <div class="az-tab" data-aztab="keywords">キーワード</div>
       <div class="az-tab" data-aztab="credits">クレジット</div>
+      <div class="az-tab" data-aztab="liked">高評価</div>
       <div class="az-tab" data-aztab="prompt">Claude推薦プロンプト</div>
     </div>
     <div class="az-panel" id="azArtistsPanel">
@@ -291,6 +292,19 @@
         <span id="azCreditStats" style="color:#888;font-size:12px;"></span>
       </div>
       <table class="az-table" id="azCreditsTable"><thead><tr><th style="width:40px;">#</th><th>名前</th><th style="width:60px;">再生</th><th style="width:80px;">名義同一</th></tr></thead><tbody></tbody></table>
+    </div>
+    <div class="az-panel" id="azLikedPanel" style="display:none;">
+      <div style="margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <button class="sort-btn" id="azSyncLiked">高評価を同期</button>
+        <span id="azLikedMsg" style="color:#888;font-size:12px;"></span>
+      </div>
+      <div id="azLikedAccount" style="color:#888;font-size:12px;margin-bottom:10px;"></div>
+      <div class="az-stats" style="grid-template-columns:repeat(2,1fr);max-width:400px;">
+        <div class="az-stat"><div class="az-n" id="azLikedTotal">0</div><div class="az-l">高評価動画数</div></div>
+        <div class="az-stat"><div class="az-n" id="azLikedArtists">0</div><div class="az-l">高評価アーティスト数</div></div>
+      </div>
+      <p style="color:#888;font-size:12px;margin:6px 0 12px;">※ YouTubeタブを開いた状態で同期してください。初回はLLプレイリスト先頭100件を取得します。</p>
+      <table class="az-table" id="azLikedTable"><thead><tr><th style="width:40px;">#</th><th>アーティスト/チャンネル</th><th style="width:80px;">高評価数</th></tr></thead><tbody></tbody></table>
     </div>
     <div class="az-panel" id="azPromptPanel" style="display:none;">
       <p style="color:#888;font-size:13px;margin-bottom:12px;">Claudeに貼って「次に聴くべきアーティスト」を推薦してもらう用</p>

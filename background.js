@@ -226,6 +226,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'SYNC_LIKED') {
+    syncLikedPlaylist({ confirmAccountChange: !!message.confirmAccountChange })
+      .then(sendResponse)
+      .catch((e) => sendResponse({ success: false, error: e.message }));
+    return true;
+  }
+
+  if (message.type === 'GET_LIKED_META') {
+    chrome.storage.local.get({ likedSyncMeta: null }, (r) => {
+      sendResponse({ success: true, meta: r.likedSyncMeta });
+    });
+    return true;
+  }
+
   if (message.type === 'GET_ENABLED') {
     chrome.storage.local.get({
       enabled: true,
@@ -648,6 +662,136 @@ chrome.runtime.onConnect.addListener((port) => {
     try { port.disconnect(); } catch (_e) {}
   });
 });
+
+// --- Liked playlist sync (LL = Liked Videos) ---
+// Parses ytInitialData from the playlist HTML and extracts video items + owner identity.
+function parseLikedPlaylistHtml(html) {
+  const items = [];
+  let ownerName = '';
+  let ownerHandle = '';
+  let ownerChannelId = '';
+
+  // Locate ytInitialData JSON (varies between "var ytInitialData = {...};" and "ytInitialData = {...};")
+  const m = html.match(/(?:var\s+)?ytInitialData\s*=\s*(\{[\s\S]*?\});\s*<\/script>/);
+  if (!m) return { items, ownerName, ownerHandle, ownerChannelId, error: 'no-ytInitialData' };
+
+  let data;
+  try { data = JSON.parse(m[1]); }
+  catch (e) { return { items, ownerName, ownerHandle, ownerChannelId, error: 'parse-failed' }; }
+
+  // Owner identity (best-effort across UI variants)
+  try {
+    const header = data.header || {};
+    const ph = header.playlistHeaderRenderer || {};
+    if (ph.ownerText && ph.ownerText.runs && ph.ownerText.runs[0]) {
+      ownerName = ph.ownerText.runs[0].text || '';
+      const ne = ph.ownerText.runs[0].navigationEndpoint;
+      if (ne && ne.browseEndpoint) {
+        ownerChannelId = ne.browseEndpoint.browseId || '';
+        const u = ne.browseEndpoint.canonicalBaseUrl || '';
+        if (u.startsWith('/@')) ownerHandle = u.slice(1);
+      }
+    }
+    // Newer pageHeaderRenderer variant
+    const phNew = (header.pageHeaderRenderer && header.pageHeaderRenderer.content
+      && header.pageHeaderRenderer.content.pageHeaderViewModel) || null;
+    if (!ownerName && phNew && phNew.metadata && phNew.metadata.contentMetadataViewModel) {
+      const rows = phNew.metadata.contentMetadataViewModel.metadataRows || [];
+      for (const row of rows) {
+        const parts = (row.metadataParts || []);
+        for (const p of parts) {
+          const t = p.text && p.text.content;
+          if (t && t.startsWith('@')) { ownerHandle = t; break; }
+        }
+      }
+    }
+  } catch (_) { /* tolerate structure changes */ }
+
+  // Video items: walk into the playlistVideoListRenderer contents
+  function walk(node) {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) { for (const v of node) walk(v); return; }
+    if (node.playlistVideoRenderer) {
+      const r = node.playlistVideoRenderer;
+      const videoId = r.videoId;
+      if (videoId) {
+        let title = '';
+        if (r.title && r.title.runs && r.title.runs[0]) title = r.title.runs[0].text || '';
+        else if (r.title && r.title.simpleText) title = r.title.simpleText;
+        let channel = '';
+        if (r.shortBylineText && r.shortBylineText.runs && r.shortBylineText.runs[0]) {
+          channel = r.shortBylineText.runs[0].text || '';
+        }
+        const indexStr = (r.index && r.index.simpleText) || '';
+        const playlistIndex = parseInt(indexStr, 10) || items.length + 1;
+        items.push({ videoId, title, channel, playlistIndex });
+        return;
+      }
+    }
+    for (const k in node) walk(node[k]);
+  }
+  walk(data);
+
+  return { items, ownerName, ownerHandle, ownerChannelId };
+}
+
+async function syncLikedPlaylist({ confirmAccountChange } = {}) {
+  let resp;
+  try {
+    resp = await sendToYouTubeTab({ type: 'FETCH_PLAYLIST_HTML', listId: 'LL' });
+  } catch (e) {
+    return { success: false, reason: 'no-youtube-tab' };
+  }
+  if (!resp || !resp.success) {
+    return { success: false, reason: (resp && resp.reason) || 'fetch-failed' };
+  }
+  const { items, ownerName, ownerHandle, ownerChannelId, error } =
+    parseLikedPlaylistHtml(resp.html || '');
+  if (error) return { success: false, reason: error };
+  if (!items.length) return { success: false, reason: 'no-items' };
+
+  const accountId = ownerChannelId || ownerHandle || ownerName || 'unknown';
+
+  // Account-change detection
+  const meta = await new Promise((r) => chrome.storage.local.get({ likedSyncMeta: null }, (x) => r(x.likedSyncMeta)));
+  if (meta && meta.accountId && meta.accountId !== accountId && !confirmAccountChange) {
+    return {
+      success: false,
+      reason: 'account-changed',
+      previous: meta,
+      current: { accountId, ownerName, ownerHandle, ownerChannelId, count: items.length },
+    };
+  }
+
+  // Approximate likedAt: assume playlist is newest-first; assign decreasing offsets from now.
+  const now = Date.now();
+  const enriched = items.map((it, idx) => ({
+    ...it,
+    likedAt: now - idx * 1000, // 1s apart, just for sorting
+  }));
+
+  // Persist via content.js (which owns the IndexedDB connection)
+  const upsertResp = await sendToYouTubeTab({
+    type: 'UPSERT_LIKED', items: enriched, accountId,
+  });
+  if (!upsertResp || !upsertResp.success) {
+    return { success: false, reason: 'db-upsert-failed', error: upsertResp && upsertResp.error };
+  }
+
+  const newMeta = {
+    accountId, ownerName, ownerHandle, ownerChannelId,
+    lastSyncedAt: now,
+    count: items.length,
+  };
+  await new Promise((r) => chrome.storage.local.set({ likedSyncMeta: newMeta }, r));
+
+  return {
+    success: true,
+    fetched: items.length,
+    added: upsertResp.added || 0,
+    accountId, ownerName, ownerHandle, ownerChannelId,
+  };
+}
 
 // Streaming variant via chrome.runtime.Port — emits progress events.
 chrome.runtime.onConnect.addListener((port) => {

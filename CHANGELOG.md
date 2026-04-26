@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.30.0 (2026-04-26)
+- Feature: 高評価（LL）プレイリスト同期機能を追加
+  - Analyzerに「高評価」タブ追加。「高評価を同期」ボタンで `youtube.com/playlist?list=LL` から直近100件を取得しIndexedDBに保存
+  - DBバージョン 3 → 4。新ストア `likedVideos`（`videoId, title, channel, likedAt, accountId, syncedAt, playlistIndex`）
+  - アカウント変更検知：`chrome.storage.local.likedSyncMeta` に前回のアカウント情報を保存し、別アカウントの高評価が混ざる前に確認ダイアログを表示
+  - Claude推薦プロンプトに「高評価Top30アーティスト」セクション追加
+  - 動作には YouTube タブを開いた状態が必要（既存の Fix Credits と同じ仕組み）
+  - ※初回ページ（≒最近の高評価100件）のみ。ページング対応は次バージョン予定
+
 ## v1.29.1 (2026-04-26)
 - Fix: Fix Credits 抽出時に Twitter URL・括弧内URLをクリーンアップ
   - `parseCreditsFromDescription` で `(Twitter: https://...)` 等を抽出時点で除去

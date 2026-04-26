@@ -3,8 +3,9 @@
 if (typeof WatchedDB === 'undefined') {
   var WatchedDB = (() => {
     const DB_NAME = 'YouTubeWatchedDB';
-    const DB_VERSION = 3;
+    const DB_VERSION = 4;
     const STORE_NAME = 'watchedVideos';
+    const LIKED_STORE = 'likedVideos';
 
     let dbInstance = null;
 
@@ -19,6 +20,11 @@ if (typeof WatchedDB === 'undefined') {
           if (!db.objectStoreNames.contains(STORE_NAME)) {
             const store = db.createObjectStore(STORE_NAME, { keyPath: 'videoId' });
             store.createIndex('watchedAt', 'watchedAt', { unique: false });
+          }
+          if (event.oldVersion < 4 && !db.objectStoreNames.contains(LIKED_STORE)) {
+            const lstore = db.createObjectStore(LIKED_STORE, { keyPath: 'videoId' });
+            lstore.createIndex('accountId', 'accountId', { unique: false });
+            lstore.createIndex('likedAt', 'likedAt', { unique: false });
           }
           // Migration: existing records get playCount=1, source='unknown'
           if (event.oldVersion < 2) {
@@ -395,6 +401,82 @@ if (typeof WatchedDB === 'undefined') {
       });
     }
 
-    return { openDB, addWatched, updateTitle, updateTitleAndChannel, updateCredits, markCreditsChecked, isWatched, checkMultiple, getStats, getAllIds, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport };
+    // --- Liked videos store ---
+    async function upsertLiked(items, accountId) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(LIKED_STORE, 'readwrite');
+        const store = tx.objectStore(LIKED_STORE);
+        let added = 0;
+        let pending = items.length;
+        if (!pending) return resolve({ added: 0, total: 0 });
+        for (const it of items) {
+          const getReq = store.get(it.videoId);
+          getReq.onsuccess = () => {
+            const existing = getReq.result;
+            if (!existing) added++;
+            store.put({
+              videoId: it.videoId,
+              title: it.title || (existing && existing.title) || '',
+              channel: it.channel || (existing && existing.channel) || '',
+              likedAt: it.likedAt || (existing && existing.likedAt) || Date.now(),
+              accountId: accountId || (existing && existing.accountId) || '',
+              syncedAt: Date.now(),
+              playlistIndex: typeof it.playlistIndex === 'number' ? it.playlistIndex : (existing && existing.playlistIndex) || 0,
+            });
+            if (--pending === 0) { /* resolved on tx.oncomplete */ }
+          };
+        }
+        tx.oncomplete = () => resolve({ added, total: items.length });
+        tx.onerror = (event) => reject(event.target.error);
+      });
+    }
+
+    async function getAllLiked() {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(LIKED_STORE, 'readonly');
+        const store = tx.objectStore(LIKED_STORE);
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = (e) => reject(e.target.error);
+      });
+    }
+
+    async function clearLikedByAccount(accountId) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(LIKED_STORE, 'readwrite');
+        const store = tx.objectStore(LIKED_STORE);
+        if (!accountId) {
+          const req = store.clear();
+          req.onsuccess = () => resolve();
+          req.onerror = (e) => reject(e.target.error);
+          return;
+        }
+        const idx = store.index('accountId');
+        const range = IDBKeyRange.only(accountId);
+        const req = idx.openCursor(range);
+        req.onsuccess = (e) => {
+          const c = e.target.result;
+          if (c) { c.delete(); c.continue(); }
+        };
+        tx.oncomplete = () => resolve();
+        tx.onerror = (e) => reject(e.target.error);
+      });
+    }
+
+    async function getLikedStats() {
+      const all = await getAllLiked();
+      const accounts = new Map();
+      for (const r of all) {
+        const k = r.accountId || '(unknown)';
+        accounts.set(k, (accounts.get(k) || 0) + 1);
+      }
+      return { total: all.length, accounts: [...accounts.entries()] };
+    }
+
+    return { openDB, addWatched, updateTitle, updateTitleAndChannel, updateCredits, markCreditsChecked, isWatched, checkMultiple, getStats, getAllIds, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport,
+      upsertLiked, getAllLiked, clearLikedByAccount, getLikedStats };
   })();
 }
