@@ -213,12 +213,17 @@
 
   function loadLiked() {
     return new Promise((resolve) => {
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(); } };
+      // Hard timeout so the analyzer never hangs even if no YouTube tab is open.
+      const timer = setTimeout(finish, 3000);
       try {
         chrome.runtime.sendMessage({ type: 'GET_LIKED' }, (resp) => {
+          clearTimeout(timer);
           likedRecords = (resp && resp.success && resp.rows) ? resp.rows : [];
-          resolve();
+          finish();
         });
-      } catch (_e) { resolve(); }
+      } catch (_e) { clearTimeout(timer); finish(); }
     });
   }
 

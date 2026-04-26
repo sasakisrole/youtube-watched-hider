@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.30.1 (2026-04-26)
+- Fix: v1.30.0 で発生したDB読み込みのフリーズ問題を修正
+  - 原因1: DBスキーマアップグレード(v3→v4)時に `onversionchange` ハンドラが無く、古いタブの旧バージョン接続が残ったままで新しいタブの open がブロックされ続ける
+  - 原因2: Analyzer の高評価データ取得 (`GET_LIKED`) が background→content.js に中継されておらず、応答がない
+  - 修正:
+    - `db.js` に `onversionchange` ハンドラ追加（既存接続が自動でcloseしてアップグレードを通す）
+    - `background.js` に `GET_LIKED` `GET_LIKED_STATS` `CLEAR_LIKED` の中継を追加
+    - `analyzer.js` の `loadLiked` に3秒タイムアウト追加（YouTubeタブ未起動でもAnalyzerが固まらない）
+
 ## v1.30.0 (2026-04-26)
 - Feature: 高評価（LL）プレイリスト同期機能を追加
   - Analyzerに「高評価」タブ追加。「高評価を同期」ボタンで `youtube.com/playlist?list=LL` から直近100件を取得しIndexedDBに保存

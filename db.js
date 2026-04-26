@@ -46,11 +46,22 @@ if (typeof WatchedDB === 'undefined') {
         request.onsuccess = (event) => {
           dbInstance = event.target.result;
           dbInstance.onclose = () => { dbInstance = null; };
+          // CRITICAL: When another tab triggers a version upgrade, we MUST close
+          // this connection or the upgrade blocks indefinitely (and any new tab
+          // trying to open the DB will hang).
+          dbInstance.onversionchange = () => {
+            try { dbInstance.close(); } catch (_) {}
+            dbInstance = null;
+          };
           resolve(dbInstance);
         };
 
         request.onerror = (event) => {
           reject(event.target.error);
+        };
+
+        request.onblocked = () => {
+          console.warn('[WatchedDB] open blocked — another connection holds an older version. Close other YouTube tabs / extension pages.');
         };
       });
     }

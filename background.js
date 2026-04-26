@@ -233,6 +233,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'GET_LIKED') {
+    sendToYouTubeTab({ type: 'GET_LIKED' })
+      .then(sendResponse)
+      .catch((e) => sendResponse({ success: false, error: e.message, rows: [] }));
+    return true;
+  }
+
+  if (message.type === 'GET_LIKED_STATS') {
+    sendToYouTubeTab({ type: 'GET_LIKED_STATS' })
+      .then(sendResponse)
+      .catch((e) => sendResponse({ success: false, error: e.message }));
+    return true;
+  }
+
+  if (message.type === 'CLEAR_LIKED') {
+    sendToYouTubeTab({ type: 'CLEAR_LIKED', accountId: message.accountId || '' })
+      .then(sendResponse)
+      .catch((e) => sendResponse({ success: false, error: e.message }));
+    return true;
+  }
+
   if (message.type === 'GET_LIKED_META') {
     chrome.storage.local.get({ likedSyncMeta: null }, (r) => {
       sendResponse({ success: true, meta: r.likedSyncMeta });
