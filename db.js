@@ -14,6 +14,15 @@ if (typeof WatchedDB === 'undefined') {
 
       return new Promise((resolve, reject) => {
         const request = indexedDB.open(DB_NAME, DB_VERSION);
+        let blocked = false;
+        // Hard timeout: if open hasn't succeeded in 5s (typically because a
+        // stale tab still holds an older DB version), reject so the caller
+        // can surface a useful error instead of hanging forever.
+        const timer = setTimeout(() => {
+          reject(new Error(blocked
+            ? 'IndexedDB upgrade blocked by another tab — close all YouTube tabs and reload'
+            : 'IndexedDB open timed out'));
+        }, 5000);
 
         request.onupgradeneeded = (event) => {
           const db = event.target.result;
@@ -44,11 +53,9 @@ if (typeof WatchedDB === 'undefined') {
         };
 
         request.onsuccess = (event) => {
+          clearTimeout(timer);
           dbInstance = event.target.result;
           dbInstance.onclose = () => { dbInstance = null; };
-          // CRITICAL: When another tab triggers a version upgrade, we MUST close
-          // this connection or the upgrade blocks indefinitely (and any new tab
-          // trying to open the DB will hang).
           dbInstance.onversionchange = () => {
             try { dbInstance.close(); } catch (_) {}
             dbInstance = null;
@@ -57,11 +64,13 @@ if (typeof WatchedDB === 'undefined') {
         };
 
         request.onerror = (event) => {
+          clearTimeout(timer);
           reject(event.target.error);
         };
 
         request.onblocked = () => {
-          console.warn('[WatchedDB] open blocked — another connection holds an older version. Close other YouTube tabs / extension pages.');
+          blocked = true;
+          console.warn('[WatchedDB] open blocked — close other YouTube tabs / extension pages and reload.');
         };
       });
     }

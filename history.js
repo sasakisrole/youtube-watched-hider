@@ -463,7 +463,22 @@ function loadData() {
         return;
       }
 
-      if (data && data.length > 0) {
+      if (data && data.__error) {
+        content.textContent = '';
+        const errDiv = document.createElement('div');
+        errDiv.className = 'empty';
+        errDiv.style.padding = '24px';
+        errDiv.style.lineHeight = '1.6';
+        errDiv.innerHTML = 'DB読み込みエラー: ' + (data.message || 'unknown') +
+          '<br><br><strong>復旧手順:</strong><br>' +
+          '1. すべてのYouTubeタブを<strong>閉じる</strong>（リロードではなく閉じる）<br>' +
+          '2. <code>chrome://extensions</code> で拡張をリロード<br>' +
+          '3. 新しくYouTubeを開いてからこの画面を再読込';
+        content.appendChild(errDiv);
+        return;
+      }
+
+      if (Array.isArray(data) && data.length > 0) {
         allData = data;
       } else {
         allData = [];

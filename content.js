@@ -1614,7 +1614,9 @@ window._ytWatchedHider = (() => {
     }
 
     if (message.type === 'EXPORT_DATA') {
-      WatchedDB.exportAll().then(sendResponse).catch(() => sendResponse([]));
+      WatchedDB.exportAll()
+        .then(sendResponse)
+        .catch((e) => sendResponse({ __error: true, message: e && e.message ? e.message : String(e) }));
       return true;
     }
 
