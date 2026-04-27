@@ -564,6 +564,34 @@ if (typeof WatchedDB === 'undefined') {
       });
     }
 
+    function normalizeLikedRecord(record) {
+      return {
+        videoId: String(record.videoId),
+        title: typeof record.title === 'string' ? record.title : '',
+        channel: typeof record.channel === 'string' ? record.channel : '',
+        likedAt: typeof record.likedAt === 'number' && record.likedAt > 0 ? record.likedAt : Date.now(),
+        accountId: typeof record.accountId === 'string' ? record.accountId : '',
+        syncedAt: typeof record.syncedAt === 'number' && record.syncedAt > 0 ? record.syncedAt : Date.now(),
+        playlistIndex: typeof record.playlistIndex === 'number' ? record.playlistIndex : 0,
+      };
+    }
+
+    async function importLikedData(records) {
+      const db = await openDB();
+      const normalized = (records || [])
+        .filter((record) => record && typeof record.videoId === 'string' && record.videoId.length > 0)
+        .map(normalizeLikedRecord);
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(LIKED_STORE, 'readwrite');
+        const store = tx.objectStore(LIKED_STORE);
+        for (const record of normalized) {
+          store.put(record);
+        }
+        tx.oncomplete = () => resolve(normalized.length);
+        tx.onerror = (event) => reject(event.target.error);
+      });
+    }
+
     async function clearLikedByAccount(accountId) {
       const db = await openDB();
       return new Promise((resolve, reject) => {
@@ -598,6 +626,6 @@ if (typeof WatchedDB === 'undefined') {
     }
 
     return { openDB, addWatched, updateTitle, updateTitleAndChannel, updateCredits, markCreditsChecked, markCreditsFailed, cleanAllCredits, isWatched, checkMultiple, getStats, getAllIds, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport,
-      upsertLiked, getAllLiked, clearLikedByAccount, getLikedStats };
+      upsertLiked, getAllLiked, importLikedData, clearLikedByAccount, getLikedStats };
   })();
 }

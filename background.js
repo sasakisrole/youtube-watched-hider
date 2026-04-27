@@ -76,15 +76,26 @@ function createContextMenus() {
   });
 }
 
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener((details) => {
   scheduleDailyBackup();
   createContextMenus();
+  if (details.reason === 'install') {
+    chrome.storage.local.set({ migrationV135Done: true });
+  } else if (details.reason === 'update') {
+    chrome.storage.local.get('migrationV135Done', (result) => {
+      if (typeof result.migrationV135Done !== 'boolean') {
+        chrome.storage.local.set({ migrationV135Done: false });
+      }
+    });
+  }
+  ensureOffscreenDocument().catch((e) => console.warn('[YT-Watched] offscreen init failed:', e.message));
 });
 
 chrome.runtime.onStartup.addListener(() => {
   chrome.alarms.get(BACKUP_ALARM, (alarm) => {
     if (!alarm) scheduleDailyBackup();
   });
+  ensureOffscreenDocument().catch((e) => console.warn('[YT-Watched] offscreen startup failed:', e.message));
 });
 
 // Handle alarm
@@ -112,6 +123,71 @@ async function sendToYouTubeTab(message) {
   throw new Error('No YouTube tab responded');
 }
 
+// --- Offscreen DB owner ---
+const OFFSCREEN_DOCUMENT_PATH = 'offscreen.html';
+let creatingOffscreenDocument = null;
+let v135MigrationInProgress = false;
+let v135MigrationTimer = null;
+
+function setV135MigrationInProgress(value) {
+  v135MigrationInProgress = value;
+  if (v135MigrationTimer) {
+    clearTimeout(v135MigrationTimer);
+    v135MigrationTimer = null;
+  }
+  if (value) {
+    v135MigrationTimer = setTimeout(() => {
+      v135MigrationInProgress = false;
+      v135MigrationTimer = null;
+    }, 2 * 60 * 1000);
+  }
+}
+
+async function ensureOffscreenDocument() {
+  const offscreenUrl = chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH);
+  const contexts = await chrome.runtime.getContexts({
+    contextTypes: ['OFFSCREEN_DOCUMENT'],
+    documentUrls: [offscreenUrl],
+  });
+  if (contexts.length > 0) return;
+
+  if (!creatingOffscreenDocument) {
+    creatingOffscreenDocument = chrome.offscreen.createDocument({
+      url: OFFSCREEN_DOCUMENT_PATH,
+      reasons: ['BLOBS'],
+      justification: 'Keep IndexedDB ownership and export preparation in an extension offscreen document.',
+    }).finally(() => {
+      creatingOffscreenDocument = null;
+    });
+  }
+  await creatingOffscreenDocument;
+}
+
+async function sendToOffscreenDb(op, payload = {}) {
+  await ensureOffscreenDocument();
+  const response = await chrome.runtime.sendMessage({
+    target: 'offscreen-db',
+    op,
+    ...payload,
+  });
+  if (!response || !response.success) {
+    throw new Error((response && response.error) || 'Offscreen DB did not respond');
+  }
+  return response.result;
+}
+
+function broadcastToYouTubeTabs(message) {
+  chrome.tabs.query({ url: '*://*.youtube.com/*' }, (tabs) => {
+    for (const tab of tabs) {
+      chrome.tabs.sendMessage(tab.id, message).catch(() => {});
+    }
+  });
+}
+
+function broadcastCacheInvalidated(detail = {}) {
+  broadcastToYouTubeTabs({ type: 'CACHE_INVALIDATED', ...detail });
+}
+
 // Generate backup filename with date (e.g. yt-watched-backup-2026-04-03.json)
 function getBackupFilename() {
   const d = new Date();
@@ -130,7 +206,7 @@ function performAutoBackup() {
         return;
       }
 
-      sendToYouTubeTab({ type: 'EXPORT_DATA' })
+      sendToOffscreenDb('EXPORT_DATA')
         .then((data) => {
           if (!data || data.length === 0) {
             console.warn('[YT-Watched] Backup skipped: no data');
@@ -184,45 +260,107 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
 // Handle messages from content script and popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'DB_RPC') {
+    sendToOffscreenDb(message.op, message)
+      .then((result) => sendResponse({ success: true, result }))
+      .catch((e) => sendResponse({ success: false, error: e.message }));
+    return true;
+  }
+
+  if (message.type === 'V135_CONTENT_READY') {
+    chrome.storage.local.get({ migrationV135Done: false }, (result) => {
+      const run = !result.migrationV135Done && !v135MigrationInProgress && sender.tab && sender.tab.id;
+      if (run) setV135MigrationInProgress(true);
+      sendResponse({ run: !!run });
+    });
+    return true;
+  }
+
+  if (message.type === 'V135_LEGACY_EXPORT') {
+    (async () => {
+      try {
+        const payload = message.payload || {};
+        if (!payload.success) {
+          setV135MigrationInProgress(false);
+          sendResponse({ success: false, error: payload.error || 'legacy-export-failed' });
+          return;
+        }
+        const result = await sendToOffscreenDb('IMPORT_LEGACY_V135', {
+          watched: payload.watched || [],
+          liked: payload.liked || [],
+        });
+        await chrome.storage.local.set({
+          migrationV135Done: true,
+          migrationV135CompletedAt: Date.now(),
+          migrationV135Counts: result,
+        });
+        setV135MigrationInProgress(false);
+        broadcastCacheInvalidated({ reason: 'migration-v135' });
+        console.info('[YT-Watched] v1.35 migration completed:', result);
+        sendResponse({ success: true, ...result });
+      } catch (e) {
+        setV135MigrationInProgress(false);
+        sendResponse({ success: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+
   if (message.type === 'GET_STATS') {
-    sendToYouTubeTab({ type: 'GET_STATS' })
-      .then(sendResponse)
-      .catch(() => sendResponse({ count: 0 }));
+    sendToOffscreenDb('GET_STATS')
+      .then((stats) => sendResponse({
+        ...stats,
+        dbStatus: 'ready',
+        dbOwner: 'offscreen',
+      }))
+      .catch((e) => sendResponse({ count: 0, dbStatus: 'error', error: e.message }));
     return true;
   }
 
   if (message.type === 'EXPORT_DATA') {
-    sendToYouTubeTab({ type: 'EXPORT_DATA' })
+    sendToOffscreenDb('EXPORT_DATA')
       .then((data) => sendResponse(data || []))
       .catch((e) => sendResponse({ __error: true, message: e.message || String(e) }));
     return true;
   }
 
   if (message.type === 'IMPORT_DATA') {
-    sendToYouTubeTab({ type: 'IMPORT_DATA', data: message.data })
-      .then(sendResponse)
-      .catch(() => sendResponse({ success: false }));
+    sendToOffscreenDb('IMPORT_DATA', { data: message.data })
+      .then((count) => {
+        broadcastCacheInvalidated({ reason: 'import' });
+        sendResponse({ success: true, count });
+      })
+      .catch((e) => sendResponse({ success: false, error: e.message }));
     return true;
   }
 
   if (message.type === 'MERGE_IMPORT') {
-    sendToYouTubeTab({ type: 'MERGE_IMPORT', data: message.data })
-      .then(sendResponse)
-      .catch(() => sendResponse({ success: false }));
+    sendToOffscreenDb('MERGE_IMPORT', { data: message.data })
+      .then((result) => {
+        broadcastCacheInvalidated({ reason: 'merge-import' });
+        sendResponse({ success: true, ...result });
+      })
+      .catch((e) => sendResponse({ success: false, error: e.message }));
     return true;
   }
 
   if (message.type === 'DELETE_VIDEO') {
-    sendToYouTubeTab({ type: 'DELETE_VIDEO', videoId: message.videoId })
-      .then(sendResponse)
-      .catch(() => sendResponse({ success: false }));
+    sendToOffscreenDb('DELETE_VIDEO', { videoId: message.videoId })
+      .then(() => {
+        broadcastCacheInvalidated({ reason: 'delete', deletedIds: [message.videoId] });
+        sendResponse({ success: true });
+      })
+      .catch((e) => sendResponse({ success: false, error: e.message }));
     return true;
   }
 
   if (message.type === 'CLEAR_DATA') {
-    sendToYouTubeTab({ type: 'CLEAR_DATA' })
-      .then(sendResponse)
-      .catch(() => sendResponse({ success: false }));
+    sendToOffscreenDb('CLEAR_DATA')
+      .then(() => {
+        broadcastCacheInvalidated({ reason: 'clear', clear: true });
+        sendResponse({ success: true });
+      })
+      .catch((e) => sendResponse({ success: false, error: e.message }));
     return true;
   }
 
@@ -234,22 +372,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'GET_LIKED') {
-    sendToYouTubeTab({ type: 'GET_LIKED' })
-      .then(sendResponse)
+    sendToOffscreenDb('GET_LIKED')
+      .then((rows) => sendResponse({ success: true, rows }))
       .catch((e) => sendResponse({ success: false, error: e.message, rows: [] }));
     return true;
   }
 
   if (message.type === 'GET_LIKED_STATS') {
-    sendToYouTubeTab({ type: 'GET_LIKED_STATS' })
-      .then(sendResponse)
+    sendToOffscreenDb('GET_LIKED_STATS')
+      .then((stats) => sendResponse({ success: true, ...stats }))
       .catch((e) => sendResponse({ success: false, error: e.message }));
     return true;
   }
 
   if (message.type === 'CLEAR_LIKED') {
-    sendToYouTubeTab({ type: 'CLEAR_LIKED', accountId: message.accountId || '' })
-      .then(sendResponse)
+    sendToOffscreenDb('CLEAR_LIKED', { accountId: message.accountId || '' })
+      .then(() => sendResponse({ success: true }))
       .catch((e) => sendResponse({ success: false, error: e.message }));
     return true;
   }
@@ -270,7 +408,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       harvestMode: false,
       autoBackup: true,
       lastBackup: null,
-      lastBackupCount: 0
+      lastBackupCount: 0,
+      migrationV135Done: false
     }, (result) => {
       // Include next backup schedule
       chrome.alarms.get(BACKUP_ALARM, (alarm) => {
@@ -471,14 +610,13 @@ async function fixChannelsBatch(videoIds, force, onProgress) {
         failed++;
       } else {
         try {
-          const resp = await sendToYouTubeTab({
-            type: 'UPDATE_TITLE_CHANNEL',
+          const didUpdate = await sendToOffscreenDb('UPDATE_TITLE_CHANNEL', {
             videoId: vid,
             title: result.title,
             channel: result.channel,
             force: force
           });
-          if (resp && resp.success && resp.updated) {
+          if (didUpdate) {
             updated++;
             wasUpdated = true;
           }
@@ -674,8 +812,8 @@ async function runCreditsCleanupOnce() {
   try {
     const flag = await chrome.storage.local.get('creditsCleanupV1Done');
     if (flag.creditsCleanupV1Done) return null;
-    const resp = await sendToYouTubeTab({ type: 'CLEAN_ALL_CREDITS' });
-    if (resp && resp.success) {
+    const resp = await sendToOffscreenDb('CLEAN_ALL_CREDITS');
+    if (resp) {
       await chrome.storage.local.set({ creditsCleanupV1Done: true });
       console.log('[Credits cleanup]', resp);
       return resp;
@@ -731,25 +869,24 @@ async function fixCreditsBatch(videoIds, sources, force, onProgress, abortSignal
         const ENV_REASONS = new Set(['no-youtube-tab', 'sorry-redirect', 'proxy-failed']);
         if (!ENV_REASONS.has(r)) {
           try {
-            await sendToYouTubeTab({ type: 'MARK_CREDITS_FAILED', videoId: vid, reason: r });
+            await sendToOffscreenDb('MARK_CREDITS_FAILED', { videoId: vid, reason: r });
           } catch (_e) { /* ignore */ }
         }
       } else if (!result.hasAny) {
         noCredits++;
         // Stamp DB so next run can skip this videoId.
         try {
-          await sendToYouTubeTab({ type: 'MARK_CREDITS_CHECKED', videoId: vid });
+          await sendToOffscreenDb('MARK_CREDITS_CHECKED', { videoId: vid });
         } catch (_e) { /* ignore */ }
       } else {
         try {
-          const resp = await sendToYouTubeTab({
-            type: 'UPDATE_CREDITS',
+          const didUpdate = await sendToOffscreenDb('UPDATE_CREDITS', {
             videoId: vid,
             credits: result.credits,
             creditsSource: (sources && sources[vid]) || '',
             force: force
           });
-          if (resp && resp.success && resp.updated) {
+          if (didUpdate) {
             updated++;
             wasUpdated = true;
           }
@@ -1086,9 +1223,11 @@ async function syncLikedPlaylist({ confirmAccountChange, maxPages } = {}) {
   const now = Date.now();
   const enriched = uniqueItems.map((it, idx) => ({ ...it, likedAt: now - idx * 1000 }));
 
-  const upsertResp = await sendToYouTubeTab({ type: 'UPSERT_LIKED', items: enriched, accountId });
-  if (!upsertResp || !upsertResp.success) {
-    return { success: false, reason: 'db-upsert-failed', error: upsertResp && upsertResp.error };
+  let upsertResp;
+  try {
+    upsertResp = await sendToOffscreenDb('UPSERT_LIKED', { items: enriched, accountId });
+  } catch (e) {
+    return { success: false, reason: 'db-upsert-failed', error: e.message };
   }
 
   const newMeta = {

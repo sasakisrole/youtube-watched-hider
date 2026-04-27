@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.35.0 (2026-04-28)
+- Feature: IndexedDB owner を YouTube content script から extension offscreen document へ移動
+  - `offscreen` permission と `offscreen.html` / `offscreen.js` を追加
+  - `GET_STATS` / `EXPORT_DATA` / `IMPORT_DATA` / `MERGE_IMPORT` / `DELETE_VIDEO` / liked 系 / Fix Credits DB 更新を background → offscreen DB RPC に変更
+  - content script から `db.js` injection を削除し、`content.js` は `DBClient` 経由でDB操作
+- Feature: v1.34.x 以前の youtube.com origin IndexedDB から extension origin DB へ初回移行
+  - 更新後、未移行なら最初に開いた YouTube タブで旧DBの watched / liked をexportし、offscreen DBへ取り込み
+  - 衝突時は旧DB側レコードを優先し、旧DB自体は削除しない
+  - YouTubeタブ未起動時は popup に初回同期案内を表示
+- Improve: Popup件数表示、History Viewer、手動Export、Backup Now が YouTube タブ無しでも DB を読める経路へ移行
+- Note: DB schema は v4 のまま。DB v6 / Export schema v2 / Blob URL backup / Cache LRU は後続PRで対応予定
+
 ## v1.34.4 (2026-04-27)
 - Feature: Analyzerクレジットタブに「未割当」ボタンを追加
   - Phase B `·` 区切り解析で取得した `creditsRaw` のうち、役割が確定しなかったレコード（978件相当）を可視化

@@ -29,6 +29,7 @@ const harvestModeToggle = document.getElementById('harvestModeToggle');
 const syncImportBtn = document.getElementById('syncImportBtn');
 const syncFileInput = document.getElementById('syncFileInput');
 const syncStatus = document.getElementById('syncStatus');
+const migrationBanner = document.getElementById('migrationBanner');
 
 let allHistoryData = [];
 let filteredHistoryData = [];
@@ -74,7 +75,9 @@ function loadStats(retries = 3) {
       countEl.title = '';
       if (response.dbStatus) {
         const statusMap = {
-          ready: `DB ready (cache: ${(response.cacheSize || 0).toLocaleString()}, ${response.cacheLoadTime || 0}ms)`,
+          ready: response.dbOwner === 'offscreen'
+            ? 'DB ready (offscreen)'
+            : `DB ready (cache: ${(response.cacheSize || 0).toLocaleString()}, ${response.cacheLoadTime || 0}ms)`,
           loading: 'DB loading...',
           error: 'DB error',
         };
@@ -275,6 +278,9 @@ chrome.runtime.sendMessage({ type: 'GET_ENABLED' }, (response) => {
       const mm = nd.getMonth() + 1;
       const dd = nd.getDate();
       nextBackupInfo.textContent = `Next: ${mm}/${dd} ${h}:${m}`;
+    }
+    if (migrationBanner) {
+      migrationBanner.style.display = response.migrationV135Done === false ? 'block' : 'none';
     }
   }
 });

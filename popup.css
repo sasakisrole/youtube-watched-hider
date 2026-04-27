@@ -116,6 +116,18 @@ input:checked + .slider::before {
   color: #ff6b6b;
 }
 
+.migration-banner {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border: 1px solid #7a5a18;
+  border-radius: 6px;
+  background: #2a210f;
+  color: #ffca6b;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+}
+
 .actions {
   display: flex;
   flex-direction: column;

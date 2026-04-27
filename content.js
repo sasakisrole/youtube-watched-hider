@@ -93,11 +93,41 @@ window._ytWatchedHider = (() => {
   let cacheLoadTime = 0;
   let dbStatus = 'loading'; // 'loading' | 'ready' | 'error'
 
+  function dbRpc(op, payload = {}) {
+    return new Promise((resolve, reject) => {
+      try {
+        chrome.runtime.sendMessage({ type: 'DB_RPC', op, ...payload }, (response) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+          if (!response || !response.success) {
+            reject(new Error((response && response.error) || 'DB RPC failed'));
+            return;
+          }
+          resolve(response.result);
+        });
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+
+  const DBClient = {
+    getAllIds: () => dbRpc('GET_ALL_IDS'),
+    checkMultiple: (videoIds) => dbRpc('CHECK_MULTIPLE', { videoIds }),
+    addWatched: (videoId, title = '', source = 'self', channel = '') =>
+      dbRpc('ADD_WATCHED', { videoId, title, source, channel }),
+    updateTitleAndChannel: (videoId, title, channel, force = false) =>
+      dbRpc('UPDATE_TITLE_CHANNEL', { videoId, title, channel, force }),
+    importData: (data) => dbRpc('IMPORT_DATA', { data }),
+  };
+
   // Load all watched IDs into cache at startup (lightweight: keys only)
   async function loadCache() {
     const t0 = performance.now();
     try {
-      const ids = await WatchedDB.getAllIds();
+      const ids = await DBClient.getAllIds();
       for (const id of ids) {
         watchedCache.add(id);
       }
@@ -121,6 +151,94 @@ window._ytWatchedHider = (() => {
     }
   }
   loadCache();
+
+  function readLegacyStore(db, storeName) {
+    if (!db.objectStoreNames.contains(storeName)) return Promise.resolve([]);
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(storeName, 'readonly');
+      const store = tx.objectStore(storeName);
+      const req = store.getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = (event) => reject(event.target.error);
+    });
+  }
+
+  function openLegacyDbForMigration() {
+    return new Promise((resolve, reject) => {
+      if (!window.indexedDB) {
+        reject(new Error('IndexedDB unavailable'));
+        return;
+      }
+      const req = indexedDB.open('YouTubeWatchedDB');
+      let settled = false;
+      const timer = setTimeout(() => {
+        settled = true;
+        reject(new Error('legacy IndexedDB open timed out'));
+      }, 5000);
+      req.onupgradeneeded = () => {
+        // New users may not have an old youtube.com DB. Leave the empty DB as-is.
+      };
+      req.onsuccess = (event) => {
+        clearTimeout(timer);
+        const db = event.target.result;
+        if (settled) {
+          try { db.close(); } catch (_) {}
+          return;
+        }
+        settled = true;
+        db.onversionchange = () => {
+          try { db.close(); } catch (_) {}
+        };
+        resolve(db);
+      };
+      req.onerror = (event) => {
+        clearTimeout(timer);
+        settled = true;
+        reject(event.target.error);
+      };
+      req.onblocked = () => {
+        console.warn('[YT-Watched-Hider] Legacy DB migration open blocked');
+      };
+    });
+  }
+
+  async function exportLegacyV135Data() {
+    let db = null;
+    try {
+      db = await openLegacyDbForMigration();
+      const watched = await readLegacyStore(db, 'watchedVideos');
+      const liked = await readLegacyStore(db, 'likedVideos');
+      return { success: true, watched, liked, counts: { watched: watched.length, liked: liked.length } };
+    } finally {
+      if (db) {
+        try { db.close(); } catch (_) {}
+      }
+    }
+  }
+
+  function maybeRunV135Migration() {
+    if (location.hostname !== 'www.youtube.com' && location.hostname !== 'youtube.com') return;
+    chrome.runtime.sendMessage({ type: 'V135_CONTENT_READY' }, async (response) => {
+      if (chrome.runtime.lastError || !response || !response.run) return;
+      let payload;
+      try {
+        payload = await exportLegacyV135Data();
+        console.info('[YT-Watched-Hider] v1.35 migration export:', payload.counts);
+      } catch (e) {
+        payload = { success: false, error: e.message };
+      }
+      chrome.runtime.sendMessage({ type: 'V135_LEGACY_EXPORT', payload }, (result) => {
+        if (chrome.runtime.lastError || !result || !result.success) return;
+        const count = (result.watched || 0) + (result.liked || 0);
+        if (count > 0) {
+          watchedCache.clear();
+          cacheLoaded = false;
+          loadCache();
+        }
+      });
+    });
+  }
+  maybeRunV135Migration();
 
   // Load settings — start seekbar-only processing immediately (no DB needed)
   chrome.storage.local.get({ enabled: true, recordWhileOff: false, hideShorts: false, hideMovies: false, harvestMode: false }, (result) => {
@@ -259,7 +377,7 @@ window._ytWatchedHider = (() => {
         const title = getWatchPageTitle();
         const channel = getWatchPageChannel();
         if (title || channel) {
-          WatchedDB.updateTitleAndChannel(videoId, title, channel).catch(() => {});
+          DBClient.updateTitleAndChannel(videoId, title, channel).catch(() => {});
           return;
         }
       }
@@ -294,7 +412,7 @@ window._ytWatchedHider = (() => {
       const domAgrees = watchMetadataMatches(videoId);
       const title = domAgrees ? getWatchPageTitle() : '';
       const channel = domAgrees ? getWatchPageChannel() : '';
-      await WatchedDB.addWatched(videoId, title, 'self', channel);
+      await DBClient.addWatched(videoId, title, 'self', channel);
       watchedCache.add(videoId);
       console.log(`[YT-Watched-Hider] Recorded: ${title || videoId}${domAgrees ? '' : ' (id only, scheduling backfill)'}`);
 
@@ -402,7 +520,7 @@ window._ytWatchedHider = (() => {
           watchedCache.add(videoId);
           const title = getTitleFromCard(card);
           const channel = getChannelFromCard(card);
-          WatchedDB.addWatched(videoId, title, 'seekbar', channel).then((res) => {
+          DBClient.addWatched(videoId, title, 'seekbar', channel).then((res) => {
             if (res && res.isNew) showImportToast(1);
           }).catch(() => {});
           // If we couldn't extract title or channel from the card (some
@@ -437,7 +555,7 @@ window._ytWatchedHider = (() => {
       // Batch check remaining IDs against IndexedDB (only uncached ones)
       const videoIds = Array.from(cardMap.keys());
       if (videoIds.length > 0) {
-        const results = await WatchedDB.checkMultiple(videoIds);
+        const results = await DBClient.checkMultiple(videoIds);
         for (const [videoId, isWatched] of Object.entries(results)) {
           const matchingCards = cardMap.get(videoId) || [];
           if (isWatched) {
@@ -697,7 +815,7 @@ window._ytWatchedHider = (() => {
     let added = 0;
     if (candidates.length > 0) {
       const videoIds = candidates.map(c => c.videoId);
-      const existing = await WatchedDB.checkMultiple(videoIds);
+      const existing = await DBClient.checkMultiple(videoIds);
 
       const newRecords = [];
       for (const { card, videoId } of candidates) {
@@ -719,7 +837,7 @@ window._ytWatchedHider = (() => {
 
       if (newRecords.length > 0) {
         try {
-          await WatchedDB.importData(newRecords);
+          await DBClient.importData(newRecords);
           for (const r of newRecords) watchedCache.add(r.videoId);
           showImportToast(newRecords.length);
           added = newRecords.length;
@@ -1008,7 +1126,7 @@ window._ytWatchedHider = (() => {
           watchedCache.add(videoId);
           const title = getTitleFromCard(card);
           const channel = getChannelFromCard(card);
-          WatchedDB.addWatched(videoId, title, 'seekbar', channel).then((res) => {
+          DBClient.addWatched(videoId, title, 'seekbar', channel).then((res) => {
             if (res && res.isNew) showImportToast(1);
           }).catch(() => {});
           // If we couldn't extract title or channel from the card (some
@@ -1038,7 +1156,7 @@ window._ytWatchedHider = (() => {
       if (unchecked.length === 0) return;
 
       const ids = unchecked.map(c => c.videoId);
-      const results = await WatchedDB.checkMultiple(ids);
+      const results = await DBClient.checkMultiple(ids);
       for (const { card, videoId } of unchecked) {
         if (results[videoId]) {
           watchedCache.add(videoId);
@@ -1623,58 +1741,19 @@ window._ytWatchedHider = (() => {
       }
     }
 
-    if (message.type === 'GET_STATS') {
-      WatchedDB.getStats().then((stats) => {
-        sendResponse({
-          ...stats,
-          dbStatus,
-          cacheSize: watchedCache.size,
-          cacheLoadTime,
-        });
-      }).catch(() => sendResponse({ count: 0, dbStatus: 'error', cacheSize: 0, cacheLoadTime: 0 }));
-      return true;
-    }
-
-    if (message.type === 'EXPORT_DATA') {
-      WatchedDB.exportAll()
-        .then(sendResponse)
-        .catch((e) => sendResponse({ __error: true, message: e && e.message ? e.message : String(e) }));
-      return true;
-    }
-
-    if (message.type === 'IMPORT_DATA') {
-      WatchedDB.importData(message.data).then((count) => {
-        for (const record of message.data) {
-          if (record.videoId) watchedCache.add(record.videoId);
-        }
-        processPage();
-        sendResponse({ success: true, count });
-      }).catch((e) => {
-        sendResponse({ success: false, error: e.message });
-      });
-      return true;
-    }
-
-    if (message.type === 'MERGE_IMPORT') {
-      WatchedDB.mergeImport(message.data).then((result) => {
-        for (const record of message.data) {
-          if (record.videoId) watchedCache.add(record.videoId);
-        }
-        processPage();
-        sendResponse({ success: true, added: result.added, skipped: result.skipped, total: result.total });
-      }).catch((e) => {
-        sendResponse({ success: false, error: e.message });
-      });
-      return true;
-    }
-
-    if (message.type === 'DELETE_VIDEO') {
-      WatchedDB.deleteOne(message.videoId).then(() => {
-        watchedCache.delete(message.videoId);
-        sendResponse({ success: true });
-      }).catch((e) => {
-        sendResponse({ success: false, error: e.message });
-      });
+    if (message.type === 'CACHE_INVALIDATED') {
+      if (message.clear) {
+        watchedCache.clear();
+        showAllCards();
+      } else if (Array.isArray(message.deletedIds)) {
+        for (const id of message.deletedIds) watchedCache.delete(id);
+      } else {
+        watchedCache.clear();
+        cacheLoaded = false;
+        loadCache();
+      }
+      if (enabled) setTimeout(processPage, 250);
+      sendResponse({ success: true });
       return true;
     }
 
@@ -1761,90 +1840,6 @@ window._ytWatchedHider = (() => {
       return true;
     }
 
-    if (message.type === 'UPSERT_LIKED') {
-      WatchedDB.upsertLiked(message.items || [], message.accountId || '')
-        .then((r) => sendResponse({ success: true, ...r }))
-        .catch((e) => sendResponse({ success: false, error: e.message }));
-      return true;
-    }
-
-    if (message.type === 'GET_LIKED') {
-      WatchedDB.getAllLiked()
-        .then((rows) => sendResponse({ success: true, rows }))
-        .catch((e) => sendResponse({ success: false, error: e.message }));
-      return true;
-    }
-
-    if (message.type === 'GET_LIKED_STATS') {
-      WatchedDB.getLikedStats()
-        .then((stats) => sendResponse({ success: true, ...stats }))
-        .catch((e) => sendResponse({ success: false, error: e.message }));
-      return true;
-    }
-
-    if (message.type === 'CLEAR_LIKED') {
-      WatchedDB.clearLikedByAccount(message.accountId || '')
-        .then(() => sendResponse({ success: true }))
-        .catch((e) => sendResponse({ success: false, error: e.message }));
-      return true;
-    }
-
-    if (message.type === 'MARK_CREDITS_CHECKED') {
-      WatchedDB.markCreditsChecked(message.videoId).then(() => {
-        sendResponse({ success: true });
-      }).catch((e) => {
-        sendResponse({ success: false, error: e.message });
-      });
-      return true;
-    }
-
-    if (message.type === 'CLEAN_ALL_CREDITS') {
-      WatchedDB.cleanAllCredits().then((result) => {
-        sendResponse({ success: true, ...result });
-      }).catch((e) => {
-        sendResponse({ success: false, error: e.message });
-      });
-      return true;
-    }
-
-    if (message.type === 'MARK_CREDITS_FAILED') {
-      WatchedDB.markCreditsFailed(message.videoId, message.reason || 'unknown').then(() => {
-        sendResponse({ success: true });
-      }).catch((e) => {
-        sendResponse({ success: false, error: e.message });
-      });
-      return true;
-    }
-
-    if (message.type === 'UPDATE_CREDITS') {
-      WatchedDB.updateCredits(
-        message.videoId,
-        message.credits || {},
-        !!message.force,
-        message.creditsSource || ''
-      ).then((didUpdate) => {
-        sendResponse({ success: true, updated: !!didUpdate });
-      }).catch((e) => {
-        sendResponse({ success: false, error: e.message });
-      });
-      return true;
-    }
-
-    if (message.type === 'UPDATE_TITLE_CHANNEL') {
-      // Force-update title/channel for a given videoId (used by oEmbed correction).
-      WatchedDB.updateTitleAndChannel(
-        message.videoId,
-        message.title || '',
-        message.channel || '',
-        !!message.force
-      ).then((didUpdate) => {
-        sendResponse({ success: true, updated: !!didUpdate });
-      }).catch((e) => {
-        sendResponse({ success: false, error: e.message });
-      });
-      return true;
-    }
-
     if (message.type === 'QUEUE_VIDEO') {
       const card = findCardByVideoId(message.videoId);
       if (card) queueOneCard(card).catch(() => {});
@@ -1853,17 +1848,6 @@ window._ytWatchedHider = (() => {
     if (message.type === 'WATCH_LATER_VIDEO') {
       const card = findCardByVideoId(message.videoId);
       if (card) watchLaterOneCard(card).catch(() => {});
-    }
-
-    if (message.type === 'CLEAR_DATA') {
-      WatchedDB.clearAll().then(() => {
-        watchedCache.clear();
-        showAllCards();
-        sendResponse({ success: true });
-      }).catch((e) => {
-        sendResponse({ success: false, error: e.message });
-      });
-      return true;
     }
   }
 

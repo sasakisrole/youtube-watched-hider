@@ -455,7 +455,7 @@ function loadData() {
       content.textContent = '';
       const empty = document.createElement('div');
       empty.className = 'empty';
-      empty.textContent = 'Could not load data. Make sure a YouTube tab is open and try reloading this page.';
+      empty.textContent = 'Could not load data. Reload the extension and try again.';
       content.appendChild(empty);
     }
   }, 5000);
