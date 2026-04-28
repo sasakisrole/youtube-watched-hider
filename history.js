@@ -35,6 +35,13 @@ function dateKey(ts) {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
+function unwrapWatchedRecords(data) {
+  if (Array.isArray(data)) return data;
+  if (data && typeof data === 'object' && data.schemaVersion === 2 && Array.isArray(data.watchedVideos)) return data.watchedVideos;
+  if (data && typeof data === 'object' && Array.isArray(data.records)) return data.records;
+  return [];
+}
+
 // Sort data
 function sortData(data, mode) {
   const sorted = [...data];
@@ -491,8 +498,9 @@ function loadData() {
         return;
       }
 
-      if (Array.isArray(data) && data.length > 0) {
-        allData = data;
+      const records = unwrapWatchedRecords(data);
+      if (records.length > 0) {
+        allData = records;
       } else {
         allData = [];
       }

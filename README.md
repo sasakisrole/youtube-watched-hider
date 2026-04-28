@@ -23,6 +23,7 @@ YouTubeのおすすめから**視聴済み動画を非表示**にするChrome拡
 - 個別削除、再生回数順・チャンネル名順などの並び替え
 - エクスポート／インポート（JSON）で端末間移行も可能
 - **自動バックアップ**：毎日JSONをダウンロードフォルダに書き出し
+- Export schema v2では視聴履歴に加えて高評価同期データと同期メタ情報も保存（v1形式の`records`互換も維持）
 - **Fix Channels**：YouTube oEmbed APIを使ってチャンネル名の欠損を補完
 - **Fix Credits**：概要欄から作曲・作詞・編曲クレジットを補完
 
@@ -70,14 +71,28 @@ Historyビューアーの「Analyze」ボタンから起動する音楽傾向分
 | `downloads` | 手動エクスポート / 自動バックアップのJSONダウンロード |
 | `alarms` | 日次自動バックアップのスケジュール |
 | `contextMenus` | 動画リンク右クリックメニュー（キューに追加 / 後で見る）の追加 |
+| `offscreen` | IndexedDB操作と大容量JSONバックアップ用Blob URLの生成 |
 | `*://*.youtube.com/*` | YouTube内DOMの操作とYouTube公式エンドポイントへのアクセス |
 
 ## 技術的な注意
 
 - Manifest V3
 - IndexedDB（`db.js`）で視聴履歴を管理
-- service workerベース（`background.js`）
-- バックアップは service worker からJSON data URLを生成し、`chrome.downloads.download` で保存
+- IndexedDB ownerは extension offscreen document（`offscreen.html` / `offscreen.js`）
+- service worker（`background.js`）はUI/アラーム/ダウンロードを中継
+- バックアップは offscreen document でBlob URLを生成し、`chrome.downloads.download` で保存
+
+## Export schema v2
+
+v1.36.0以降のエクスポートJSONは`schemaVersion: 2`のenvelopeです。
+
+- `watchedVideos`: 視聴履歴
+- `likedVideos`: 高評価同期データ
+- `likedSyncMeta`: 同期アカウントのメタ情報（Cookie / 認証ヘッダは含めません）
+- `counts`: 各データ種別の件数
+- `records`: v1 importer互換の視聴履歴エイリアス
+
+旧形式のraw arrayと`{ records: [...] }`は引き続きインポートできます。v1.35.0以前へダウングレードした場合も、v2 JSON内の`records`から視聴履歴のみ復元できます。
 
 ## 非公式ツールについて
 

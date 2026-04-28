@@ -176,6 +176,160 @@ async function sendToOffscreenDb(op, payload = {}) {
   return response.result;
 }
 
+function storageLocalGet(defaults) {
+  return new Promise((resolve) => chrome.storage.local.get(defaults, resolve));
+}
+
+function storageLocalSet(values) {
+  return new Promise((resolve) => chrome.storage.local.set(values, resolve));
+}
+
+async function exportDataEnvelope(source = 'manual') {
+  const { likedSyncMeta } = await storageLocalGet({ likedSyncMeta: null });
+  const appVersion = chrome.runtime.getManifest().version;
+  return sendToOffscreenDb('EXPORT_DATA', {
+    source,
+    likedSyncMeta,
+    appVersion,
+  });
+}
+
+function getManualExportFilename() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `yt-watched-${yyyy}-${mm}-${dd}.json`;
+}
+
+async function createExportBlobUrl(source = 'manual') {
+  const { likedSyncMeta } = await storageLocalGet({ likedSyncMeta: null });
+  const appVersion = chrome.runtime.getManifest().version;
+  return sendToOffscreenDb('OFFSCREEN_CREATE_EXPORT_BLOB', {
+    source,
+    likedSyncMeta,
+    appVersion,
+  });
+}
+
+async function revokeExportBlobUrl(blobInfo) {
+  if (!blobInfo || !blobInfo.blobUrl) return;
+  try {
+    await sendToOffscreenDb('OFFSCREEN_REVOKE_BLOB', {
+      requestId: blobInfo.requestId,
+      blobUrl: blobInfo.blobUrl,
+    });
+  } catch (e) {
+    console.warn('[YT-Watched] Blob URL revoke failed:', e.message);
+  }
+}
+
+function downloadUrl(url, filename, options = {}) {
+  return new Promise((resolve, reject) => {
+    chrome.downloads.download({
+      url,
+      filename,
+      conflictAction: options.conflictAction || 'uniquify',
+      saveAs: !!options.saveAs,
+    }, (downloadId) => {
+      const lastError = chrome.runtime.lastError;
+      if (lastError) {
+        reject(new Error(lastError.message));
+        return;
+      }
+      if (typeof downloadId !== 'number') {
+        reject(new Error('chrome.downloads.download returned no downloadId'));
+        return;
+      }
+      resolve(downloadId);
+    });
+  });
+}
+
+function waitForDownloadSettled(downloadId) {
+  return new Promise((resolve) => {
+    const timeoutId = setTimeout(() => {
+      chrome.downloads.onChanged.removeListener(onChanged);
+      resolve({ state: 'unknown', timedOut: true });
+    }, 5 * 60 * 1000);
+
+    function onChanged(delta) {
+      if (delta.id !== downloadId || !delta.state) return;
+      const state = delta.state.current;
+      if (state !== 'complete' && state !== 'interrupted') return;
+      clearTimeout(timeoutId);
+      chrome.downloads.onChanged.removeListener(onChanged);
+      resolve({ state });
+    }
+
+    chrome.downloads.onChanged.addListener(onChanged);
+    chrome.downloads.search({ id: downloadId }, (items) => {
+      const state = items && items[0] && items[0].state;
+      if (state === 'complete' || state === 'interrupted') {
+        clearTimeout(timeoutId);
+        chrome.downloads.onChanged.removeListener(onChanged);
+        resolve({ state });
+      }
+    });
+  });
+}
+
+function getExportCount(blobInfo) {
+  const counts = blobInfo && blobInfo.counts ? blobInfo.counts : {};
+  return {
+    watchedVideos: counts.watchedVideos || 0,
+    likedVideos: counts.likedVideos || 0,
+    total: (counts.watchedVideos || 0) + (counts.likedVideos || 0),
+  };
+}
+
+async function downloadExportJson({ source, filename, conflictAction = 'uniquify', saveAs = false }) {
+  let blobInfo = null;
+  try {
+    blobInfo = await createExportBlobUrl(source);
+    const counts = getExportCount(blobInfo);
+    if (counts.total === 0) {
+      await revokeExportBlobUrl(blobInfo);
+      return { success: false, reason: 'no_data', counts, count: 0 };
+    }
+
+    const downloadId = await downloadUrl(blobInfo.blobUrl, filename, { conflictAction, saveAs });
+    const settled = await waitForDownloadSettled(downloadId);
+    await revokeExportBlobUrl(blobInfo);
+
+    if (settled.state === 'interrupted') {
+      return { success: false, reason: 'download_interrupted', downloadId, counts, count: counts.watchedVideos };
+    }
+    if (settled.timedOut) {
+      return { success: false, reason: 'download_state_timeout', downloadId, counts, count: counts.watchedVideos };
+    }
+
+    return {
+      success: true,
+      downloadId,
+      counts,
+      count: counts.watchedVideos,
+      exportedAt: blobInfo.exportedAt,
+    };
+  } catch (e) {
+    if (blobInfo) await revokeExportBlobUrl(blobInfo);
+    const message = e.message || String(e);
+    return { success: false, reason: message, error: message, errorType: 'download_error', count: 0 };
+  }
+}
+
+function summarizeBackupError(result) {
+  if (!result) return 'unknown';
+  if (result.error) return result.error;
+  return result.reason || 'unknown';
+}
+
+async function storeImportedMeta(result) {
+  if (result && result.likedSyncMeta) {
+    await storageLocalSet({ likedSyncMeta: result.likedSyncMeta });
+  }
+}
+
 function broadcastToYouTubeTabs(message) {
   chrome.tabs.query({ url: '*://*.youtube.com/*' }, (tabs) => {
     for (const tab of tabs) {
@@ -197,55 +351,38 @@ function getBackupFilename() {
   return `yt-watched-backup-${yyyy}-${mm}-${dd}.json`;
 }
 
-// Returns a promise with the backup result for callers that need feedback
-function performAutoBackup() {
-  return new Promise((resolve) => {
-    chrome.storage.local.get({ autoBackup: true }, (settings) => {
-      if (!settings.autoBackup) {
-        resolve({ success: false, reason: 'disabled' });
-        return;
-      }
+// Returns a promise with the backup result for callers that need feedback.
+async function performAutoBackup(options = {}) {
+  const source = options.source || 'auto';
+  const respectEnabled = options.respectEnabled !== false;
+  const settings = await storageLocalGet({ autoBackup: true });
+  if (respectEnabled && !settings.autoBackup) {
+    return { success: false, reason: 'disabled' };
+  }
 
-      sendToOffscreenDb('EXPORT_DATA')
-        .then((data) => {
-          if (!data || data.length === 0) {
-            console.warn('[YT-Watched] Backup skipped: no data');
-            resolve({ success: false, reason: 'no_data' });
-            return;
-          }
-
-          const json = JSON.stringify(data, null, 2);
-          // Use data URL instead of Blob URL (Blob URL not available in Service Worker)
-          const base64 = btoa(unescape(encodeURIComponent(json)));
-          const dataUrl = 'data:application/json;base64,' + base64;
-
-          chrome.downloads.download({
-            url: dataUrl,
-            filename: getBackupFilename(),
-            conflictAction: 'overwrite',
-            saveAs: false
-          }, (downloadId) => {
-            if (chrome.runtime.lastError) {
-              console.error('[YT-Watched] Backup download failed:', chrome.runtime.lastError.message);
-              resolve({ success: false, reason: 'download_error', error: chrome.runtime.lastError.message });
-              return;
-            }
-            if (downloadId) {
-              chrome.storage.local.set({
-                lastBackup: Date.now(),
-                lastBackupCount: data.length
-              });
-              console.log('[YT-Watched] Backup completed:', data.length, 'records');
-              resolve({ success: true, count: data.length });
-            }
-          });
-        })
-        .catch((err) => {
-          console.warn('[YT-Watched] Backup failed:', err.message);
-          resolve({ success: false, reason: 'error', error: err.message });
-        });
-    });
+  const result = await downloadExportJson({
+    source,
+    filename: getBackupFilename(),
+    conflictAction: 'overwrite',
+    saveAs: false,
   });
+
+  if (result.success) {
+    await storageLocalSet({
+      lastBackup: Date.now(),
+      lastBackupCount: result.count,
+      lastBackupError: null,
+    });
+    console.log('[YT-Watched] Backup completed:', result.count, 'watched records');
+    return result;
+  }
+
+  const error = summarizeBackupError(result);
+  if (result.reason !== 'disabled') {
+    await storageLocalSet({ lastBackupError: error });
+  }
+  console.warn('[YT-Watched] Backup failed:', error);
+  return result;
 }
 
 // Context menu click handler
@@ -318,17 +455,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'EXPORT_DATA') {
-    sendToOffscreenDb('EXPORT_DATA')
-      .then((data) => sendResponse(data || []))
+    exportDataEnvelope(message.source || 'manual')
+      .then((data) => sendResponse(data || { records: [] }))
       .catch((e) => sendResponse({ __error: true, message: e.message || String(e) }));
+    return true;
+  }
+
+  if (message.type === 'EXPORT_DOWNLOAD') {
+    downloadExportJson({
+      source: message.source || 'manual',
+      filename: message.filename || getManualExportFilename(),
+      conflictAction: message.conflictAction || 'uniquify',
+      saveAs: !!message.saveAs,
+    }).then(sendResponse);
     return true;
   }
 
   if (message.type === 'IMPORT_DATA') {
     sendToOffscreenDb('IMPORT_DATA', { data: message.data })
-      .then((count) => {
+      .then(async (result) => {
+        await storeImportedMeta(result);
         broadcastCacheInvalidated({ reason: 'import' });
-        sendResponse({ success: true, count });
+        sendResponse({ success: true, ...result, count: result.count || 0 });
       })
       .catch((e) => sendResponse({ success: false, error: e.message }));
     return true;
@@ -336,7 +484,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'MERGE_IMPORT') {
     sendToOffscreenDb('MERGE_IMPORT', { data: message.data })
-      .then((result) => {
+      .then(async (result) => {
+        await storeImportedMeta(result);
         broadcastCacheInvalidated({ reason: 'merge-import' });
         sendResponse({ success: true, ...result });
       })
@@ -409,6 +558,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       autoBackup: true,
       lastBackup: null,
       lastBackupCount: 0,
+      lastBackupError: null,
       migrationV135Done: false
     }, (result) => {
       // Include next backup schedule
@@ -503,7 +653,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'BACKUP_NOW') {
-    performAutoBackup().then(sendResponse);
+    performAutoBackup({ source: 'backup-now', respectEnabled: false }).then(sendResponse);
     return true;
   }
 

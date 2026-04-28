@@ -39,8 +39,15 @@ const HISTORY_PAGE_SIZE = 50;
 
 function showStatus(msg, isError = false) {
   statusEl.textContent = msg;
-  statusEl.style.color = isError ? '#ff6b6b' : '#4caf50';
+  statusEl.style.color = isError ? 'var(--danger)' : 'var(--success)';
   setTimeout(() => { statusEl.textContent = ''; }, 3000);
+}
+
+function unwrapWatchedRecords(data) {
+  if (Array.isArray(data)) return data;
+  if (data && typeof data === 'object' && data.schemaVersion === 2 && Array.isArray(data.watchedVideos)) return data.watchedVideos;
+  if (data && typeof data === 'object' && Array.isArray(data.records)) return data.records;
+  return null;
 }
 
 function getExportRecords(data) {
@@ -48,7 +55,7 @@ function getExportRecords(data) {
     showStatus('DB error: ' + (data.message || 'unknown'), true);
     return null;
   }
-  return Array.isArray(data) ? data : [];
+  return unwrapWatchedRecords(data) || [];
 }
 
 // Format date
@@ -266,10 +273,18 @@ chrome.runtime.sendMessage({ type: 'GET_ENABLED' }, (response) => {
     hideMoviesToggle.checked = response.hideMovies || false;
     harvestModeToggle.checked = response.harvestMode || false;
     autoBackupToggle.checked = response.autoBackup !== false;
+    lastBackupInfo.className = 'backup-status';
     if (response.lastBackup) {
       const d = new Date(response.lastBackup);
       const dateStr = `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
       lastBackupInfo.textContent = ` (last: ${dateStr}, ${response.lastBackupCount} records)`;
+    } else {
+      lastBackupInfo.textContent = '';
+    }
+    if (response.lastBackupError) {
+      const prefix = lastBackupInfo.textContent ? `${lastBackupInfo.textContent} ` : ' ';
+      lastBackupInfo.className = 'backup-status backup-error';
+      lastBackupInfo.textContent = `${prefix}last error: ${response.lastBackupError}`;
     }
     if (response.nextBackup) {
       const nd = new Date(response.nextBackup);
@@ -325,28 +340,21 @@ viewerBtn.addEventListener('click', () => {
 
 // Export (versioned envelope format)
 exportBtn.addEventListener('click', () => {
-  chrome.runtime.sendMessage({ type: 'EXPORT_DATA' }, (data) => {
-    const records = getExportRecords(data);
-    if (!records) return;
-    if (records.length === 0) {
-      showStatus('No data to export', true);
+  showStatus('Export started...');
+  chrome.runtime.sendMessage({ type: 'EXPORT_DOWNLOAD', source: 'manual' }, (result) => {
+    if (!result) {
+      showStatus('Export failed: no response', true);
       return;
     }
-    const envelope = {
-      schemaVersion: 1,
-      exportedAt: new Date().toISOString(),
-      appVersion: chrome.runtime.getManifest().version,
-      count: records.length,
-      records,
-    };
-    const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `yt-watched-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showStatus(`Exported ${records.length} records`);
+    if (result.success) {
+      const watched = result.counts ? result.counts.watchedVideos : result.count;
+      const liked = result.counts ? result.counts.likedVideos : 0;
+      showStatus(`Exported ${watched} watched / ${liked} liked`);
+    } else if (result.reason === 'no_data') {
+      showStatus('No data to export', true);
+    } else {
+      showStatus('Export failed: ' + (result.error || result.reason), true);
+    }
   });
 });
 
@@ -355,11 +363,9 @@ importBtn.addEventListener('click', () => {
   fileInput.click();
 });
 
-// Unwrap import data: accept both envelope format and legacy raw array
+// Unwrap import data: accept v2 envelope, v1 envelope, and legacy raw array.
 function unwrapImportData(parsed) {
-  if (Array.isArray(parsed)) return parsed;
-  if (parsed && typeof parsed === 'object' && Array.isArray(parsed.records)) return parsed.records;
-  return null;
+  return unwrapWatchedRecords(parsed);
 }
 
 fileInput.addEventListener('change', (e) => {
@@ -375,13 +381,14 @@ fileInput.addEventListener('change', (e) => {
         showStatus('Invalid JSON format', true);
         return;
       }
-      chrome.runtime.sendMessage({ type: 'IMPORT_DATA', data }, (response) => {
+      chrome.runtime.sendMessage({ type: 'IMPORT_DATA', data: parsed }, (response) => {
         if (response && response.success) {
-          showStatus(`Imported ${response.count} records`);
+          const liked = response.liked && typeof response.liked.imported === 'number' ? ` / ${response.liked.imported} liked` : '';
+          showStatus(`Imported ${response.count} records${liked}`);
           loadStats();
           if (historyPanel.style.display !== 'none') loadHistory();
         } else {
-          showStatus('Import failed', true);
+          showStatus('Import failed: ' + ((response && response.error) || 'unknown'), true);
         }
       });
     } catch {
@@ -445,11 +452,11 @@ backupNowBtn.addEventListener('click', () => {
     if (!result) {
       showStatus('No response from SW', true);
     } else if (result.success) {
-      showStatus(`Backup OK: ${result.count} records`);
+      const watched = result.counts ? result.counts.watchedVideos : result.count;
+      const liked = result.counts ? result.counts.likedVideos : 0;
+      showStatus(`Backup OK: ${watched} watched / ${liked} liked`);
     } else if (result.reason === 'no_data') {
       showStatus('No data to backup (0 records)', true);
-    } else if (result.reason === 'disabled') {
-      showStatus('Auto backup is disabled', true);
     } else {
       showStatus('Backup failed: ' + (result.error || result.reason), true);
     }
@@ -493,7 +500,7 @@ syncFileInput.addEventListener('change', (e) => {
   if (!file) return;
 
   syncStatus.textContent = 'Reading file...';
-  syncStatus.style.color = '#ff9800';
+  syncStatus.style.color = 'var(--warning)';
 
   const reader = new FileReader();
   reader.onload = (event) => {
@@ -502,24 +509,25 @@ syncFileInput.addEventListener('change', (e) => {
       const data = unwrapImportData(parsed);
       if (!data) {
         syncStatus.textContent = 'Invalid JSON format';
-        syncStatus.style.color = '#ff6b6b';
+        syncStatus.style.color = 'var(--danger)';
         return;
       }
       syncStatus.textContent = `Merging ${data.length} records...`;
-      chrome.runtime.sendMessage({ type: 'MERGE_IMPORT', data }, (response) => {
+      chrome.runtime.sendMessage({ type: 'MERGE_IMPORT', data: parsed }, (response) => {
         if (response && response.success) {
-          syncStatus.textContent = `Done: +${response.added} new, ${response.skipped} existing`;
-          syncStatus.style.color = '#4caf50';
+          const liked = response.liked && typeof response.liked.imported === 'number' ? `, ${response.liked.imported} liked` : '';
+          syncStatus.textContent = `Done: +${response.added} new, ${response.skipped} existing${liked}`;
+          syncStatus.style.color = 'var(--success)';
           loadStats();
           if (historyPanel.style.display !== 'none') loadHistory();
         } else {
           syncStatus.textContent = 'Merge failed';
-          syncStatus.style.color = '#ff6b6b';
+          syncStatus.style.color = 'var(--danger)';
         }
       });
     } catch {
       syncStatus.textContent = 'Failed to parse JSON';
-      syncStatus.style.color = '#ff6b6b';
+      syncStatus.style.color = 'var(--danger)';
     }
   };
   reader.readAsText(file);

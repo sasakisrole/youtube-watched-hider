@@ -1,5 +1,29 @@
 # Changelog
 
+## v1.36.0 (2026-04-29)
+- Feature: Export schema v2 を導入
+  - `watchedVideos` / `likedVideos` / `likedSyncMeta` / `counts` を含むv2 envelopeへ更新
+  - Import側は v1 raw array / v1 envelope (`records` キー) / v2 envelope すべてに対応
+  - Export側の `records` alias は廃止（ファイルサイズ約半減・25MB→13MB）。旧v1.35.0以前へのダウングレードが必要な場合は手動で `watchedVideos` を抜き出すこと
+- Improve: Auto Backup / Backup Now / 手動Exportを offscreen Blob URL + `chrome.downloads.download` 経路へ統合
+  - 大容量JSONをbase64 data URL化せず、23,000件級バックアップのURL膨張を回避
+  - ダウンロード完了または中断を `chrome.downloads.onChanged` で検知してからBlob URLをrevoke
+  - 失敗理由を `chrome.storage.local.lastBackupError` に保存
+- Improve: Popup Settingsで最終バックアップ成功日時・件数・最後の失敗理由を表示
+- Fix: Export envelope の `appVersion` が `unknown` になる問題を修正（backgroundから明示的に渡すよう変更）
+- Improve: history viewer / popup UI を全面リデザイン
+  - ライト基調（オフホワイト + ネイビーアクセント）に変更、`prefers-color-scheme: dark` で自動切替
+  - ツールバーを「探す / 並べる・絞る / メンテナンス」の3行構成に再編
+  - CSS変数で配色トークン化、絵文字ゼロのモノトーン設計
+- Improve: Analyzeクレジットタブの「名義同一」列を「セルフアレンジ曲」に改名
+  - 作曲・編曲タブのみ集計対象とし、作詞・未割当タブでは em ダッシュ表示（指標として意味を成さないため）
+- Improve: Analyze「Claude推薦プロンプト」をブラッシュアップ
+  - 用語注釈追加（Topic / 自編曲率 / クレジット率）
+  - 多様性要件（裏方クレジット系最低3名、別ジャンル最低2名）
+  - 推薦根拠の4観点を明示（共通作家・楽曲構造・コミュニティ・歌詞テーマ）
+  - ハルシネーション対策と確度ラベル、YouTube検索URL生成を要件化
+- Note: DB schema は v4 のまま。likedVideos複合キー化とCache LRUは後続PRで対応予定
+
 ## v1.35.0 (2026-04-28)
 - Feature: IndexedDB owner を YouTube content script から extension offscreen document へ移動
   - `offscreen` permission と `offscreen.html` / `offscreen.js` を追加

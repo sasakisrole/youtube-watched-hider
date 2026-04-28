@@ -4,17 +4,57 @@
   <meta charset="UTF-8">
   <title>YT Watched History</title>
   <style>
+    /* ===== Design tokens (light default, OS dark auto) ===== */
+    :root {
+      --bg: #fafafa;
+      --surface: #ffffff;
+      --surface-2: #f4f4f6;
+      --border: #e8e8e8;
+      --border-strong: #d4d4d4;
+      --text: #18181b;
+      --text-muted: #71717a;
+      --text-faint: #a1a1aa;
+      --accent: #3f3f9c;
+      --accent-soft: #eeeefc;
+      --accent-strong: #2f2f7a;
+      --danger: #a43f3a;
+      --danger-soft: #fbecea;
+      --success: #2e7a55;
+      --radius: 8px;
+      --radius-sm: 6px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1115;
+        --surface: #181b22;
+        --surface-2: #1f232c;
+        --border: #2a2f39;
+        --border-strong: #3a4150;
+        --text: #f1f1f3;
+        --text-muted: #a8aebb;
+        --text-faint: #6c7180;
+        --accent: #8b8bff;
+        --accent-soft: #1f1f3d;
+        --accent-strong: #b3b3ff;
+        --danger: #e57670;
+        --danger-soft: #2a1a1a;
+      }
+    }
+
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #1a1a2e;
-      color: #e0e0e0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif;
+      font-feature-settings: 'palt';
+      background: var(--bg);
+      color: var(--text);
       min-height: 100vh;
+      font-size: 14px;
     }
 
+    /* ===== Header ===== */
     .header {
-      background: #16213e;
+      background: var(--surface);
       padding: 16px 24px;
       display: flex;
       align-items: center;
@@ -22,103 +62,183 @@
       position: sticky;
       top: 0;
       z-index: 10;
-      border-bottom: 1px solid #2a2a4a;
+      border-bottom: 1px solid var(--border);
     }
-
     .header h1 {
-      font-size: 18px;
-      color: #ff4444;
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: 0.01em;
     }
-
-    .header-right {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
+    .header-right { display: flex; align-items: center; gap: 12px; }
     .stats-badge {
       font-size: 13px;
-      color: #999;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
     }
-
     .stats-badge strong {
-      color: #ff4444;
+      color: var(--accent);
       font-size: 16px;
+      font-weight: 700;
     }
 
+    /* ===== Toolbar (3 rows) ===== */
     .toolbar {
-      padding: 12px 24px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-      background: #1a1a2e;
-      border-bottom: 1px solid #2a2a4a;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
       position: sticky;
       top: 53px;
       z-index: 9;
     }
+    .toolbar-row {
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      border-bottom: 1px solid var(--border);
+    }
+    .toolbar-row:last-child { border-bottom: none; }
+    .toolbar-row.maint { background: var(--surface-2); }
+    .toolbar-label {
+      font-size: 11px;
+      color: var(--text-faint);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+      margin-right: 2px;
+    }
 
+    /* ===== Search box ===== */
     .search-box {
       flex: 1;
-      min-width: 200px;
+      min-width: 220px;
       padding: 8px 12px;
-      border: 1px solid #2a2a4a;
-      border-radius: 6px;
-      background: #0f1629;
-      color: #e0e0e0;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text);
       font-size: 14px;
       outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .search-box::placeholder { color: var(--text-faint); }
+    .search-box:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
     }
 
-    .search-box:focus { border-color: #ff4444; }
-
+    /* ===== Buttons ===== */
     .sort-btn {
-      padding: 6px 14px;
-      border: 1px solid #2a2a4a;
-      border-radius: 6px;
-      background: #16213e;
-      color: #e0e0e0;
+      padding: 6px 12px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text);
       font-size: 12px;
+      font-weight: 500;
       cursor: pointer;
-      transition: all 0.15s;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
       white-space: nowrap;
     }
+    .sort-btn:hover {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .sort-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    @media (prefers-color-scheme: dark) {
+      .sort-btn.active { color: #0f1115; }
+    }
 
-    .sort-btn:hover { background: #1a3a5c; }
-    .sort-btn.active { border-color: #ff4444; color: #ff4444; }
+    /* Segmented control look for sort group */
+    .btn-group {
+      display: inline-flex;
+      gap: 0;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+    }
+    .btn-group .sort-btn {
+      border: none;
+      border-radius: 0;
+      border-right: 1px solid var(--border);
+    }
+    .btn-group .sort-btn:last-child { border-right: none; }
+    .btn-group .sort-btn:hover { background: var(--accent-soft); }
 
+    /* Checkbox label */
+    .chk {
+      color: var(--text-muted);
+      font-size: 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .chk input { accent-color: var(--accent); cursor: pointer; }
+
+    /* Maint toggle */
+    .maint-toggle {
+      margin-left: auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 10px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text-muted);
+      font-size: 12px;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .maint-toggle:hover { color: var(--accent); border-color: var(--accent); }
+    .maint-toggle .chev { transition: transform 0.2s; }
+    .maint-toggle.open .chev { transform: rotate(180deg); }
+
+    .icon { width: 14px; height: 14px; vertical-align: middle; }
+
+    /* ===== Content ===== */
     .content {
-      max-width: 900px;
+      max-width: 980px;
       margin: 0 auto;
       padding: 16px 24px;
     }
 
     .date-header {
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 600;
-      color: #ff8888;
-      padding: 16px 0 6px;
-      border-bottom: 1px solid #2a2a4a;
-      margin-bottom: 4px;
+      color: var(--text-muted);
+      padding: 14px 4px 6px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 6px;
       position: sticky;
-      top: 105px;
-      background: #1a1a2e;
+      top: 158px;
+      background: var(--bg);
       z-index: 5;
+      letter-spacing: 0.04em;
     }
-
     .date-header:first-child { padding-top: 0; }
 
     .video-row {
       display: flex;
       align-items: center;
-      background: #16213e;
-      border-radius: 6px;
-      margin-bottom: 3px;
-      transition: background 0.15s;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      margin-bottom: 4px;
+      transition: background 0.15s, border-color 0.15s;
     }
-
-    .video-row:hover { background: #1a3a5c; }
+    .video-row:hover {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+    }
 
     .video-link {
       display: flex;
@@ -128,13 +248,13 @@
       flex: 1;
       min-width: 0;
       text-decoration: none;
-      color: #e0e0e0;
+      color: var(--text);
     }
 
     .delete-btn {
       background: none;
       border: none;
-      color: #555;
+      color: var(--text-faint);
       font-size: 16px;
       cursor: pointer;
       padding: 8px 12px;
@@ -142,81 +262,186 @@
       opacity: 0;
       transition: opacity 0.15s, color 0.15s;
     }
-
     .video-row:hover .delete-btn { opacity: 1; }
-    .delete-btn:hover { color: #ff4444; }
+    .delete-btn:hover { color: var(--danger); }
 
     .badge {
       font-size: 10px;
       padding: 2px 6px;
       border-radius: 4px;
       flex-shrink: 0;
-      font-weight: 500;
+      font-weight: 600;
+      letter-spacing: 0.02em;
     }
-
     .badge-yt {
-      background: #ff444433;
-      color: #ff8888;
+      background: var(--danger-soft);
+      color: var(--danger);
     }
-
     .badge-count {
-      background: #4444ff33;
-      color: #8888ff;
+      background: var(--accent-soft);
+      color: var(--accent);
     }
 
-    .video-info {
-      flex: 1;
-      min-width: 0;
-    }
-
+    .video-info { flex: 1; min-width: 0; }
     .video-title {
       font-size: 13px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-
     .video-channel {
       font-size: 11px;
-      color: #888;
+      color: var(--text-muted);
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
       margin-top: 1px;
     }
-
     .video-time {
       font-size: 11px;
-      color: #666;
+      color: var(--text-muted);
       white-space: nowrap;
       flex-shrink: 0;
+      font-variant-numeric: tabular-nums;
     }
-
     .video-id {
       font-size: 10px;
-      color: #444;
-      font-family: monospace;
+      color: var(--text-faint);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
       flex-shrink: 0;
     }
 
-    .empty {
+    .empty, .loading {
       text-align: center;
-      color: #666;
+      color: var(--text-muted);
       padding: 48px 0;
       font-size: 14px;
     }
 
-    .loading {
-      text-align: center;
-      color: #888;
-      padding: 48px 0;
-      font-size: 14px;
+    /* Status text */
+    #fixStatus {
+      color: var(--text-muted);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
     }
 
     /* Scrollbar */
-    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+
+    /* ===== Analyze view ===== */
+    .az-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:20px; }
+    .az-stat {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+    }
+    .az-n {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+    }
+    .az-l { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+    .az-tabs {
+      display: flex;
+      gap: 2px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 14px;
+    }
+    .az-tab {
+      padding: 8px 14px;
+      cursor: pointer;
+      color: var(--text-muted);
+      border-bottom: 2px solid transparent;
+      font-size: 13px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .az-tab:hover { color: var(--text); }
+    .az-tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+      font-weight: 600;
+    }
+
+    .az-filter {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .az-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .az-table th, .az-table td {
+      padding: 9px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .az-table th {
+      background: var(--surface-2);
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .az-table tr:last-child td { border-bottom: none; }
+    .az-table td:first-child { color: var(--text-faint); font-variant-numeric: tabular-nums; }
+    .az-table td:nth-child(3) { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
+    .az-table a { color: var(--text-muted); text-decoration: none; margin-right: 10px; font-size: 12px; }
+    .az-table a:hover { color: var(--accent); }
+
+    .az-kwgrid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 6px;
+    }
+    .az-kw {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+    }
+    .az-kw .w {
+      color: var(--accent);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Prompt panel pre */
+    #azPromptText {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px;
+      white-space: pre-wrap;
+      font-size: 12px;
+      color: var(--text-muted);
+      max-height: 500px;
+      overflow: auto;
+    }
+
+    /* Reduce motion */
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; }
+    }
   </style>
 </head>
 <body>
@@ -228,20 +453,36 @@
   </div>
 
   <div class="toolbar">
-    <input type="text" class="search-box" id="search" placeholder="Search title or channel...">
-    <button class="sort-btn active" data-sort="date-desc">New</button>
-    <button class="sort-btn" data-sort="date-asc">Old</button>
-    <button class="sort-btn" data-sort="count-desc">Most Played</button>
-    <button class="sort-btn" data-sort="channel">Channel</button>
-    <button class="sort-btn" data-sort="title">Title</button>
-    <button class="sort-btn" id="filterNoChannel" title="チャンネル名が未記録の動画だけ表示">No Channel</button>
-    <button class="sort-btn" id="fixChannels" title="oEmbed APIでチャンネル名を補正（未記録のみ）">Fix Channels</button>
-    <button class="sort-btn" id="fixChannelsForce" title="oEmbed APIでチャンネル名を上書き補正（表示中の全件）">Fix (force)</button>
-    <button class="sort-btn" id="fixCredits" title="動画の作曲・作詞・編曲を概要欄から補完（ラベル行のみ採用）">Fix Credits</button>
-    <label style="color:#888;font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;" title="前回「情報なし」だった動画は除外して取得"><input type="checkbox" id="skipCreditsChecked" checked>チェック済みスキップ</label>
-    <label style="color:#888;font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;" title="非Topicチャンネル（MV・公式配信など）も対象にする。ラベル付き行のみ採用"><input type="checkbox" id="includeGeneralCredits">一般も含める</label>
-    <button class="sort-btn" id="toggleAnalyze" title="音楽傾向分析">Analyze</button>
-    <span id="fixStatus" style="margin-left:8px;color:#666;font-size:13px;"></span>
+    <!-- Row 1: 探す + ビュー切替 -->
+    <div class="toolbar-row">
+      <input type="text" class="search-box" id="search" placeholder="タイトル・チャンネル名で検索">
+      <button class="sort-btn" id="toggleAnalyze" title="音楽傾向分析">Analyze</button>
+    </div>
+
+    <!-- Row 2: 並べる・絞る -->
+    <div class="toolbar-row">
+      <span class="toolbar-label">並び順</span>
+      <div class="btn-group" role="group" aria-label="並び順">
+        <button class="sort-btn active" data-sort="date-desc">New</button>
+        <button class="sort-btn" data-sort="date-asc">Old</button>
+        <button class="sort-btn" data-sort="count-desc">Most Played</button>
+        <button class="sort-btn" data-sort="channel">Channel</button>
+        <button class="sort-btn" data-sort="title">Title</button>
+      </div>
+      <span class="toolbar-label" style="margin-left:8px;">絞り込み</span>
+      <button class="sort-btn" id="filterNoChannel" title="チャンネル名が未記録の動画だけ表示">No Channel</button>
+    </div>
+
+    <!-- Row 3: メンテナンス（常時表示・視覚的に弱く） -->
+    <div class="toolbar-row maint">
+      <span class="toolbar-label">補完</span>
+      <button class="sort-btn" id="fixChannels" title="oEmbed APIでチャンネル名を補正（未記録のみ）">Fix Channels</button>
+      <button class="sort-btn" id="fixChannelsForce" title="oEmbed APIでチャンネル名を上書き補正（表示中の全件）">Fix (force)</button>
+      <button class="sort-btn" id="fixCredits" title="動画の作曲・作詞・編曲を概要欄から補完（ラベル行のみ採用）">Fix Credits</button>
+      <label class="chk" title="前回「情報なし」だった動画は除外して取得"><input type="checkbox" id="skipCreditsChecked" checked>チェック済みスキップ</label>
+      <label class="chk" title="非Topicチャンネル（MV・公式配信など）も対象にする。ラベル付き行のみ採用"><input type="checkbox" id="includeGeneralCredits">一般も含める</label>
+      <span id="fixStatus"></span>
+    </div>
   </div>
 
   <div class="content" id="content">
@@ -266,7 +507,7 @@
     <div class="az-panel" id="azArtistsPanel">
       <div class="az-filter">
         <input type="text" id="azArtistFilter" placeholder="アーティスト名で絞り込み" class="search-box" style="max-width:260px;">
-        <label style="color:#888;font-size:13px;display:flex;align-items:center;gap:6px;"><input type="checkbox" id="azTopicOnly" checked>-Topicのみ</label>
+        <label class="chk"><input type="checkbox" id="azTopicOnly" checked>-Topicのみ</label>
       </div>
       <table class="az-table" id="azArtistsTable"><thead><tr><th style="width:40px;">#</th><th>アーティスト</th><th style="width:60px;">再生</th><th>リンク</th></tr></thead><tbody></tbody></table>
     </div>
@@ -277,67 +518,45 @@
       <table class="az-table" id="azChannelsTable"><thead><tr><th style="width:40px;">#</th><th>チャンネル</th><th style="width:60px;">再生</th></tr></thead><tbody></tbody></table>
     </div>
     <div class="az-panel" id="azKeywordsPanel" style="display:none;">
-      <p style="color:#888;font-size:13px;margin-bottom:12px;">Topicチャンネル楽曲のタイトル頻出ワード</p>
+      <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">Topicチャンネル楽曲のタイトル頻出ワード</p>
       <div class="az-kwgrid" id="azKwList"></div>
     </div>
     <div class="az-panel" id="azCreditsPanel" style="display:none;">
       <div class="az-filter">
-        <div style="display:flex;gap:4px;">
+        <div class="btn-group">
           <button class="sort-btn az-credit-tab active" data-credit="composer">作曲</button>
           <button class="sort-btn az-credit-tab" data-credit="lyricist">作詞</button>
           <button class="sort-btn az-credit-tab" data-credit="arranger">編曲</button>
           <button class="sort-btn az-credit-tab" data-credit="raw" title="役割不明（Topic「·」区切りで取得した名前のみ。役割が確定したものはここに出ません）">未割当</button>
         </div>
-        <label style="color:#888;font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;" title="非Topicチャンネルのクレジットも集計対象にする"><input type="checkbox" id="azIncludeGeneral">一般も含める</label>
+        <label class="chk" title="非Topicチャンネルのクレジットも集計対象にする"><input type="checkbox" id="azIncludeGeneral">一般も含める</label>
         <input type="text" id="azCreditFilter" placeholder="名前で絞り込み" class="search-box" style="max-width:260px;">
-        <span id="azCreditStats" style="color:#888;font-size:12px;"></span>
+        <span id="azCreditStats" style="color:var(--text-muted);font-size:12px;"></span>
       </div>
-      <table class="az-table" id="azCreditsTable"><thead><tr><th style="width:40px;">#</th><th>名前</th><th style="width:60px;">再生</th><th style="width:80px;">名義同一</th></tr></thead><tbody></tbody></table>
+      <table class="az-table" id="azCreditsTable"><thead><tr><th style="width:40px;">#</th><th>名前</th><th style="width:60px;">再生</th><th style="width:110px;" title="作曲者と編曲者が同一人物だった曲数（作曲・編曲タブのみ集計）">セルフアレンジ曲</th></tr></thead><tbody></tbody></table>
     </div>
     <div class="az-panel" id="azLikedPanel" style="display:none;">
       <div style="margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
         <button class="sort-btn" id="azSyncLiked">高評価を同期</button>
-        <span id="azLikedMsg" style="color:#888;font-size:12px;"></span>
+        <span id="azLikedMsg" style="color:var(--text-muted);font-size:12px;"></span>
       </div>
-      <div id="azLikedAccount" style="color:#888;font-size:12px;margin-bottom:10px;"></div>
+      <div id="azLikedAccount" style="color:var(--text-muted);font-size:12px;margin-bottom:10px;"></div>
       <div class="az-stats" style="grid-template-columns:repeat(2,1fr);max-width:400px;">
         <div class="az-stat"><div class="az-n" id="azLikedTotal">0</div><div class="az-l">高評価動画数</div></div>
         <div class="az-stat"><div class="az-n" id="azLikedArtists">0</div><div class="az-l">高評価アーティスト数</div></div>
       </div>
-      <p style="color:#888;font-size:12px;margin:6px 0 12px;">※ YouTubeタブを開いた状態で同期してください。続きトークン経由で過去分（最大5000件・50ページ）まで遡ります。</p>
+      <p style="color:var(--text-muted);font-size:12px;margin:6px 0 12px;">※ YouTubeタブを開いた状態で同期してください。続きトークン経由で過去分（最大5000件・50ページ）まで遡ります。</p>
       <table class="az-table" id="azLikedTable"><thead><tr><th style="width:40px;">#</th><th>アーティスト/チャンネル</th><th style="width:80px;">高評価数</th></tr></thead><tbody></tbody></table>
     </div>
     <div class="az-panel" id="azPromptPanel" style="display:none;">
-      <p style="color:#888;font-size:13px;margin-bottom:12px;">Claudeに貼って「次に聴くべきアーティスト」を推薦してもらう用</p>
+      <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">Claudeに貼って「次に聴くべきアーティスト」を推薦してもらう用</p>
       <div style="margin-bottom:12px;">
         <button class="sort-btn" id="azCopyPrompt">プロンプトをコピー</button>
-        <span id="azCopyMsg" style="color:#ff4444;margin-left:12px;font-size:13px;"></span>
+        <span id="azCopyMsg" style="color:var(--accent);margin-left:12px;font-size:13px;"></span>
       </div>
-      <pre id="azPromptText" style="background:#0f1629;border:1px solid #2a2a4a;border-radius:6px;padding:14px;white-space:pre-wrap;font-size:12px;color:#bbb;max-height:500px;overflow:auto;"></pre>
+      <pre id="azPromptText"></pre>
     </div>
   </div>
-
-  <style>
-    .az-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:20px; }
-    .az-stat { background:#16213e; border:1px solid #2a2a4a; border-radius:6px; padding:12px; }
-    .az-n { font-size:20px; font-weight:700; color:#ff4444; }
-    .az-l { font-size:11px; color:#888; margin-top:4px; }
-    .az-tabs { display:flex; gap:2px; border-bottom:1px solid #2a2a4a; margin-bottom:14px; }
-    .az-tab { padding:8px 14px; cursor:pointer; color:#888; border-bottom:2px solid transparent; font-size:13px; }
-    .az-tab.active { color:#ff4444; border-bottom-color:#ff4444; }
-    .az-filter { display:flex; gap:12px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
-    .az-table { width:100%; border-collapse:collapse; background:#16213e; border:1px solid #2a2a4a; border-radius:6px; overflow:hidden; }
-    .az-table th, .az-table td { padding:8px 12px; text-align:left; border-bottom:1px solid #2a2a4a; font-size:13px; }
-    .az-table th { background:#1a2a4a; color:#888; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
-    .az-table tr:last-child td { border-bottom:none; }
-    .az-table td:first-child { color:#666; }
-    .az-table td:nth-child(3) { color:#ff4444; font-weight:600; }
-    .az-table a { color:#888; text-decoration:none; margin-right:10px; font-size:12px; }
-    .az-table a:hover { color:#ff4444; }
-    .az-kwgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:6px; }
-    .az-kw { background:#16213e; border:1px solid #2a2a4a; padding:8px 12px; border-radius:4px; display:flex; justify-content:space-between; font-size:13px; }
-    .az-kw .w { color:#ff4444; font-weight:600; }
-  </style>
 
   <script src="history.js"></script>
   <script src="analyzer.js"></script>

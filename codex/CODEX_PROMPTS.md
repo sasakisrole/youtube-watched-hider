@@ -133,3 +133,68 @@
 - Phase A → Phase B → Phase C を一気通貫でやってOK
 - 大規模リファクタが必要だと判断した場合は Phase B の改修は最小限にして、Phase C の提案でメインに伝える
 - WebSearch で MV3ベストプラクティス・SAPISIDHASH安全性などを必要に応じて調査してOK
+
+---
+
+## v1.35.0 設計フェーズ（2026-04-27 委託）
+
+[SESSION] 目的: youtube-watched-hider v1.35.0 の設計書のみ作成（実装はしない） | 編集: 設計ドキュメント作成のみ | 出力: codex-reports/ad-hoc/yt-watched-hider-v135-design_2026-04-27.md＋プロジェクト内 V135_DESIGN.md | 完了条件: 5項目すべての設計案・移行計画・破壊的変更影響を1本のMDにまとめる
+
+# タスク: youtube-watched-hider v1.35.0 設計書作成
+
+## プロジェクト
+- パス: `C:\Users\sasaki\Dropbox\claude-workspace\projects\youtube-watched-hider`
+- 現行版: v1.34.3
+- 既存ファイル: `manifest.json` / `background.js` / `content.js` / `db.js` / `popup.js` / `history.js` / `analyzer.js` / `CHANGELOG.md` / `README.md`
+- レビュー元: `C:\Users\sasaki\Dropbox\claude-workspace\codex-reports\ad-hoc\yt-watched-hider-review_2026-04-26.md`（このレポートの "提案だけ残した項目 / warning" 5項目を全て対象）
+
+## やってほしいこと
+
+実装はせず、**v1.35.0 minor の設計書1本** を出してください。スコープは下記5項目を一括で扱います。各項目は独立に見えますが「DBオーナー位置・スキーマ」が共通基盤なので、相互依存・実装順序まで設計に含めてください。
+
+## 対象 warning 項目（レビュー2026-04-26）
+
+1. **likedVideos複合キー化**: 現状 `keyPath: 'videoId'`（`db.js:34`）で複数Googleアカウントの同一動画が1レコードに潰れる。DB **v6** で `[accountId, videoId]` 相当の複合キーに移行する。
+2. **Export schema v2**: `EXPORT_DATA` は `WatchedDB.exportAll()` で `watchedVideos` のみ。`likedVideos` / `likedSyncMeta` も export/auto backup 対象にする。後方互換 import（v1スキーマ）も維持する。
+3. **offscreen document でDBオーナーを拡張側に移す**: 現状 `background.js:99` の `sendToYouTubeTab()` で content.js に DB を寄せており、YouTubeタブが無いと History Viewer / Popup Export / Auto Backup が動かない。Chrome Extensions Offscreen API でDBを拡張側に持つ。**自動バックアップの大容量対応（base64 data URL → Blob URL）も同じ offscreen で扱う**。
+4. **Innertube同期の堅牢化**: `syncLikedPlaylist()`（`background.js:845`）の `X-Goog-AuthUser` 固定や owner identity 推定が、複数Googleアカウント・YouTube DOM変更で壊れやすい。複数アカウント対応・アカウント識別の安定化方針を設計する。
+5. **5万件超キャッシュのLRU化**: `content.js` の `CACHE_MAX_SIZE = 50000`（`content.js:90, 107`）超過時に cache を捨てており、watchページの1秒ポーリング（`content.js:1523`）で DB問い合わせが急増する。10万件級を見込む LRU/分割キャッシュ/セッションキャッシュ上限の再設計。
+
+## 要件
+
+1. **設計書1本にまとめる**（5項目を別ファイルに分割しない）。出力先は2箇所：
+   - 主成果物: `projects/youtube-watched-hider/codex/V135_DESIGN.md`
+   - 報告書: `codex-reports/ad-hoc/yt-watched-hider-v135-design_2026-04-27.md`（V135_DESIGN.md への参照と要点サマリ）
+2. 各項目は次の小節で構成する：
+   - **現状コード位置**（ファイル:行）
+   - **目的・解決する問題**
+   - **設計案**（データ構造・API・呼び出しフロー）
+   - **DBマイグレーション**（該当項目のみ。v5 → v6 の onupgradeneeded での処理。既存レコードの保全・accountId 不明レコードの扱い）
+   - **破壊的変更**（manifest 権限追加・メッセージ型変更・export schema 変更・後方互換）
+   - **テスト観点**
+3. **実装順序とフェーズ分け**を最後に1セクションで提示。①〜⑤の依存関係を整理し、PR分割案も。
+4. **前提・未決事項**は明示。Codex独断で決めない（例: offscreen化に伴う `offscreen` 権限・`reasons` 配列の選択、複数アカウント識別の具体手段）。
+5. 既存の v1.31.x の同期実装、v1.34.x の Fix Credits、v1.31.4 の XSS耐性改修などは温存前提で設計する（破壊しない）。
+
+## 制約・注意
+
+- **実装はしない**。コードスニペットは「設計を伝えるための擬似コード」までに留める。実コード差分は出さない。
+- 既存ファイル構成・命名規則・MV3 service worker前提を踏襲。
+- 言語は日本語（コード識別子は英語のまま）。
+- WebSearch で Chrome Offscreen API・IndexedDB v6移行ベストプラクティス・YouTube Innertube の `X-Goog-AuthUser` 周辺を必要に応じて調査してOK。
+
+## 既存OSS実装・参考資料
+
+- Chrome Offscreen API: https://developer.chrome.com/docs/extensions/reference/api/offscreen
+- yt-dlp `_tab.py` の `generate_api_headers`（複数アカウント・SAPISIDHASH）
+- `db.js` の現行 onversionchange / onblocked / open timeout 実装は v1.30.1 で導入済（破壊しない）
+
+## 完成物
+
+1. `projects/youtube-watched-hider/codex/V135_DESIGN.md`（本体・5項目の詳細設計＋実装順序）
+2. `codex-reports/ad-hoc/yt-watched-hider-v135-design_2026-04-27.md`（要点サマリ・本体への参照・判断ポイント・未決事項一覧）
+
+## 進め方
+
+- 設計書を出した段階で **停止**。実装フェーズは別委託。
+- 設計だけで判断不能な箇所は「⚠️判断要」として未決のまま残す（Claude+ユーザーで決める）。

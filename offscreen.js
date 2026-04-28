@@ -1,6 +1,59 @@
 // Offscreen document DB owner for YouTube Watched Hider.
 // Keeps IndexedDB on the extension origin instead of youtube.com.
 
+const exportBlobUrls = new Map();
+
+function createRequestId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'export-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+}
+
+function createExportBlobUrl(envelope) {
+  if (!envelope || envelope.schemaVersion !== 2 || !Array.isArray(envelope.watchedVideos)) {
+    throw new Error('Invalid export envelope');
+  }
+  const requestId = createRequestId();
+  const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' });
+  const blobUrl = URL.createObjectURL(blob);
+  exportBlobUrls.set(requestId, blobUrl);
+  return {
+    requestId,
+    blobUrl,
+    counts: envelope.counts || { watchedVideos: envelope.watchedVideos.length, likedVideos: 0 },
+    exportedAt: envelope.exportedAt,
+  };
+}
+
+function revokeExportBlobUrl(message) {
+  const blobUrl = message.blobUrl || (message.requestId && exportBlobUrls.get(message.requestId));
+  if (!blobUrl) return { revoked: false };
+  URL.revokeObjectURL(blobUrl);
+  if (message.requestId) exportBlobUrls.delete(message.requestId);
+  for (const [id, url] of exportBlobUrls.entries()) {
+    if (url === blobUrl) exportBlobUrls.delete(id);
+  }
+  return { revoked: true };
+}
+
+async function importPayload(message, merge) {
+  const parsed = WatchedDB.parseImportData(message.data);
+  const watched = merge
+    ? await WatchedDB.mergeImport(parsed.watchedVideos)
+    : { count: await WatchedDB.importData(parsed.watchedVideos) };
+  const likedCount = parsed.likedVideos.length
+    ? await WatchedDB.importLikedData(parsed.likedVideos)
+    : 0;
+  return {
+    count: merge ? watched.total : watched.count,
+    added: merge ? watched.added : undefined,
+    skipped: merge ? watched.skipped : undefined,
+    total: merge ? watched.total : parsed.watchedVideos.length,
+    watched,
+    liked: { imported: likedCount },
+    likedSyncMeta: parsed.likedSyncMeta,
+  };
+}
+
 async function handleDbRpc(message) {
   switch (message.op) {
     case 'GET_STATS':
@@ -14,11 +67,21 @@ async function handleDbRpc(message) {
     case 'UPDATE_TITLE_CHANNEL':
       return WatchedDB.updateTitleAndChannel(message.videoId, message.title || '', message.channel || '', !!message.force);
     case 'EXPORT_DATA':
-      return WatchedDB.exportAll();
+      return WatchedDB.exportAll({ source: message.source || 'manual', likedSyncMeta: message.likedSyncMeta || null, appVersion: message.appVersion });
+    case 'OFFSCREEN_CREATE_EXPORT_BLOB': {
+      const envelope = message.envelope || await WatchedDB.exportAll({
+        source: message.source || 'manual',
+        likedSyncMeta: message.likedSyncMeta || null,
+        appVersion: message.appVersion,
+      });
+      return createExportBlobUrl(envelope);
+    }
+    case 'OFFSCREEN_REVOKE_BLOB':
+      return revokeExportBlobUrl(message);
     case 'IMPORT_DATA':
-      return WatchedDB.importData(WatchedDB.unwrapImport(message.data) || message.data || []);
+      return importPayload(message, false);
     case 'MERGE_IMPORT':
-      return WatchedDB.mergeImport(WatchedDB.unwrapImport(message.data) || message.data || []);
+      return importPayload(message, true);
     case 'DELETE_VIDEO':
       return WatchedDB.deleteOne(message.videoId);
     case 'CLEAR_DATA':

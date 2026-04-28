@@ -143,9 +143,12 @@
   function buildCreditCount(data, field, sourceFilter) {
     const m = new Map();
     const isRaw = field === 'raw';
+    // self列（セルフアレンジ曲数）は作曲・編曲タブのみ計算する。
+    // 作詞/未割当タブで「その人が関わった曲が作曲＝編曲だったか」を表示しても
+    // 当該人物の指標として意味を成さないため、ここでは集計しない。
+    const computeSelf = field === 'composer' || field === 'arranger';
     for (const d of data) {
       if (isRaw) {
-        // Show only records where creditsRaw exists AND no role got assigned (raw-only).
         if (!d.creditsRaw) continue;
         if (d.composer || d.lyricist || d.arranger) continue;
       } else {
@@ -154,12 +157,15 @@
       if (sourceFilter && sourceFilter !== 'all' && sourceOf(d) !== sourceFilter) continue;
       const names = splitCreditField(isRaw ? d.creditsRaw : d[field]);
       if (!names.length) continue;
-      const composers = new Set(splitCreditField(d.composer));
-      const arrangers = new Set(splitCreditField(d.arranger));
-      const isSelfArrange = composers.size && arrangers.size &&
-        [...composers].some(c => arrangers.has(c));
+      let isSelfArrange = false;
+      if (computeSelf) {
+        const composers = new Set(splitCreditField(d.composer));
+        const arrangers = new Set(splitCreditField(d.arranger));
+        isSelfArrange = composers.size > 0 && arrangers.size > 0 &&
+          [...composers].some(c => arrangers.has(c));
+      }
       for (const name of names) {
-        const cur = m.get(name) || { count: 0, self: 0 };
+        const cur = m.get(name) || { count: 0, self: 0, hasSelf: computeSelf };
         cur.count++;
         if (isSelfArrange) cur.self++;
         m.set(name, cur);
@@ -188,12 +194,19 @@
     const frag = document.createDocumentFragment();
     list.slice(0, 500).forEach(([name, v], i) => {
       const tr = document.createElement('tr');
-      const rate = v.count ? Math.round(v.self / v.count * 100) : 0;
-      const selfCell = v.self ? `${v.self} (${rate}%)` : '-';
+      let selfCell;
+      if (!v.hasSelf) {
+        selfCell = '—';
+      } else if (v.self) {
+        const rate = v.count ? Math.round(v.self / v.count * 100) : 0;
+        selfCell = `${v.self} (${rate}%)`;
+      } else {
+        selfCell = '-';
+      }
       appendCell(tr, i + 1);
       appendCell(tr, name);
       appendCell(tr, v.count);
-      appendCell(tr, selfCell).style.color = '#888';
+      appendCell(tr, selfCell).style.color = 'var(--text-muted)';
       frag.appendChild(tr);
     });
     tbody.appendChild(frag);
@@ -342,7 +355,13 @@
     const arrangers = topCredits(data, 'arranger', 'all', 10);
 
     const lines = [];
-    lines.push('以下は私のYouTube視聴履歴から抽出した、音楽嗜好データです。');
+    lines.push('あなたは音楽キュレーターです。');
+    lines.push('以下は私のYouTube視聴履歴から抽出した音楽嗜好データです。');
+    lines.push('');
+    lines.push('## 用語注釈');
+    lines.push('- **Topic** = YouTubeが自動生成するアーティスト公式チャンネル（純粋な楽曲再生指標）');
+    lines.push('- **自編曲率** = その作曲家の楽曲のうち、作曲者と編曲者が同一人物だった曲の割合（高い＝独立性が高い／低い＝外部編曲家との協業が多い）');
+    lines.push('- **クレジット率** = そのチャンネルの動画でクレジット情報（作曲・作詞・編曲）が取得できた割合（高い＝楽曲制作主体の音楽チャンネルである可能性が高い）');
     lines.push('');
     lines.push('## 再生数Top40アーティスト（YouTube Topicチャンネル由来）');
     topic.forEach(([k, v], i) => lines.push(`${i + 1}. ${k.replace(/ - Topic$/, '')} (${v}回)`));
@@ -378,19 +397,35 @@
     }
     lines.push('---');
     lines.push('');
-    lines.push('上記の傾向（アーティスト・作曲家・編曲家の偏り、自編曲率、直近トレンド、高評価アーティスト）を分析し、');
-    lines.push('「次に聴くべきアーティスト/作曲家」を10名推薦してください。');
+    lines.push('## タスク');
+    lines.push('上記データを分析し、まだ聴いていない「次に聴くべきアーティスト/作曲家」を **10名** 推薦してください。');
     lines.push('');
-    lines.push('### 制約');
-    lines.push('- 上記リストに既出の人物・チャンネルは推薦から**除外**してください（既に聴いています）');
-    lines.push('- 作曲家・編曲家など裏方クレジットの人物も推薦対象に含めてOK');
-    lines.push('- 直近6ヶ月のトレンドを優先的に踏まえてください');
+    lines.push('## 多様性要件（必須）');
+    lines.push('- 上記リストに既出の人物・チャンネルは**除外**（既に聴いています）');
+    lines.push('- 10名のうち**最低3名**は作曲家・編曲家など裏方クレジット系の人物を含める');
+    lines.push('- 10名のうち**最低2名**は既存リストと別ジャンル・別シーンからの越境推薦（隣接領域から1歩外）');
+    lines.push('- 「直近の傾向」（視聴期間後半1/3）を主軸に置きつつ、Top40の長期嗜好も考慮');
     lines.push('');
-    lines.push('### 各推薦に含める項目');
-    lines.push('- アーティスト/作曲家名');
-    lines.push('- 代表曲1〜2曲');
-    lines.push('- 既存のお気に入りとの関連性（具体的にどの作家・どのアーティストとの近さか）');
-    lines.push('- YouTube検索キーワード');
+    lines.push('## 推薦の根拠（各推薦に必ず1つ以上明示）');
+    lines.push('- 共通する作曲家・編曲家・レーベル・所属事務所');
+    lines.push('- 楽曲構造・編曲手法・コード進行の共通点');
+    lines.push('- 活動コミュニティ・コラボ関係・出自');
+    lines.push('- 歌詞テーマ・世界観・サウンドの方向性');
+    lines.push('');
+    lines.push('※「人気だから」「なんとなく似ている」だけの推薦は不可。上記4観点のどれに該当するかを具体的に書いてください。');
+    lines.push('');
+    lines.push('## ハルシネーション対策');
+    lines.push('- 楽曲名・人物の存在に確信が持てない場合は推薦から除外してください');
+    lines.push('- 不確かな10名より、確度の高い7〜8名のほうが望ましい');
+    lines.push('- 検索URLは `https://www.youtube.com/results?search_query=...` 形式で実在検索可能なものに');
+    lines.push('');
+    lines.push('## 出力形式（各推薦ごとに以下のMarkdown構造で）');
+    lines.push('');
+    lines.push('### 1. アーティスト/作曲家名');
+    lines.push('- **代表曲**: 1〜2曲');
+    lines.push('- **既存お気に入りとの関連性**: （上記4観点のどれに該当するか明記）');
+    lines.push('- **YouTube検索URL**: https://www.youtube.com/results?search_query=...');
+    lines.push('- **確度**: 高 / 中 / 低（データから演繹可能なら高、飛躍があれば低）');
     document.getElementById('azPromptText').textContent = lines.join('\n');
   }
 

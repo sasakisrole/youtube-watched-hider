@@ -337,43 +337,190 @@ if (typeof WatchedDB === 'undefined') {
       });
     }
 
-    async function exportAll() {
+    function getAppVersion() {
+      return (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getManifest)
+        ? chrome.runtime.getManifest().version : 'unknown';
+    }
+
+    function normalizeExportSource(source) {
+      return ['manual', 'auto', 'backup-now'].includes(source) ? source : 'manual';
+    }
+
+    function emptyLikedSyncMeta() {
+      return {
+        schemaVersion: 2,
+        lastAccountId: '',
+        accounts: {},
+      };
+    }
+
+    function sanitizeLikedSyncMeta(meta, useEmptyFallback = false) {
+      if (!meta || typeof meta !== 'object') return useEmptyFallback ? emptyLikedSyncMeta() : null;
+      const rawAccounts = meta.accounts && typeof meta.accounts === 'object' ? meta.accounts : null;
+      const accounts = {};
+      if (rawAccounts) {
+        for (const [rawId, rawAccount] of Object.entries(rawAccounts)) {
+          if (!rawAccount || typeof rawAccount !== 'object') continue;
+          const accountId = typeof rawAccount.accountId === 'string' && rawAccount.accountId
+            ? rawAccount.accountId
+            : String(rawId || '');
+          if (!accountId) continue;
+          accounts[accountId] = {
+            accountId,
+            ownerName: typeof rawAccount.ownerName === 'string' ? rawAccount.ownerName : '',
+            ownerHandle: typeof rawAccount.ownerHandle === 'string' ? rawAccount.ownerHandle : '',
+            ownerChannelId: typeof rawAccount.ownerChannelId === 'string' ? rawAccount.ownerChannelId : '',
+            lastSyncedAt: typeof rawAccount.lastSyncedAt === 'number' ? rawAccount.lastSyncedAt : 0,
+            count: typeof rawAccount.count === 'number' ? rawAccount.count : 0,
+            accountSource: typeof rawAccount.accountSource === 'string' ? rawAccount.accountSource : '',
+          };
+        }
+      } else {
+        const accountId = typeof meta.accountId === 'string' && meta.accountId
+          ? meta.accountId
+          : (typeof meta.ownerChannelId === 'string' && meta.ownerChannelId
+            ? meta.ownerChannelId
+            : (typeof meta.ownerHandle === 'string' && meta.ownerHandle ? meta.ownerHandle : ''));
+        if (accountId) {
+          accounts[accountId] = {
+            accountId,
+            ownerName: typeof meta.ownerName === 'string' ? meta.ownerName : '',
+            ownerHandle: typeof meta.ownerHandle === 'string' ? meta.ownerHandle : '',
+            ownerChannelId: typeof meta.ownerChannelId === 'string' ? meta.ownerChannelId : '',
+            lastSyncedAt: typeof meta.lastSyncedAt === 'number' ? meta.lastSyncedAt : 0,
+            count: typeof meta.count === 'number' ? meta.count : 0,
+            accountSource: typeof meta.accountSource === 'string' ? meta.accountSource : '',
+          };
+        }
+      }
+
+      const lastAccountId = typeof meta.lastAccountId === 'string' && meta.lastAccountId
+        ? meta.lastAccountId
+        : Object.keys(accounts)[0] || '';
+
+      return {
+        schemaVersion: 2,
+        lastAccountId,
+        accounts,
+      };
+    }
+
+    async function exportAll(options = {}) {
       const db = await openDB();
       return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, 'readonly');
-        const store = tx.objectStore(STORE_NAME);
-        const request = store.getAll();
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = (event) => reject(event.target.error);
+        const tx = db.transaction([STORE_NAME, LIKED_STORE], 'readonly');
+        const watchedReq = tx.objectStore(STORE_NAME).getAll();
+        const likedReq = tx.objectStore(LIKED_STORE).getAll();
+        let watchedVideos = [];
+        let likedVideos = [];
+        watchedReq.onsuccess = () => { watchedVideos = watchedReq.result || []; };
+        likedReq.onsuccess = () => { likedVideos = likedReq.result || []; };
+        tx.oncomplete = () => resolve(wrapExport(watchedVideos, {
+          likedVideos,
+          likedSyncMeta: options.likedSyncMeta || null,
+          source: options.source || 'manual',
+          appVersion: options.appVersion,
+        }));
+        tx.onerror = (event) => reject(event.target.error);
       });
     }
 
     // Current export schema version
-    const SCHEMA_VERSION = 1;
+    const SCHEMA_VERSION = 2;
 
-    // Wrap records in versioned envelope for export
-    function wrapExport(records) {
+    // Wrap records in versioned envelope for export.
+    function wrapExport(records, options = {}) {
+      const watchedVideos = Array.isArray(records) ? records : [];
+      const likedVideos = Array.isArray(options.likedVideos) ? options.likedVideos : [];
+      const appVersion = (typeof options.appVersion === 'string' && options.appVersion)
+        ? options.appVersion
+        : getAppVersion();
       return {
         schemaVersion: SCHEMA_VERSION,
         exportedAt: new Date().toISOString(),
-        appVersion: (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getManifest)
-          ? chrome.runtime.getManifest().version : 'unknown',
-        count: records.length,
-        records,
+        appVersion,
+        source: normalizeExportSource(options.source),
+        counts: {
+          watchedVideos: watchedVideos.length,
+          likedVideos: likedVideos.length,
+        },
+        watchedVideos,
+        likedVideos,
+        likedSyncMeta: sanitizeLikedSyncMeta(options.likedSyncMeta, true),
       };
     }
 
-    // Unwrap import data: accept both envelope format and legacy raw array
-    function unwrapImport(data) {
+    // Unwrap watched records: accept v2 envelope, v1 envelope, and legacy raw array.
+    function unwrapWatchedRecords(data) {
       if (Array.isArray(data)) return data;
+      if (data && typeof data === 'object' && data.schemaVersion === 2 && Array.isArray(data.watchedVideos)) return data.watchedVideos;
       if (data && typeof data === 'object' && Array.isArray(data.records)) return data.records;
       return null;
     }
 
+    function unwrapImport(data) {
+      return unwrapWatchedRecords(data);
+    }
+
     // Validate and normalize a record
     function isValidRecord(record) {
-      if (!record || typeof record.videoId !== 'string' || record.videoId.length === 0) return false;
+      if (!record || typeof record !== 'object' || typeof record.videoId !== 'string' || record.videoId.length === 0) return false;
+      const stringFields = ['title', 'channel', 'source', 'composer', 'lyricist', 'arranger', 'creditsSource', 'creditsRaw', 'creditsFetchFailReason'];
+      const numberFields = ['watchedAt', 'firstWatchedAt', 'playCount', 'creditsCheckedAt', 'creditsFetchAttemptedAt'];
+      for (const field of stringFields) {
+        if (record[field] != null && typeof record[field] !== 'string') return false;
+      }
+      for (const field of numberFields) {
+        if (record[field] != null && (typeof record[field] !== 'number' || !Number.isFinite(record[field]))) return false;
+      }
       return true;
+    }
+
+    function validateWatchedRecords(records) {
+      return Array.isArray(records) && records.every(isValidRecord);
+    }
+
+    function isValidLikedRecord(record) {
+      if (!record || typeof record !== 'object' || typeof record.videoId !== 'string' || record.videoId.length === 0) return false;
+      const stringFields = ['title', 'channel', 'accountId'];
+      const numberFields = ['likedAt', 'syncedAt', 'playlistIndex'];
+      for (const field of stringFields) {
+        if (record[field] != null && typeof record[field] !== 'string') return false;
+      }
+      for (const field of numberFields) {
+        if (record[field] != null && (typeof record[field] !== 'number' || !Number.isFinite(record[field]))) return false;
+      }
+      return true;
+    }
+
+    function validateLikedRecords(records) {
+      return Array.isArray(records) && records.every(isValidLikedRecord);
+    }
+
+    function parseImportData(data) {
+      const watchedVideos = unwrapWatchedRecords(data);
+      if (!validateWatchedRecords(watchedVideos)) {
+        throw new Error('Invalid import format: watched records must be an array of valid records');
+      }
+
+      let likedVideos = [];
+      let likedSyncMeta = null;
+      if (data && typeof data === 'object' && data.schemaVersion === 2) {
+        if (data.likedVideos != null) {
+          if (!validateLikedRecords(data.likedVideos)) {
+            throw new Error('Invalid import format: likedVideos must be an array of valid records');
+          }
+          likedVideos = data.likedVideos;
+        }
+        likedSyncMeta = data.likedSyncMeta != null ? sanitizeLikedSyncMeta(data.likedSyncMeta) : null;
+      }
+
+      return {
+        schemaVersion: data && typeof data === 'object' && data.schemaVersion === 2 ? 2 : 1,
+        watchedVideos,
+        likedVideos,
+        likedSyncMeta,
+      };
     }
 
     function normalizeRecord(record) {
@@ -397,6 +544,9 @@ if (typeof WatchedDB === 'undefined') {
     }
 
     async function importData(records) {
+      if (!validateWatchedRecords(records)) {
+        throw new Error('Invalid import records');
+      }
       const db = await openDB();
       const normalized = records.filter(isValidRecord).map(normalizeRecord);
       return new Promise((resolve, reject) => {
@@ -447,6 +597,9 @@ if (typeof WatchedDB === 'undefined') {
     // Merge import: only add new records, keep existing ones intact
     // Returns { added, skipped, total }
     async function mergeImport(records) {
+      if (!validateWatchedRecords(records)) {
+        throw new Error('Invalid import records');
+      }
       const db = await openDB();
       const valid = records.filter(isValidRecord).map(normalizeRecord);
       return new Promise((resolve, reject) => {
@@ -578,9 +731,10 @@ if (typeof WatchedDB === 'undefined') {
 
     async function importLikedData(records) {
       const db = await openDB();
-      const normalized = (records || [])
-        .filter((record) => record && typeof record.videoId === 'string' && record.videoId.length > 0)
-        .map(normalizeLikedRecord);
+      if (!validateLikedRecords(records || [])) {
+        throw new Error('Invalid liked import records');
+      }
+      const normalized = (records || []).map(normalizeLikedRecord);
       return new Promise((resolve, reject) => {
         const tx = db.transaction(LIKED_STORE, 'readwrite');
         const store = tx.objectStore(LIKED_STORE);
@@ -625,7 +779,7 @@ if (typeof WatchedDB === 'undefined') {
       return { total: all.length, accounts: [...accounts.entries()] };
     }
 
-    return { openDB, addWatched, updateTitle, updateTitleAndChannel, updateCredits, markCreditsChecked, markCreditsFailed, cleanAllCredits, isWatched, checkMultiple, getStats, getAllIds, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport,
+    return { openDB, addWatched, updateTitle, updateTitleAndChannel, updateCredits, markCreditsChecked, markCreditsFailed, cleanAllCredits, isWatched, checkMultiple, getStats, getAllIds, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport, unwrapWatchedRecords, parseImportData,
       upsertLiked, getAllLiked, importLikedData, clearLikedByAccount, getLikedStats };
   })();
 }
