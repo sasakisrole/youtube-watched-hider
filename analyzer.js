@@ -476,9 +476,12 @@
     t.addEventListener('click', () => {
       document.querySelectorAll('.az-tab').forEach(x => x.classList.remove('active'));
       t.classList.add('active');
-      const map = { artists: 'azArtistsPanel', channels: 'azChannelsPanel', keywords: 'azKeywordsPanel', credits: 'azCreditsPanel', liked: 'azLikedPanel', prompt: 'azPromptPanel' };
+      const map = { artists: 'azArtistsPanel', channels: 'azChannelsPanel', keywords: 'azKeywordsPanel', credits: 'azCreditsPanel', liked: 'azLikedPanel', trends: 'azTrendsPanel', prompt: 'azPromptPanel' };
       Object.values(map).forEach(id => { document.getElementById(id).style.display = 'none'; });
       document.getElementById(map[t.dataset.aztab]).style.display = '';
+      if (t.dataset.aztab === 'trends' && typeof renderTrends === 'function') {
+        renderTrends();
+      }
     });
   });
 

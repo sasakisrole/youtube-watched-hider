@@ -502,6 +502,7 @@
       <div class="az-tab" data-aztab="keywords">キーワード</div>
       <div class="az-tab" data-aztab="credits">クレジット</div>
       <div class="az-tab" data-aztab="liked">高評価</div>
+      <div class="az-tab" data-aztab="trends">推移</div>
       <div class="az-tab" data-aztab="prompt">Claude推薦プロンプト</div>
     </div>
     <div class="az-panel" id="azArtistsPanel">
@@ -548,6 +549,34 @@
       <p style="color:var(--text-muted);font-size:12px;margin:6px 0 12px;">※ YouTubeタブを開いた状態で同期してください。続きトークン経由で過去分（最大5000件・50ページ）まで遡ります。</p>
       <table class="az-table" id="azLikedTable"><thead><tr><th style="width:40px;">#</th><th>アーティスト/チャンネル</th><th style="width:80px;">高評価数</th></tr></thead><tbody></tbody></table>
     </div>
+    <div class="az-panel" id="azTrendsPanel" style="display:none;">
+      <div class="az-stats" style="grid-template-columns:repeat(3,1fr);max-width:600px;">
+        <div class="az-stat"><div class="az-n" id="trAllTime">0</div><div class="az-l">累計</div></div>
+        <div class="az-stat"><div class="az-n" id="trThisMonth">0</div><div class="az-l">今月の新規</div></div>
+        <div class="az-stat"><div class="az-n" id="trToday">0</div><div class="az-l">今日（新規/再視聴）</div></div>
+      </div>
+      <div class="az-filter">
+        <span class="toolbar-label">期間</span>
+        <div class="btn-group" role="group">
+          <button class="sort-btn tr-range-btn active" data-range="30">30日</button>
+          <button class="sort-btn tr-range-btn" data-range="90">90日</button>
+          <button class="sort-btn tr-range-btn" data-range="365">1年</button>
+          <button class="sort-btn tr-range-btn" data-range="all">全期間</button>
+        </div>
+      </div>
+      <div style="margin-top:16px;">
+        <h3 style="font-size:13px;color:var(--text-muted);margin-bottom:8px;font-weight:500;">累計総視聴数の推移</h3>
+        <div style="position:relative;height:240px;"><canvas id="trChartTotal"></canvas></div>
+      </div>
+      <div style="margin-top:24px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:12px;flex-wrap:wrap;">
+          <h3 style="font-size:13px;color:var(--text-muted);font-weight:500;">日別 新規視聴数</h3>
+          <label class="chk" title="一括取り込み等の異常値で他の日が潰れる場合、上限でクリップして実数をバー上に表示します"><input type="checkbox" id="trClipOutliers" checked>外れ値を圧縮</label>
+        </div>
+        <div style="position:relative;height:240px;"><canvas id="trChartDaily"></canvas></div>
+      </div>
+      <p style="color:var(--text-faint);font-size:11px;margin-top:14px;">※ 日別は <code>firstWatchedAt</code>（初回視聴日）ベース。再視聴の履歴日付はDBに残らないため、累計と日別新規のみを表示しています。</p>
+    </div>
     <div class="az-panel" id="azPromptPanel" style="display:none;">
       <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">Claudeに貼って「次に聴くべきアーティスト」を推薦してもらう用</p>
       <div style="margin-bottom:12px;">
@@ -558,7 +587,9 @@
     </div>
   </div>
 
+  <script src="chart.umd.min.js"></script>
   <script src="history.js"></script>
   <script src="analyzer.js"></script>
+  <script src="trends.js"></script>
 </body>
 </html>

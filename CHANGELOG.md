@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.37.0 (2026-05-02)
+- Feature: Analyze に「推移」タブを追加
+  - 累計総視聴数の推移（折れ線グラフ）
+  - 日別 新規視聴数（棒グラフ・`firstWatchedAt` ベース）
+  - KPI: 累計 / 今月の新規 / 今日（新規/再視聴）
+  - 期間切替: 30日 / 90日 / 1年 / 全期間
+- Feature: 日別グラフに外れ値圧縮機能を追加
+  - 一括取り込み等のスパイクで他の日が潰れる問題を解決
+  - P95×1.5 を上限としてバーをクリップし、上に実数を `↑10,234` 形式で表示
+  - 最大値が P95×3 を超える場合のみ自動発動。チェックボックスでON/OFF切替可能
+- Chore: Chart.js v4.4.7 をローカルバンドル（MV3 CSP対応）
+
 ## v1.36.0 (2026-04-29)
 - Feature: Export schema v2 を導入
   - `watchedVideos` / `likedVideos` / `likedSyncMeta` / `counts` を含むv2 envelopeへ更新
