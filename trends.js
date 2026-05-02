@@ -6,24 +6,15 @@
   let currentRange = 30; // days, or 'all'
   let clipOutliers = true;
 
-  function percentile(sorted, p) {
-    if (!sorted.length) return 0;
-    const idx = (sorted.length - 1) * p;
-    const lo = Math.floor(idx);
-    const hi = Math.ceil(idx);
-    if (lo === hi) return sorted[lo];
-    return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
-  }
-
   function computeClipCap(values) {
-    const nonzero = values.filter(v => v > 0).slice().sort((a, b) => a - b);
-    if (nonzero.length < 5) return null;
-    const p95 = percentile(nonzero, 0.95);
-    const max = nonzero[nonzero.length - 1];
-    // Only clip when there's a real spike: max is > 3x of P95.
-    if (max <= p95 * 3) return null;
-    // Cap at P95 * 1.5 (with a floor so very small datasets aren't squashed).
-    return Math.max(Math.ceil(p95 * 1.5), 10);
+    const sortedDesc = values.filter(v => v > 0).slice().sort((a, b) => b - a);
+    if (sortedDesc.length < 3) return null;
+    const max = sortedDesc[0];
+    const second = sortedDesc[1];
+    // Only clip when the top value is a clear outlier (≥ 1.8× the second).
+    if (max < second * 1.8) return null;
+    // Cap just above the second-highest so it remains fully visible.
+    return Math.max(Math.ceil(second * 1.1), 10);
   }
 
   function getCSSVar(name) {
@@ -216,9 +207,35 @@
     });
   }
 
+  function dataRangeDays(records) {
+    let earliest = Infinity;
+    for (const r of records) {
+      const ts = r.firstWatchedAt || r.watchedAt;
+      if (ts && ts < earliest) earliest = ts;
+    }
+    if (!isFinite(earliest)) return 0;
+    return Math.ceil((Date.now() - earliest) / 86400000);
+  }
+
+  let autoRangeApplied = false;
+
   function renderTrends() {
     const records = (typeof allData !== 'undefined' && allData) ? allData : [];
     updateKpis(records);
+
+    // Auto-select 'all' on first render if data range is shorter than the
+    // currently-selected window (otherwise the chart shows mostly empty days).
+    if (!autoRangeApplied && currentRange !== 'all') {
+      const span = dataRangeDays(records);
+      if (span > 0 && span < currentRange) {
+        currentRange = 'all';
+        document.querySelectorAll('.tr-range-btn').forEach(b => {
+          b.classList.toggle('active', b.dataset.range === 'all');
+        });
+      }
+      autoRangeApplied = true;
+    }
+
     const range = currentRange === 'all' ? 'all' : Number(currentRange);
     const series = buildSeries(records, range);
     renderCharts(series);
