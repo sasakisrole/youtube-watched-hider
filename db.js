@@ -3,7 +3,7 @@
 if (typeof WatchedDB === 'undefined') {
   var WatchedDB = (() => {
     const DB_NAME = 'YouTubeWatchedDB';
-    const DB_VERSION = 4;
+    const DB_VERSION = 5;
     const STORE_NAME = 'watchedVideos';
     const LIKED_STORE = 'likedVideos';
 
@@ -25,6 +25,12 @@ if (typeof WatchedDB === 'undefined') {
         }, 5000);
 
         request.onupgradeneeded = (event) => {
+          // upgrade フェーズに入った時点で「stale tab に blocked されている」
+          // ケースは外れたので、5秒 timeout を解除する（H1 fix: review 2026-05-12）。
+          // 24,000件級の cursor.update がこの timer に巻き込まれて
+          // 「IndexedDB open timed out」で失敗するのを防ぐ。
+          // 以降は IndexedDB 側の transaction 完了 (onsuccess) / エラー (onerror) を待つ。
+          clearTimeout(timer);
           const db = event.target.result;
           if (!db.objectStoreNames.contains(STORE_NAME)) {
             const store = db.createObjectStore(STORE_NAME, { keyPath: 'videoId' });
@@ -35,17 +41,26 @@ if (typeof WatchedDB === 'undefined') {
             lstore.createIndex('accountId', 'accountId', { unique: false });
             lstore.createIndex('likedAt', 'likedAt', { unique: false });
           }
-          // Migration: existing records get playCount=1, source='unknown'
-          if (event.oldVersion < 2) {
+          // Migration: existing records get playCount/source (v2) and an
+          // explicit durationSec null (v5) so duration backfill can target
+          // records with durationSec === null.
+          if ((event.oldVersion < 2 || event.oldVersion < 5) && db.objectStoreNames.contains(STORE_NAME)) {
             const tx = event.target.transaction;
             const store = tx.objectStore(STORE_NAME);
             store.openCursor().onsuccess = (e) => {
               const cursor = e.target.result;
               if (cursor) {
                 const record = cursor.value;
-                if (!record.playCount) record.playCount = 1;
-                if (!record.source) record.source = 'unknown';
-                cursor.update(record);
+                let dirty = false;
+                if (event.oldVersion < 2) {
+                  if (!record.playCount) { record.playCount = 1; dirty = true; }
+                  if (!record.source) { record.source = 'unknown'; dirty = true; }
+                }
+                if (event.oldVersion < 5 && !Object.prototype.hasOwnProperty.call(record, 'durationSec')) {
+                  record.durationSec = null;
+                  dirty = true;
+                }
+                if (dirty) cursor.update(record);
                 cursor.continue();
               }
             };
@@ -76,7 +91,14 @@ if (typeof WatchedDB === 'undefined') {
     }
 
     // source: 'self' (user actually played) or 'seekbar' (detected via YouTube seekbar)
-    async function addWatched(videoId, title = '', source = 'self', channel = '') {
+    function normalizeDurationSec(durationSec) {
+      if (durationSec === -1) return -1;
+      if (durationSec == null || durationSec === '') return null;
+      const n = Number(durationSec);
+      return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+    }
+
+    async function addWatched(videoId, title = '', source = 'self', channel = '', durationSec = null) {
       const db = await openDB();
       return new Promise((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -87,10 +109,12 @@ if (typeof WatchedDB === 'undefined') {
         let wasNew = false;
         getReq.onsuccess = () => {
           const existing = getReq.result;
+          const nextDuration = normalizeDurationSec(durationSec);
           if (existing) {
             // Only increment playCount for actual plays (source='self'), not seekbar re-detection
             const shouldIncrement = source === 'self';
-            store.put({
+            const nextRecord = {
+              ...existing,
               videoId,
               title: title || existing.title || '',
               channel: channel || existing.channel || '',
@@ -98,13 +122,18 @@ if (typeof WatchedDB === 'undefined') {
               firstWatchedAt: existing.firstWatchedAt || existing.watchedAt,
               playCount: shouldIncrement ? (existing.playCount || 1) + 1 : (existing.playCount || 1),
               source: existing.source === 'self' ? 'self' : source,
+              durationSec: nextDuration != null ? nextDuration : (Object.prototype.hasOwnProperty.call(existing, 'durationSec') ? existing.durationSec : null),
               // Preserve credit fields — addWatched must not wipe them on re-watch/seekbar
               composer: existing.composer || '',
               lyricist: existing.lyricist || '',
               arranger: existing.arranger || '',
               creditsCheckedAt: existing.creditsCheckedAt || 0,
               creditsSource: existing.creditsSource || '',
-            });
+            };
+            if (nextDuration != null && nextRecord.durationFetchFailed) {
+              delete nextRecord.durationFetchFailed;
+            }
+            store.put(nextRecord);
           } else {
             wasNew = true;
             // New record: seekbar detection = 0 plays (just detected), self = 1 play
@@ -116,11 +145,62 @@ if (typeof WatchedDB === 'undefined') {
               firstWatchedAt: Date.now(),
               playCount: source === 'self' ? 1 : 0,
               source,
+              durationSec: nextDuration,
             });
           }
         };
 
         tx.oncomplete = () => resolve({ isNew: wasNew });
+        tx.onerror = (event) => reject(event.target.error);
+      });
+    }
+
+    async function updateDuration(videoId, durationSec) {
+      const normalized = normalizeDurationSec(durationSec);
+      if (normalized == null) return false;
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const getReq = store.get(videoId);
+        let didUpdate = false;
+        getReq.onsuccess = () => {
+          const existing = getReq.result;
+          if (!existing) return;
+          if (existing.durationSec !== normalized || existing.durationFetchFailed) {
+            existing.durationSec = normalized;
+            if (existing.durationFetchFailed) delete existing.durationFetchFailed;
+            store.put(existing);
+            didUpdate = true;
+          }
+        };
+        tx.oncomplete = () => resolve(didUpdate);
+        tx.onerror = (event) => reject(event.target.error);
+      });
+    }
+
+    async function markDurationLive(videoId) {
+      return updateDuration(videoId, -1);
+    }
+
+    async function markDurationFailed(videoId, reason) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const getReq = store.get(videoId);
+        let didUpdate = false;
+        getReq.onsuccess = () => {
+          const existing = getReq.result;
+          if (!existing) return;
+          if (existing.durationSec == null) {
+            existing.durationSec = null;
+            existing.durationFetchFailed = String(reason || 'unknown');
+            store.put(existing);
+            didUpdate = true;
+          }
+        };
+        tx.oncomplete = () => resolve(didUpdate);
         tx.onerror = (event) => reject(event.target.error);
       });
     }
@@ -465,8 +545,8 @@ if (typeof WatchedDB === 'undefined') {
     // Validate and normalize a record
     function isValidRecord(record) {
       if (!record || typeof record !== 'object' || typeof record.videoId !== 'string' || record.videoId.length === 0) return false;
-      const stringFields = ['title', 'channel', 'source', 'composer', 'lyricist', 'arranger', 'creditsSource', 'creditsRaw', 'creditsFetchFailReason'];
-      const numberFields = ['watchedAt', 'firstWatchedAt', 'playCount', 'creditsCheckedAt', 'creditsFetchAttemptedAt'];
+      const stringFields = ['title', 'channel', 'source', 'composer', 'lyricist', 'arranger', 'creditsSource', 'creditsRaw', 'creditsFetchFailReason', 'durationFetchFailed'];
+      const numberFields = ['watchedAt', 'firstWatchedAt', 'playCount', 'durationSec', 'creditsCheckedAt', 'creditsFetchAttemptedAt'];
       for (const field of stringFields) {
         if (record[field] != null && typeof record[field] !== 'string') return false;
       }
@@ -532,6 +612,9 @@ if (typeof WatchedDB === 'undefined') {
         firstWatchedAt: typeof record.firstWatchedAt === 'number' && record.firstWatchedAt > 0 ? record.firstWatchedAt : (typeof record.watchedAt === 'number' ? record.watchedAt : Date.now()),
         playCount: typeof record.playCount === 'number' && record.playCount >= 0 ? record.playCount : 0,
         source: typeof record.source === 'string' ? record.source : 'unknown',
+        durationSec: typeof record.durationSec === 'number' && Number.isFinite(record.durationSec)
+          ? (record.durationSec === -1 || record.durationSec > 0 ? Math.round(record.durationSec) : null)
+          : null,
         composer: typeof record.composer === 'string' ? record.composer : '',
         lyricist: typeof record.lyricist === 'string' ? record.lyricist : '',
         arranger: typeof record.arranger === 'string' ? record.arranger : '',
@@ -540,6 +623,7 @@ if (typeof WatchedDB === 'undefined') {
         creditsRaw: typeof record.creditsRaw === 'string' ? record.creditsRaw : '',
         creditsFetchFailReason: typeof record.creditsFetchFailReason === 'string' ? record.creditsFetchFailReason : '',
         creditsFetchAttemptedAt: typeof record.creditsFetchAttemptedAt === 'number' && record.creditsFetchAttemptedAt > 0 ? record.creditsFetchAttemptedAt : 0,
+        durationFetchFailed: typeof record.durationFetchFailed === 'string' ? record.durationFetchFailed : '',
       };
     }
 
@@ -640,6 +724,15 @@ if (typeof WatchedDB === 'undefined') {
               }
               if (record.firstWatchedAt && (!existing.firstWatchedAt || record.firstWatchedAt < existing.firstWatchedAt)) {
                 existing.firstWatchedAt = record.firstWatchedAt;
+                updated = true;
+              }
+              if (record.durationSec != null && existing.durationSec == null) {
+                existing.durationSec = record.durationSec;
+                if (existing.durationFetchFailed) delete existing.durationFetchFailed;
+                updated = true;
+              }
+              if (record.durationFetchFailed && existing.durationSec == null && !existing.durationFetchFailed) {
+                existing.durationFetchFailed = record.durationFetchFailed;
                 updated = true;
               }
               for (const field of ['composer', 'lyricist', 'arranger', 'creditsRaw']) {
@@ -779,7 +872,7 @@ if (typeof WatchedDB === 'undefined') {
       return { total: all.length, accounts: [...accounts.entries()] };
     }
 
-    return { openDB, addWatched, updateTitle, updateTitleAndChannel, updateCredits, markCreditsChecked, markCreditsFailed, cleanAllCredits, isWatched, checkMultiple, getStats, getAllIds, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport, unwrapWatchedRecords, parseImportData,
+    return { openDB, addWatched, updateDuration, markDurationFailed, markDurationLive, updateTitle, updateTitleAndChannel, updateCredits, markCreditsChecked, markCreditsFailed, cleanAllCredits, isWatched, checkMultiple, getStats, getAllIds, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport, unwrapWatchedRecords, parseImportData,
       upsertLiked, getAllLiked, importLikedData, clearLikedByAccount, getLikedStats };
   })();
 }

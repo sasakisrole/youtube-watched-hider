@@ -80,6 +80,8 @@ background.js
 
 ## 1. likedVideos 複合キー化
 
+> **【2026-05-12 凍結】** ユーザーは複数 Google アカウントを所有するが、再生は1アカウントに固定運用しているため実需薄と判断。同一動画を別アカウントで高評価しても「1件」として扱って実用上問題なし。複数アカウント運用を始めた時点で復活検討。
+
 ### 現状コード位置
 
 - `db.js:6`: `DB_VERSION = 4`
@@ -377,6 +379,8 @@ Upgrade blocked 対策:
 
 ## 4. Innertube同期の堅牢化
 
+> **【2026-05-12 凍結】** §1 と一括で凍結。1アカウント運用前提なら `X-Goog-AuthUser: '0'` 固定で実害なし。複数アカウント運用を始めた時点で §1 と同時に再検討。
+
 ### 現状コード位置
 
 - `background.js:904-909`: HTML から `INNERTUBE_API_KEY` / client 情報 / context を抽出
@@ -582,6 +586,37 @@ Cache redesign 自体に DB migration は不要。offscreen 化後は `DB_CHECK_
 - `DB_CHECK_MULTIPLE` の入力が重複 videoId を含んでも1回分にまとまる。
 - Service worker / offscreen 再起動後も content 側 cache が復旧する。
 
+## 6. durationSec 取得・累計再生時間集計（v1.37.0 追加項目・2026-05-12）
+
+### 目的・解決する問題
+
+- analyzer でチャンネル別・クレジット（作詞作曲編曲）別の **累計再生時間（=視聴済み動画の総尺）** を表示できるようにする。
+- 現状 `watched` レコードは `title` / `channel` / credits 系のみで、`durationSec` を保持していないため、件数集計しかできない。
+
+### 設計案
+
+- DB v6 へのマイグレーション時に `durationSec: number | null` を `watched` レコードに追加（既存は `null`）。
+- 取得経路は Innertube `player` レスポンスの `videoDetails.lengthSeconds` を採用。content.js の watch ページ取得時に title/channel と一緒に保存する。
+- バックフィル：既存 Fix Credits / Fix Channels と同じバッチ基盤（background.js）に `FIX_DURATIONS` を追加し、`durationSec === null` のレコードを Innertube `player` で埋める。レート・同時実行・abort/auto-stop は credits 経路と同等。
+- Analyzer：`azChannelRanking` / credits ランキングに `合計時間` 列を追加。null 混入時は `（うちN件 不明）` を併記。
+
+### 注意点
+
+- `lengthSeconds` は動画の長さ。**実視聴時間ではない**（途中離脱・倍速・リピートは反映されない）。UI ラベルは「視聴済み動画の総尺」とし、誤解を招かない表現にする。
+- ライブ配信・プレミア公開は `lengthSeconds` が信頼できないケースがある。`isLiveContent` を併用して除外候補にする。
+- バックフィルは ~11,500 件規模で数時間。Fix Credits 経路を流用し、進捗 UI を共通化する。
+
+### 破壊的変更
+
+- なし（追加フィールドのみ・既存レコード互換）。Export v2 にも `durationSec` を含める（PR3 の schema に追記）。
+
+### テスト観点
+
+- 新規視聴時に `durationSec` が記録されるか。
+- ライブ動画で `null` または除外扱いになるか。
+- バックフィル中断（abort/auto-stop）後の再開で重複処理されないか。
+- analyzer の総尺集計が `null` を無視して計算するか。
+
 ## 実装順序とフェーズ分け
 
 ### 依存関係
@@ -606,6 +641,7 @@ PR 2: DB v6 + account identity foundation
 - `likedSyncMeta` を v2 storage 形式に migration。
 - `syncLikedPlaylist()` の accountInfo 抽出を導入。
 - `X-Goog-AuthUser: '0'` 固定をやめる。
+- `watched` レコードに `durationSec` を追加（既存 `null`）。content.js watch ページ取得・`FIX_DURATIONS` バックフィル・analyzer の累計時間集計を同梱。
 
 PR 3: Export schema v2 + Blob URL backup
 

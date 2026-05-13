@@ -154,6 +154,16 @@
     @media (prefers-color-scheme: dark) {
       .sort-btn.active { color: #0f1115; }
     }
+    .sort-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+    .sort-btn:disabled:hover {
+      background: var(--surface);
+      border-color: var(--border-strong);
+      color: var(--text);
+    }
 
     /* Segmented control look for sort group */
     .btn-group {
@@ -479,6 +489,7 @@
       <button class="sort-btn" id="fixChannels" title="oEmbed APIでチャンネル名を補正（未記録のみ）">Fix Channels</button>
       <button class="sort-btn" id="fixChannelsForce" title="oEmbed APIでチャンネル名を上書き補正（表示中の全件）">Fix (force)</button>
       <button class="sort-btn" id="fixCredits" title="動画の作曲・作詞・編曲を概要欄から補完（ラベル行のみ採用）">Fix Credits</button>
+      <button class="sort-btn" id="fixDurations" title="動画時間をwatchページから補完（ライブは-1として記録）">Fix Durations</button>
       <label class="chk" title="前回「情報なし」だった動画は除外して取得"><input type="checkbox" id="skipCreditsChecked" checked>チェック済みスキップ</label>
       <label class="chk" title="非Topicチャンネル（MV・公式配信など）も対象にする。ラベル付き行のみ採用"><input type="checkbox" id="includeGeneralCredits">一般も含める</label>
       <span id="fixStatus"></span>
@@ -516,7 +527,7 @@
       <div class="az-filter">
         <input type="text" id="azChannelFilter" placeholder="チャンネル名で絞り込み" class="search-box" style="max-width:260px;">
       </div>
-      <table class="az-table" id="azChannelsTable"><thead><tr><th style="width:40px;">#</th><th>チャンネル</th><th style="width:60px;">再生</th></tr></thead><tbody></tbody></table>
+      <table class="az-table" id="azChannelsTable"><thead><tr><th style="width:40px;">#</th><th>チャンネル</th><th style="width:60px;" data-sort="count" title="クリックで再生数順に並べ替え">再生</th><th style="width:150px;" data-sort="duration" title="lengthSeconds は動画の長さです。実視聴時間ではありません（途中離脱・倍速・リピートは反映されません）。クリックで合計時間順に並べ替え">合計時間</th></tr></thead><tbody></tbody></table>
     </div>
     <div class="az-panel" id="azKeywordsPanel" style="display:none;">
       <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">Topicチャンネル楽曲のタイトル頻出ワード</p>
@@ -534,7 +545,7 @@
         <input type="text" id="azCreditFilter" placeholder="名前で絞り込み" class="search-box" style="max-width:260px;">
         <span id="azCreditStats" style="color:var(--text-muted);font-size:12px;"></span>
       </div>
-      <table class="az-table" id="azCreditsTable"><thead><tr><th style="width:40px;">#</th><th>名前</th><th style="width:60px;">再生</th><th style="width:110px;" title="作曲者と編曲者が同一人物だった曲数（作曲・編曲タブのみ集計）">セルフアレンジ曲</th></tr></thead><tbody></tbody></table>
+      <table class="az-table" id="azCreditsTable"><thead><tr><th style="width:40px;">#</th><th>名前</th><th style="width:60px;" data-sort="count" title="クリックで再生数順に並べ替え">再生</th><th style="width:150px;" data-sort="duration" title="lengthSeconds は動画の長さです。実視聴時間ではありません（途中離脱・倍速・リピートは反映されません）。クリックで合計時間順に並べ替え">合計時間</th><th style="width:110px;" title="作曲者と編曲者が同一人物だった曲数（作曲・編曲タブのみ集計）">セルフアレンジ曲</th></tr></thead><tbody></tbody></table>
     </div>
     <div class="az-panel" id="azLikedPanel" style="display:none;">
       <div style="margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">

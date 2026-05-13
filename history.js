@@ -223,13 +223,15 @@ window.addEventListener('scroll', () => {
   }
 });
 
-// Sort buttons (exclude filter toggle)
-sortBtns.forEach(btn => {
-  if (btn.id === 'filterNoChannel') return;
+// Sort buttons — `data-sort` 属性を持つボタンだけが並べ替え用
+// （L2 fix: 旧コードは `.sort-btn` クラス全部を捕捉して filterNoChannel だけ id で除外
+// していたが、Fix Durations / Fix Credits / Fix Channels / Analyze なども
+// 視覚スタイル共有のため `.sort-btn` を付けており、クリックで currentSort=undefined と
+// なり再描画が走っていた。data-sort 属性で限定する方が安全）
+const sortOnlyBtns = document.querySelectorAll('.sort-btn[data-sort]');
+sortOnlyBtns.forEach(btn => {
   btn.addEventListener('click', () => {
-    sortBtns.forEach(b => {
-      if (b.id !== 'filterNoChannel') b.classList.remove('active');
-    });
+    sortOnlyBtns.forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     currentSort = btn.dataset.sort;
     render();
@@ -249,6 +251,67 @@ if (filterNoChannelBtn) {
 // Fix channels via oEmbed API
 const fixStatus = document.getElementById('fixStatus');
 
+const maintenanceButtons = [
+  { key: 'fixChannels', el: document.getElementById('fixChannels') },
+  { key: 'fixChannelsForce', el: document.getElementById('fixChannelsForce') },
+  { key: 'fixCredits', el: document.getElementById('fixCredits') },
+  { key: 'fixDurations', el: document.getElementById('fixDurations') },
+].filter(item => item.el).map(item => ({
+  ...item,
+  defaultText: item.el.textContent,
+  defaultTitle: item.el.title,
+}));
+let runningMaintenance = null;
+let runningMaintenanceActiveText = '実行中…';
+let runningMaintenanceAllowAbort = false;
+
+function updateMaintenanceButtons() {
+  maintenanceButtons.forEach(item => {
+    const btn = item.el;
+    if (!runningMaintenance) {
+      btn.disabled = false;
+      btn.textContent = item.defaultText;
+      btn.title = item.defaultTitle;
+      return;
+    }
+    if (item.key === runningMaintenance) {
+      btn.disabled = !runningMaintenanceAllowAbort;
+      btn.textContent = runningMaintenanceActiveText;
+      btn.title = runningMaintenanceAllowAbort ? 'クリックして中止' : item.defaultTitle;
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = item.defaultText;
+    btn.title = '他のメンテナンス処理が実行中';
+  });
+}
+
+function beginMaintenance(key, options = {}) {
+  if (runningMaintenance) return false;
+  runningMaintenance = key;
+  runningMaintenanceActiveText = options.activeText || '実行中…';
+  runningMaintenanceAllowAbort = !!options.allowAbort;
+  updateMaintenanceButtons();
+  return true;
+}
+
+function updateRunningMaintenance(key, options = {}) {
+  if (runningMaintenance !== key) return;
+  if (options.activeText) runningMaintenanceActiveText = options.activeText;
+  if (Object.prototype.hasOwnProperty.call(options, 'allowAbort')) {
+    runningMaintenanceAllowAbort = !!options.allowAbort;
+  }
+  updateMaintenanceButtons();
+}
+
+function endMaintenance(key) {
+  if (runningMaintenance !== key) return;
+  runningMaintenance = null;
+  runningMaintenanceActiveText = '実行中…';
+  runningMaintenanceAllowAbort = false;
+  updateMaintenanceButtons();
+}
+
 function runFix(videoIds, force, label) {
   if (!videoIds.length) {
     fixStatus.textContent = '対象なし';
@@ -258,11 +321,20 @@ function runFix(videoIds, force, label) {
     return;
   }
 
+  const maintenanceKey = force ? 'fixChannelsForce' : 'fixChannels';
+  if (!beginMaintenance(maintenanceKey, { activeText: '実行中…' })) {
+    fixStatus.textContent = '他のメンテナンス処理が実行中';
+    return;
+  }
+
   const total = videoIds.length;
   let remaining = total;
   fixStatus.textContent = `処理中... 残り${remaining}/${total}（更新0 / 失敗0）`;
 
   const port = chrome.runtime.connect({ name: 'fix-channels' });
+  const finish = () => {
+    endMaintenance(maintenanceKey);
+  };
 
   port.onMessage.addListener((msg) => {
     if (msg.type === 'PROGRESS') {
@@ -308,18 +380,18 @@ function runFix(videoIds, force, label) {
       fixStatus.textContent = `完了: 更新${msg.updated}件 / 失敗${msg.failed}件 / 合計${msg.total}件`;
       // Full reload to re-sort and ensure consistency.
       setTimeout(loadData, 300);
+      finish();
       return;
     }
 
     if (msg.type === 'ERROR') {
       fixStatus.textContent = `失敗: ${msg.error || 'unknown'}`;
+      finish();
       return;
     }
   });
 
-  port.onDisconnect.addListener(() => {
-    // no-op; DONE/ERROR already handled above
-  });
+  port.onDisconnect.addListener(finish);
 
   port.postMessage({ type: 'START', videoIds, force });
 }
@@ -327,6 +399,10 @@ function runFix(videoIds, force, label) {
 const fixBtn = document.getElementById('fixChannels');
 if (fixBtn) {
   fixBtn.addEventListener('click', () => {
+    if (runningMaintenance) {
+      fixStatus.textContent = '他のメンテナンス処理が実行中';
+      return;
+    }
     // Only videos missing channel (across allData, not just visible)
     const targets = allData.filter(v => !v.channel || v.channel.trim() === '').map(v => v.videoId);
     runFix(targets, false, 'チャンネル名補完');
@@ -344,12 +420,16 @@ function runFixCredits(videoIds, sources, label) {
     return;
   }
 
+  if (!beginMaintenance('fixCredits', { activeText: '実行中…（中止）', allowAbort: true })) {
+    fixStatus.textContent = '他のメンテナンス処理が実行中';
+    return;
+  }
+
   const total = videoIds.length;
   let remaining = total;
   const fixCreditsBtn = document.getElementById('fixCredits');
   fixStatus.textContent = `処理中... 残り${remaining}/${total}（更新0 / 失敗0）`;
   if (fixCreditsBtn) {
-    fixCreditsBtn.textContent = '■ 中止';
     fixCreditsBtn.dataset.mode = 'abort';
   }
 
@@ -358,9 +438,9 @@ function runFixCredits(videoIds, sources, label) {
   const finish = () => {
     activeCreditsPort = null;
     if (fixCreditsBtn) {
-      fixCreditsBtn.textContent = 'Fix Credits';
       fixCreditsBtn.dataset.mode = '';
     }
+    endMaintenance('fixCredits');
   };
   port.onDisconnect.addListener(finish);
   port.onMessage.addListener((msg) => {
@@ -407,6 +487,11 @@ if (fixCreditsBtn) {
     if (fixCreditsBtn.dataset.mode === 'abort' && activeCreditsPort) {
       try { activeCreditsPort.postMessage({ type: 'ABORT' }); } catch (_e) {}
       fixStatus.textContent = '中止中...';
+      updateRunningMaintenance('fixCredits', { activeText: '中止中…', allowAbort: true });
+      return;
+    }
+    if (runningMaintenance) {
+      fixStatus.textContent = '他のメンテナンス処理が実行中';
       return;
     }
     // Topicチャンネル優先。「一般も含める」ONなら非Topicも対象。
@@ -436,9 +521,100 @@ if (fixCreditsBtn) {
   });
 }
 
+let activeDurationsPort = null;
+function runFixDurations(videoIds) {
+  if (!videoIds.length) {
+    fixStatus.textContent = '対象なし';
+    return;
+  }
+  if (!confirm(`動画時間補完: ${videoIds.length}件の動画時間をwatchページから補完します。続行しますか？\n\n※YouTubeタブを1つ以上開いたままにしてください（Cookie経由でfetchするため）。ライブ動画は -1 として記録します。`)) {
+    return;
+  }
+
+  if (!beginMaintenance('fixDurations', { activeText: '実行中…（中止）', allowAbort: true })) {
+    fixStatus.textContent = '他のメンテナンス処理が実行中';
+    return;
+  }
+
+  const total = videoIds.length;
+  let remaining = total;
+  const btn = document.getElementById('fixDurations');
+  fixStatus.textContent = `処理中... 残り${remaining}/${total}（更新0 / ライブ0 / 取得失敗0）`;
+  if (btn) {
+    btn.dataset.mode = 'abort';
+  }
+
+  const port = chrome.runtime.connect({ name: 'fix-durations' });
+  activeDurationsPort = port;
+  const finish = () => {
+    activeDurationsPort = null;
+    if (btn) {
+      btn.dataset.mode = '';
+    }
+    endMaintenance('fixDurations');
+  };
+  port.onDisconnect.addListener(finish);
+  port.onMessage.addListener((msg) => {
+    if (msg.type === 'PROGRESS') {
+      remaining = msg.total - msg.processed;
+      const rec = allData.find(v => v.videoId === msg.videoId);
+      if (rec && msg.wasUpdated) {
+        rec.durationSec = msg.durationSec;
+        delete rec.durationFetchFailed;
+      } else if (rec && msg.reason && msg.reason.startsWith('playability-')) {
+        rec.durationSec = null;
+        rec.durationFetchFailed = msg.reason;
+      }
+      fixStatus.textContent = `処理中... 残り${remaining}/${total}（更新${msg.updated} / ライブ${msg.live} / 取得失敗${msg.fetchFailed}）`;
+      return;
+    }
+    if (msg.type === 'DONE') {
+      const reasons = msg.failReasons && Object.keys(msg.failReasons).length
+        ? ` [${Object.entries(msg.failReasons).map(([k, v]) => `${k}:${v}`).join(', ')}]`
+        : '';
+      let prefix = '完了';
+      if (msg.autoStopped) prefix = '⚠ 自動停止（Googleのbot検知 / 時間を空けて再実行）';
+      else if (msg.aborted) prefix = '⏸ 中止';
+      fixStatus.textContent = `${prefix}: 更新${msg.updated} / ライブ${msg.live} / 取得失敗${msg.fetchFailed} / 処理${msg.processed || 0}/${msg.total}${reasons}`;
+      setTimeout(loadData, 300);
+      finish();
+      return;
+    }
+    if (msg.type === 'ERROR') {
+      fixStatus.textContent = `失敗: ${msg.error || 'unknown'}`;
+      finish();
+    }
+  });
+  port.postMessage({ type: 'START', videoIds });
+}
+
+const fixDurationsBtn = document.getElementById('fixDurations');
+if (fixDurationsBtn) {
+  fixDurationsBtn.addEventListener('click', () => {
+    if (fixDurationsBtn.dataset.mode === 'abort' && activeDurationsPort) {
+      try { activeDurationsPort.postMessage({ type: 'ABORT' }); } catch (_e) {}
+      fixStatus.textContent = '中止中...';
+      updateRunningMaintenance('fixDurations', { activeText: '中止中…', allowAbort: true });
+      return;
+    }
+    if (runningMaintenance) {
+      fixStatus.textContent = '他のメンテナンス処理が実行中';
+      return;
+    }
+    const targets = allData
+      .filter(v => v.durationSec == null && !v.durationFetchFailed)
+      .map(v => v.videoId);
+    runFixDurations(targets);
+  });
+}
+
 const fixForceBtn = document.getElementById('fixChannelsForce');
 if (fixForceBtn) {
   fixForceBtn.addEventListener('click', () => {
+    if (runningMaintenance) {
+      fixStatus.textContent = '他のメンテナンス処理が実行中';
+      return;
+    }
     // Force-overwrite for currently visible (filtered+sorted) entries
     const targets = sortedCache.map(v => v.videoId);
     runFix(targets, true, '強制上書き補正（表示中の全件）');

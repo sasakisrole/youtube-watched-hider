@@ -1,5 +1,45 @@
 # Changelog
 
+## v1.38.1 (2026-05-13)
+- Fix: Fix Durations のパーサー・一時失敗を `durationFetchFailed` に永続保存しないよう変更
+  - 従来は env系（`no-youtube-tab` / `sorry-redirect` / `proxy-failed` / `fetch-error` / `http-429`）のみ除外する blacklist 方式
+  - `no-duration` / `empty-html` / `no-playerResponse` 等の一時失敗も保存されてしまい、次回 Fix Durations の対象から永続除外される問題があった
+  - whitelist 方式に変更し、`playability-*`（age-restricted・removed・private 等）の動画固有の永続失敗のみ保存するよう修正
+  - history.js の in-memory キャッシュ更新も同ロジックに同期
+  - レビュー指摘 M1 対応（codex-reports/ad-hoc/yt-watched-hider-v138-review_2026-05-12.md）
+
+## v1.38.0 (2026-05-12)
+- Feature: watchedVideos DB schema を v5 に更新し、視聴済みレコードへ `durationSec` を追加
+  - 既存 v4 レコードはアップグレード時に `durationSec: null` を明示セットし、後続バックフィル対象として判定可能にした
+  - `durationSec = -1` はライブ動画の対象外マークとして扱う
+- Feature: 新規視聴記録時に `ytInitialPlayerResponse.videoDetails.lengthSeconds` 由来の動画長を保存
+  - 取得できない場合は従来どおり視聴記録を優先し、`durationSec: null` のまま保存
+- Feature: History のメンテナンス操作に `Fix Durations` を追加
+  - `durationSec === null` かつ `durationFetchFailed` 未設定の動画だけを対象に、YouTube watch HTML から `lengthSeconds` を補完
+  - Fix Credits と同じ並列数2・500ms + jitter のレート設計、abort、sorry-redirect 自動停止に対応
+  - 削除済み・非公開・age-gate などの取得失敗は `durationFetchFailed` に reason を保存し、次回再処理から除外
+- Feature: Analyzer のチャンネル別・クレジット別ランキングに「合計時間」列を追加
+  - null は合計から除外し、既知値がある行では「うち N件 不明」を併記
+  - 全件不明の行は `—` 表示。列ヘッダクリックで再生数順 / 合計時間順を切替
+- Fix: 「キューに追加」「後で見る」一括追加ボタンが表示されない不具合を修正
+  - 関連動画サイドバーには chip フィルター用などの 0×0 隠しセクション（`ytd-item-section-renderer`）が先頭に存在し、`querySelector` が document order で最初の隠しセクション内のカードをアンカーとして拾っていた
+  - `findWatchLaterAnchor()` を `offsetParent !== null` で可視カードのみ採用するよう変更
+  - 併せて可視セクション側が `display: grid` の場合に備え、ボタン style に `grid-column: 1 / -1` を追加（防御的・grid 外では無害）
+- Fix: 「キューに追加 (N)」「後で見る (N)」ボタンの件数表示が実際の表示カード数より多い不具合を修正
+  - 同じ隠しセクション問題で、`findQueueableCards()` / `findWatchLaterableCards()` も可視カードと隠しカードを混ぜてカウントしていた
+  - 両関数に `card.offsetParent === null` のスキップを追加
+- Fix: ライブ配信動画で `<video>.duration === Infinity` の判定が到達不能だった問題を修正（`Number.isFinite()` で先に弾かれていた）
+- Fix: History viewer の Fix Durations / Fix Credits / Fix Channels / Analyze ボタンをクリックすると `currentSort` が破壊されて並べ替えが崩れる問題を修正
+  - 旧コードは `.sort-btn` クラス全部にソートハンドラを付け、id 除外で1個ずつガードしていた
+  - `data-sort` 属性を持つボタンだけにハンドラを限定する方式に変更
+- Fix: History viewer のメンテナンス補完（Fix Credits / Fix Durations / Fix Channels / Fix force）を相互排他化
+  - いずれかの補完中は他のメンテナンスボタンを無効化し、共有 `fixStatus` の奪い合いを防止
+  - Fix Credits と Fix Durations の watch HTML 取得を共通キューへ集約し、全体で並列2・500ms + jitter を維持
+  - `sorry-redirect` 検知時は共有キュー全体を自動停止し、同時実行時もYouTubeセッション保護を優先
+- Fix: DB v5 マイグレーション時に `indexedDB.open()` 全体の 5秒 timeout が継続し、大量レコード（~24,000件）の cursor 全件 update が timeout で失敗するリスクを修正
+  - `onupgradeneeded` が発火した時点（=blocked 状態を抜けた直後）で timer を `clearTimeout` し、upgrade transaction の完了を待つ
+- Note: DB v5 へ上げた後は IndexedDB 仕様上 v4 へのDBダウングレードは不可。v1.37.1以前へ戻す場合は事前エクスポートを推奨
+
 ## v1.37.1 (2026-05-02)
 - Improve: 推移タブの見え方を改善
   - 外れ値クリップの閾値を「2番目に大きい値 × 1.1」に変更（従来: P95 × 1.5）。2番手の日が常に完全表示されるため日々の変動が見やすくなる

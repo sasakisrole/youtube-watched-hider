@@ -123,6 +123,123 @@ async function sendToYouTubeTab(message) {
   throw new Error('No YouTube tab responded');
 }
 
+const WATCH_HTML_CONCURRENCY = 2;
+const WATCH_HTML_DELAY_MS = 500;
+const WATCH_HTML_JITTER_MS = 200;
+const fetchWatchHtmlQueue = [];
+let fetchWatchHtmlActive = 0;
+let fetchWatchHtmlAutoStopped = false;
+
+function watchHtmlQueueSleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+function watchHtmlQueueDelay() {
+  return WATCH_HTML_DELAY_MS + Math.floor(Math.random() * WATCH_HTML_JITTER_MS);
+}
+
+function finishFetchWatchHtmlEntry(entry, result) {
+  entry.resolve({
+    ...result,
+    videoId: entry.videoId,
+    source: entry.source,
+  });
+}
+
+function drainFetchWatchHtmlQueue(reason) {
+  while (fetchWatchHtmlQueue.length) {
+    const entry = fetchWatchHtmlQueue.shift();
+    finishFetchWatchHtmlEntry(entry, { ok: false, reason });
+  }
+}
+
+function resetFetchWatchHtmlAutoStopIfIdle() {
+  if (fetchWatchHtmlAutoStopped && fetchWatchHtmlActive === 0 && fetchWatchHtmlQueue.length === 0) {
+    fetchWatchHtmlAutoStopped = false;
+  }
+}
+
+function stopFetchWatchHtmlQueue(reason) {
+  fetchWatchHtmlAutoStopped = true;
+  drainFetchWatchHtmlQueue(reason);
+}
+
+function pumpFetchWatchHtmlQueue() {
+  if (fetchWatchHtmlAutoStopped) {
+    drainFetchWatchHtmlQueue('sorry-redirect');
+    resetFetchWatchHtmlAutoStopIfIdle();
+    return;
+  }
+
+  while (fetchWatchHtmlActive < WATCH_HTML_CONCURRENCY && fetchWatchHtmlQueue.length) {
+    const entry = fetchWatchHtmlQueue.shift();
+    fetchWatchHtmlActive++;
+    runFetchWatchHtmlEntry(entry);
+  }
+}
+
+async function runFetchWatchHtmlEntry(entry) {
+  let result;
+  try {
+    if (entry.abortSignal && entry.abortSignal.aborted) {
+      result = { ok: false, reason: 'aborted', aborted: true };
+    } else {
+      let resp;
+      try {
+        resp = await sendToYouTubeTab({ type: 'FETCH_WATCH_HTML', videoId: entry.videoId });
+      } catch (_e) {
+        result = { ok: false, reason: 'no-youtube-tab' };
+      }
+      if (!result) {
+        if (!resp || !resp.success) {
+          result = {
+            ok: false,
+            reason: (resp && resp.reason) || 'proxy-failed',
+            finalUrl: (resp && resp.finalUrl) || '',
+            error: (resp && resp.error) || '',
+          };
+        } else {
+          result = {
+            ok: true,
+            html: resp.html || '',
+            finalUrl: resp.finalUrl || '',
+          };
+        }
+      }
+    }
+  } catch (e) {
+    result = { ok: false, reason: 'fetch-error', error: e.message };
+  }
+
+  if (result.reason === 'sorry-redirect') {
+    stopFetchWatchHtmlQueue('sorry-redirect');
+  }
+  finishFetchWatchHtmlEntry(entry, result);
+  if (fetchWatchHtmlQueue.length && !fetchWatchHtmlAutoStopped && !result.aborted) {
+    await watchHtmlQueueSleep(watchHtmlQueueDelay());
+  }
+  fetchWatchHtmlActive--;
+  pumpFetchWatchHtmlQueue();
+  resetFetchWatchHtmlAutoStopIfIdle();
+}
+
+function fetchWatchHtmlQueued(videoId, source, abortSignal) {
+  resetFetchWatchHtmlAutoStopIfIdle();
+  return new Promise((resolve) => {
+    const entry = { videoId, source, abortSignal, resolve };
+    if (abortSignal && abortSignal.aborted) {
+      finishFetchWatchHtmlEntry(entry, { ok: false, reason: 'aborted', aborted: true });
+      return;
+    }
+    if (fetchWatchHtmlAutoStopped) {
+      finishFetchWatchHtmlEntry(entry, { ok: false, reason: 'sorry-redirect' });
+      return;
+    }
+    fetchWatchHtmlQueue.push(entry);
+    pumpFetchWatchHtmlQueue();
+  });
+}
+
 // --- Offscreen DB owner ---
 const OFFSCREEN_DOCUMENT_PATH = 'offscreen.html';
 let creatingOffscreenDocument = null;
@@ -665,6 +782,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch((e) => sendResponse({ success: false, error: e.message }));
     return true;
   }
+
+  if (message.type === 'FIX_DURATIONS') {
+    fixDurationsBatch(message.videoIds || [])
+      .then(sendResponse)
+      .catch((e) => sendResponse({ success: false, error: e.message }));
+    return true;
+  }
 });
 
 // --- oEmbed-based channel correction ---
@@ -695,6 +819,79 @@ async function fetchOEmbed(videoId) {
 // (oEmbed returns 401/403 for those).
 function decodeJsonStringLiteral(s) {
   try { return JSON.parse('"' + s + '"'); } catch { return s; }
+}
+
+function extractJsonObjectAfter(text, startIndex) {
+  const p = text.indexOf('{', startIndex);
+  if (p === -1) return '';
+  let depth = 0;
+  let inStr = false;
+  let escape = false;
+  for (let i = p; i < text.length; i++) {
+    const c = text[i];
+    if (escape) { escape = false; continue; }
+    if (inStr) {
+      if (c === '\\') escape = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth === 0) return text.slice(p, i + 1);
+    }
+  }
+  return '';
+}
+
+function parseInitialPlayerResponse(html) {
+  const markers = ['ytInitialPlayerResponse =', 'ytInitialPlayerResponse='];
+  for (const marker of markers) {
+    const idx = html.indexOf(marker);
+    if (idx === -1) continue;
+    const json = extractJsonObjectAfter(html, idx + marker.length);
+    if (!json) continue;
+    try { return JSON.parse(json); } catch (_e) { /* try next marker */ }
+  }
+  return null;
+}
+
+function parseDurationFromWatchHtml(html) {
+  if (!html) return { ok: false, reason: 'empty-html' };
+  const playerResponse = parseInitialPlayerResponse(html);
+  const details = playerResponse && playerResponse.videoDetails;
+  if (details) {
+    if (details.isLiveContent === true) {
+      return { ok: true, durationSec: -1, isLive: true };
+    }
+    const durationSec = Number(details.lengthSeconds);
+    if (Number.isFinite(durationSec) && durationSec > 0) {
+      return { ok: true, durationSec: Math.round(durationSec), isLive: false };
+    }
+  }
+  const playabilityStatus = playerResponse && playerResponse.playabilityStatus;
+  if (playabilityStatus && playabilityStatus.status && playabilityStatus.status !== 'OK') {
+    return { ok: false, reason: 'playability-' + String(playabilityStatus.status).toLowerCase() };
+  }
+  const liveMatch = html.match(/"isLiveContent"\s*:\s*(true|false)/);
+  if (liveMatch && liveMatch[1] === 'true') return { ok: true, durationSec: -1, isLive: true };
+  const lengthMatch = html.match(/"lengthSeconds"\s*:\s*"(\d+)"/);
+  if (lengthMatch) {
+    const durationSec = Number(lengthMatch[1]);
+    if (Number.isFinite(durationSec) && durationSec > 0) {
+      return { ok: true, durationSec, isLive: false };
+    }
+  }
+  return { ok: false, reason: 'no-duration' };
+}
+
+async function fetchDurationFromWatch(videoId, abortSignal) {
+  const resp = await fetchWatchHtmlQueued(videoId, 'fix-durations', abortSignal);
+  if (resp.aborted) return { videoId, ok: false, reason: 'aborted', aborted: true };
+  if (!resp.ok) return { videoId, ok: false, reason: resp.reason || 'proxy-failed' };
+  const parsed = parseDurationFromWatchHtml(resp.html || '');
+  return { videoId, ...parsed };
 }
 
 async function fetchWatchPageMeta(videoId) {
@@ -920,19 +1117,13 @@ function parseCreditsFromDescription(desc) {
   return { composer, lyricist, arranger, creditsRaw };
 }
 
-async function fetchCreditsFromWatch(videoId) {
+async function fetchCreditsFromWatch(videoId, abortSignal) {
   try {
     // Route through a YouTube tab so the request carries user cookies and
     // avoids the google.com/sorry bot challenge.
-    let resp;
-    try {
-      resp = await sendToYouTubeTab({ type: 'FETCH_WATCH_HTML', videoId });
-    } catch (e) {
-      return { videoId, ok: false, reason: 'no-youtube-tab' };
-    }
-    if (!resp || !resp.success) {
-      return { videoId, ok: false, reason: (resp && resp.reason) || 'proxy-failed' };
-    }
+    const resp = await fetchWatchHtmlQueued(videoId, 'fix-credits', abortSignal);
+    if (resp.aborted) return { videoId, ok: false, reason: 'aborted', aborted: true };
+    if (!resp.ok) return { videoId, ok: false, reason: resp.reason || 'proxy-failed' };
     const html = resp.html || '';
 
     // Consent/redirect pages lack ytInitialPlayerResponse entirely.
@@ -974,21 +1165,97 @@ async function runCreditsCleanupOnce() {
   return null;
 }
 
+async function fixDurationsBatch(videoIds, onProgress, abortSignal) {
+  if (!videoIds.length) return { success: true, updated: 0, live: 0, fetchFailed: 0, total: 0, processed: 0 };
+
+  const CONCURRENCY = WATCH_HTML_CONCURRENCY;
+
+  let updated = 0;
+  let live = 0;
+  let fetchFailed = 0;
+  const failReasons = {};
+  let processed = 0;
+  let idx = 0;
+  let autoStopped = false;
+
+  async function worker() {
+    while (idx < videoIds.length) {
+      if (abortSignal && abortSignal.aborted) return;
+      if (autoStopped) return;
+      const vid = videoIds[idx++];
+      const result = await fetchDurationFromWatch(vid, abortSignal);
+      if (result.aborted) return;
+      let wasUpdated = false;
+      if (!result.ok) {
+        fetchFailed++;
+        const r = result.reason || 'unknown';
+        failReasons[r] = (failReasons[r] || 0) + 1;
+        if (r === 'sorry-redirect') autoStopped = true;
+        // Persist only video-specific permanent failures (playability-*:
+        // age-restricted, removed, private, unavailable). Parser/transient
+        // reasons (no-duration / empty-html / no-playerResponse / fetch-error
+        // / env reasons) are not persisted so the next run can retry them.
+        if (r.startsWith('playability-')) {
+          try {
+            await sendToOffscreenDb('MARK_DURATION_FAILED', { videoId: vid, reason: r });
+          } catch (_e) { /* ignore */ }
+        }
+      } else {
+        try {
+          if (result.durationSec === -1) {
+            live++;
+            wasUpdated = await sendToOffscreenDb('MARK_DURATION_LIVE', { videoId: vid });
+          } else {
+            wasUpdated = await sendToOffscreenDb('UPDATE_DURATION', {
+              videoId: vid,
+              durationSec: result.durationSec,
+            });
+            if (wasUpdated) updated++;
+          }
+        } catch (_e) {
+          fetchFailed++;
+          failReasons['db-error'] = (failReasons['db-error'] || 0) + 1;
+        }
+      }
+      processed++;
+      if (onProgress) {
+        try {
+          onProgress({
+            videoId: vid,
+            processed,
+            updated,
+            live,
+            fetchFailed,
+            failReasons,
+            total: videoIds.length,
+            durationSec: result.durationSec,
+            reason: result.reason || '',
+            isLive: result.durationSec === -1,
+            wasUpdated,
+          });
+        } catch (_e) { /* ignore */ }
+      }
+    }
+  }
+
+  const workers = [];
+  for (let i = 0; i < Math.min(CONCURRENCY, videoIds.length); i++) workers.push(worker());
+  await Promise.all(workers);
+
+  const aborted = !!(abortSignal && abortSignal.aborted);
+  return { success: true, updated, live, fetchFailed, failReasons, total: videoIds.length, processed, aborted, autoStopped };
+}
+
 async function fixCreditsBatch(videoIds, sources, force, onProgress, abortSignal) {
   if (!videoIds.length) return { success: true, updated: 0, noCredits: 0, fetchFailed: 0, total: 0 };
 
   // Best-effort: clean polluted records once before this batch starts.
   await runCreditsCleanupOnce();
 
-  // Politeness settings — too aggressive trips YouTube's bot challenge,
-  // which then blocks the user's whole session (not just this extension's
-  // requests). Empirically CONCURRENCY=3 with no delay caused repeated
-  // sorry-redirects when running ~7,500 fetches.
-  const CONCURRENCY = 2;
-  const DELAY_MS = 500;
-  const JITTER_MS = 200;
-  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-  const politeWait = () => sleep(DELAY_MS + Math.floor(Math.random() * JITTER_MS));
+  // Watch HTML fetch pacing is owned by fetchWatchHtmlQueue above. Too
+  // aggressive a rate trips YouTube's bot challenge and blocks the user's
+  // whole session; keep this batch worker count aligned with the shared queue.
+  const CONCURRENCY = WATCH_HTML_CONCURRENCY;
 
   let updated = 0;
   let noCredits = 0;
@@ -1003,7 +1270,8 @@ async function fixCreditsBatch(videoIds, sources, force, onProgress, abortSignal
       if (abortSignal && abortSignal.aborted) return;
       if (autoStopped) return;
       const vid = videoIds[idx++];
-      const result = await fetchCreditsFromWatch(vid);
+      const result = await fetchCreditsFromWatch(vid, abortSignal);
+      if (result.aborted) return;
       let wasUpdated = false;
       if (!result.ok) {
         fetchFailed++;
@@ -1061,11 +1329,6 @@ async function fixCreditsBatch(videoIds, sources, force, onProgress, abortSignal
           });
         } catch (_e) { /* ignore */ }
       }
-      // Politeness delay between fetches in the same worker. Skip when the
-      // queue is drained or the batch is being aborted.
-      if (idx < videoIds.length && !autoStopped && !(abortSignal && abortSignal.aborted)) {
-        await politeWait();
-      }
     }
   }
 
@@ -1094,6 +1357,31 @@ chrome.runtime.onConnect.addListener((port) => {
     const force = !!msg.force;
     try {
       const result = await fixCreditsBatch(videoIds, sources, force, (progress) => {
+        try { port.postMessage({ type: 'PROGRESS', ...progress }); } catch (_e) {}
+      }, abortSignal);
+      try { port.postMessage({ type: 'DONE', ...result }); } catch (_e) {}
+    } catch (e) {
+      try { port.postMessage({ type: 'ERROR', error: e.message }); } catch (_e) {}
+    }
+    try { port.disconnect(); } catch (_e) {}
+  });
+});
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'fix-durations') return;
+
+  const abortSignal = { aborted: false };
+  port.onDisconnect.addListener(() => { abortSignal.aborted = true; });
+
+  port.onMessage.addListener(async (msg) => {
+    if (msg.type === 'ABORT') {
+      abortSignal.aborted = true;
+      return;
+    }
+    if (msg.type !== 'START') return;
+    const videoIds = msg.videoIds || [];
+    try {
+      const result = await fixDurationsBatch(videoIds, (progress) => {
         try { port.postMessage({ type: 'PROGRESS', ...progress }); } catch (_e) {}
       }, abortSignal);
       try { port.postMessage({ type: 'DONE', ...result }); } catch (_e) {}

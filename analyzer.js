@@ -27,6 +27,55 @@
     return a;
   }
 
+  function getDurationSec(d) {
+    return typeof d.durationSec === 'number' && Number.isFinite(d.durationSec) ? d.durationSec : null;
+  }
+
+  function addDurationStat(stat, d) {
+    const durationSec = getDurationSec(d);
+    if (durationSec == null) {
+      stat.unknown++;
+    } else if (durationSec > 0) {
+      stat.totalSec += durationSec;
+      stat.known++;
+    }
+  }
+
+  function formatDurationMain(totalSec) {
+    const sec = Math.max(0, Math.round(totalSec || 0));
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    if (h > 0) return `${h}時間${m}分`;
+    if (m > 0) return `${m}分`;
+    return `${s}秒`;
+  }
+
+  function formatDurationStat(stat) {
+    if (!stat || !stat.known) return '—';
+    const main = formatDurationMain(stat.totalSec);
+    return stat.unknown ? `${main}（うち ${stat.unknown}件 不明）` : main;
+  }
+
+  function sortByCountThenName(a, b) {
+    const d = b[1].count - a[1].count;
+    return d || a[0].localeCompare(b[0], 'ja');
+  }
+
+  function sortByDurationThenCount(a, b) {
+    const d = b[1].totalSec - a[1].totalSec;
+    return d || (b[1].known - a[1].known) || (b[1].count - a[1].count) || a[0].localeCompare(b[0], 'ja');
+  }
+
+  function setSortHeaderState(tableSelector, activeSort) {
+    document.querySelectorAll(`${tableSelector} th[data-sort]`).forEach(th => {
+      const active = th.dataset.sort === activeSort;
+      th.style.cursor = 'pointer';
+      th.setAttribute('aria-sort', active ? 'descending' : 'none');
+      th.style.textDecoration = active ? 'underline' : '';
+    });
+  }
+
   function extractKeywords(titles) {
     const cnt = new Map();
     for (const t of titles) {
@@ -49,7 +98,10 @@
     const m = new Map();
     for (const d of data) {
       if (!d.channel) continue;
-      m.set(d.channel, (m.get(d.channel) || 0) + 1);
+      const cur = m.get(d.channel) || { count: 0, totalSec: 0, unknown: 0, known: 0 };
+      cur.count++;
+      addDurationStat(cur, d);
+      m.set(d.channel, cur);
     }
     return m;
   }
@@ -61,18 +113,18 @@
     let list = [...chCount.entries()];
     if (topicOnly) list = list.filter(([k]) => k.endsWith('- Topic'));
     if (q) list = list.filter(([k]) => k.toLowerCase().includes(q));
-    list.sort((a, b) => b[1] - a[1]);
+    list.sort(sortByCountThenName);
 
     tbody.textContent = '';
     const frag = document.createDocumentFragment();
-    list.slice(0, 300).forEach(([name, cnt], i) => {
+    list.slice(0, 300).forEach(([name, stat], i) => {
       const clean = name.replace(/ - Topic$/, '');
       const qn = encodeURIComponent(clean);
       const qTopic = encodeURIComponent(clean + ' - Topic');
       const tr = document.createElement('tr');
       appendCell(tr, i + 1);
       appendCell(tr, name);
-      appendCell(tr, cnt);
+      appendCell(tr, stat.count);
       const links = appendCell(tr, '');
       appendLink(links, `https://www.youtube.com/results?search_query=${qTopic}&sp=EgIQAQ==`, 'Topic検索');
       appendLink(links, `https://www.youtube.com/results?search_query=${qn}`, 'YT');
@@ -82,20 +134,25 @@
     tbody.appendChild(frag);
   }
 
+  let currentChannelSort = 'count';
+
   function renderChannels(chCount) {
+    setSortHeaderState('#azChannelsTable', currentChannelSort);
     const tbody = document.querySelector('#azChannelsTable tbody');
     const q = document.getElementById('azChannelFilter').value.trim().toLowerCase();
     let list = [...chCount.entries()];
     if (q) list = list.filter(([k]) => k.toLowerCase().includes(q));
-    list.sort((a, b) => b[1] - a[1]);
+    list.sort(currentChannelSort === 'duration' ? sortByDurationThenCount : sortByCountThenName);
 
     tbody.textContent = '';
     const frag = document.createDocumentFragment();
-    list.slice(0, 500).forEach(([name, cnt], i) => {
+    list.slice(0, 500).forEach(([name, stat], i) => {
       const tr = document.createElement('tr');
       appendCell(tr, i + 1);
       appendCell(tr, name);
-      appendCell(tr, cnt);
+      appendCell(tr, stat.count);
+      const durationCell = appendCell(tr, formatDurationStat(stat));
+      if (!stat.known) durationCell.style.color = 'var(--text-muted)';
       frag.appendChild(tr);
     });
     tbody.appendChild(frag);
@@ -138,7 +195,7 @@
     return 'general';
   }
 
-  // Build credit -> {count, selfArrangeCount} filtered by source ('all'|'topic'|'general').
+  // Build credit -> {count, duration, selfArrangeCount} filtered by source ('all'|'topic'|'general').
   // field === 'raw' = role-unassigned creditsRaw names (Phase B `·` parser output that did not resolve to a role).
   function buildCreditCount(data, field, sourceFilter) {
     const m = new Map();
@@ -165,8 +222,9 @@
           [...composers].some(c => arrangers.has(c));
       }
       for (const name of names) {
-        const cur = m.get(name) || { count: 0, self: 0, hasSelf: computeSelf };
+        const cur = m.get(name) || { count: 0, totalSec: 0, unknown: 0, known: 0, self: 0, hasSelf: computeSelf };
         cur.count++;
+        addDurationStat(cur, d);
         if (isSelfArrange) cur.self++;
         m.set(name, cur);
       }
@@ -176,13 +234,15 @@
 
   let currentCreditField = 'composer';
   let currentCreditSource = 'topic';
+  let currentCreditSort = 'count';
 
   function renderCredits(data) {
+    setSortHeaderState('#azCreditsTable', currentCreditSort);
     const cm = buildCreditCount(data, currentCreditField, currentCreditSource);
     const q = document.getElementById('azCreditFilter').value.trim().toLowerCase();
     let list = [...cm.entries()];
     if (q) list = list.filter(([k]) => k.toLowerCase().includes(q));
-    list.sort((a, b) => b[1].count - a[1].count);
+    list.sort(currentCreditSort === 'duration' ? sortByDurationThenCount : sortByCountThenName);
 
     const totalPeople = cm.size;
     const totalPlays = [...cm.values()].reduce((s, v) => s + v.count, 0);
@@ -206,6 +266,8 @@
       appendCell(tr, i + 1);
       appendCell(tr, name);
       appendCell(tr, v.count);
+      const durationCell = appendCell(tr, formatDurationStat(v));
+      if (!v.known) durationCell.style.color = 'var(--text-muted)';
       appendCell(tr, selfCell).style.color = 'var(--text-muted)';
       frag.appendChild(tr);
     });
@@ -245,7 +307,7 @@
     const m = buildCreditCount(data, field, sourceFilter);
     return [...m.entries()]
       .filter(([k]) => isCleanCreditName(k))
-      .sort((a, b) => b[1].count - a[1].count)
+      .sort(sortByCountThenName)
       .slice(0, limit);
   }
 
@@ -315,7 +377,7 @@
   function renderPrompt(data, chCount) {
     const topic = [...chCount.entries()]
       .filter(([k]) => k.endsWith('- Topic'))
-      .sort((a, b) => b[1] - a[1])
+      .sort(sortByCountThenName)
       .slice(0, 40);
 
     // Credit-based music channel filter: >=5 credited plays AND >=40% credit coverage.
@@ -364,7 +426,7 @@
     lines.push('- **クレジット率** = そのチャンネルの動画でクレジット情報（作曲・作詞・編曲）が取得できた割合（高い＝楽曲制作主体の音楽チャンネルである可能性が高い）');
     lines.push('');
     lines.push('## 再生数Top40アーティスト（YouTube Topicチャンネル由来）');
-    topic.forEach(([k, v], i) => lines.push(`${i + 1}. ${k.replace(/ - Topic$/, '')} (${v}回)`));
+    topic.forEach(([k, v], i) => lines.push(`${i + 1}. ${k.replace(/ - Topic$/, '')} (${v.count}回)`));
     lines.push('');
     if (topicRecent.length) {
       lines.push('## 直近の傾向 Top15（視聴期間の後半1/3）');
@@ -434,7 +496,7 @@
     const chCount = buildChannelCount(data);
     await loadLiked();
     const topicCh = [...chCount.entries()].filter(([k]) => k.endsWith('- Topic'));
-    const musicPlays = topicCh.reduce((s, [, v]) => s + v, 0);
+    const musicPlays = topicCh.reduce((s, [, v]) => s + v.count, 0);
 
     document.getElementById('azTotal').textContent = data.length.toLocaleString();
     document.getElementById('azCh').textContent = chCount.size.toLocaleString();
@@ -453,6 +515,18 @@
     document.getElementById('azTopicOnly').onchange = () => renderArtists(chCount);
     document.getElementById('azChannelFilter').oninput = () => renderChannels(chCount);
     document.getElementById('azCreditFilter').oninput = () => renderCredits(data);
+    document.querySelectorAll('#azChannelsTable th[data-sort]').forEach(th => {
+      th.onclick = () => {
+        currentChannelSort = th.dataset.sort || 'count';
+        renderChannels(chCount);
+      };
+    });
+    document.querySelectorAll('#azCreditsTable th[data-sort]').forEach(th => {
+      th.onclick = () => {
+        currentCreditSort = th.dataset.sort || 'count';
+        renderCredits(data);
+      };
+    });
     document.querySelectorAll('.az-credit-tab').forEach(b => {
       b.onclick = () => {
         document.querySelectorAll('.az-credit-tab').forEach(x => x.classList.remove('active'));

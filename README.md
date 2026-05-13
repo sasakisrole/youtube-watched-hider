@@ -26,11 +26,14 @@ YouTubeのおすすめから**視聴済み動画を非表示**にするChrome拡
 - Export schema v2では視聴履歴に加えて高評価同期データと同期メタ情報も保存（v1形式の`records`互換も維持）
 - **Fix Channels**：YouTube oEmbed APIを使ってチャンネル名の欠損を補完
 - **Fix Credits**：概要欄から作曲・作詞・編曲クレジットを補完
+- **Fix Durations**：watchページHTMLから視聴済み動画の長さ（`durationSec`）を補完
 
 ### Music Taste Analyzer（v1.21.0〜）
 Historyビューアーの「Analyze」ボタンから起動する音楽傾向分析ビュー。
 - YouTube Topicチャンネル（`アーティスト名 - Topic`）を抽出してアーティストランキング表示
 - 全チャンネルランキング、タイトル頻出キーワード抽出
+- チャンネル別・作曲/作詞/編曲クレジット別に、視聴済み動画の総尺を「合計時間」として表示
+  - これは動画そのものの長さの合計であり、途中離脱・倍速・リピートを反映した実視聴時間ではありません
 - 高評価プレイリスト（LL）を同期し、高評価チャンネルランキングを表示
 - Top40アーティストを組み込んだ**Claude推薦用プロンプト**を生成（コピー→Claudeに貼るだけ）
 
@@ -58,7 +61,7 @@ Historyビューアーの「Analyze」ボタンから起動する音楽傾向分
 - 第三者への送信は一切ありません
 - 外部通信は以下のみ：
   - **YouTube oEmbed API**（`https://www.youtube.com/oembed`）：タイトル/チャンネル名の補完
-  - **YouTube watchページHTML取得**：埋め込み禁止動画のメタデータ抽出フォールバック
+  - **YouTube watchページHTML取得**：埋め込み禁止動画のメタデータ抽出フォールバック、動画長（`lengthSeconds`）の補完
   - **YouTube playlist / Innertube browse API**：ユーザー操作時の高評価プレイリスト同期
   - 認証が必要な高評価同期では、YouTubeページ上のcontent scriptからYouTube自身へ同一オリジン通信します。認証ヘッダは外部サーバーには送信・保存しません
 - Analyzeの「プロンプトコピー」は**ローカルのクリップボードに書き込むだけ**。自動送信はしません
@@ -78,6 +81,8 @@ Historyビューアーの「Analyze」ボタンから起動する音楽傾向分
 
 - Manifest V3
 - IndexedDB（`db.js`）で視聴履歴を管理
+- v1.38.0 でDB schema v5へ更新し、`watchedVideos.durationSec` / `durationFetchFailed` を追加
+- DB v5へ更新後、IndexedDB仕様上 v1.37.1以前のDB v4へはダウングレードできません
 - IndexedDB ownerは extension offscreen document（`offscreen.html` / `offscreen.js`）
 - service worker（`background.js`）はUI/アラーム/ダウンロードを中継
 - バックアップは offscreen document でBlob URLを生成し、`chrome.downloads.download` で保存

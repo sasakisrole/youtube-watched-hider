@@ -116,8 +116,8 @@ window._ytWatchedHider = (() => {
   const DBClient = {
     getAllIds: () => dbRpc('GET_ALL_IDS'),
     checkMultiple: (videoIds) => dbRpc('CHECK_MULTIPLE', { videoIds }),
-    addWatched: (videoId, title = '', source = 'self', channel = '') =>
-      dbRpc('ADD_WATCHED', { videoId, title, source, channel }),
+    addWatched: (videoId, title = '', source = 'self', channel = '', durationSec = null) =>
+      dbRpc('ADD_WATCHED', { videoId, title, source, channel, durationSec }),
     updateTitleAndChannel: (videoId, title, channel, force = false) =>
       dbRpc('UPDATE_TITLE_CHANNEL', { videoId, title, channel, force }),
     importData: (data) => dbRpc('IMPORT_DATA', { data }),
@@ -349,6 +349,118 @@ window._ytWatchedHider = (() => {
     return channelEl ? channelEl.textContent.trim() : '';
   }
 
+  function parseDurationText(text) {
+    if (!text) return null;
+    const raw = String(text).trim();
+    if (!raw || /live|ライブ/i.test(raw)) return -1;
+    if (!/^\d+(?::\d+){1,2}$/.test(raw)) return null;
+    const parts = raw.split(':').map(Number);
+    if (parts.some(n => !Number.isFinite(n))) return null;
+    return parts.reduce((sum, n) => sum * 60 + n, 0);
+  }
+
+  function getDurationFromCard(card) {
+    const el = card.querySelector(
+      'ytd-thumbnail-overlay-time-status-renderer #text, ' +
+      'ytd-thumbnail-overlay-time-status-renderer, ' +
+      '.badge-shape-wiz__text, ' +
+      '.yt-badge-shape__text'
+    );
+    return parseDurationText(el ? el.textContent : '');
+  }
+
+  function normalizeDurationValue(value) {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+  }
+
+  function durationFromPlayerResponse(playerResponse) {
+    const details = playerResponse && playerResponse.videoDetails;
+    if (!details) return null;
+    if (details.isLiveContent === true) return -1;
+    return normalizeDurationValue(details.lengthSeconds);
+  }
+
+  function extractBalancedJson(text, startIndex) {
+    const p = text.indexOf('{', startIndex);
+    if (p === -1) return '';
+    let depth = 0;
+    let inStr = false;
+    let escape = false;
+    for (let i = p; i < text.length; i++) {
+      const c = text[i];
+      if (escape) { escape = false; continue; }
+      if (inStr) {
+        if (c === '\\') escape = true;
+        else if (c === '"') inStr = false;
+        continue;
+      }
+      if (c === '"') { inStr = true; continue; }
+      if (c === '{') depth++;
+      else if (c === '}') {
+        depth--;
+        if (depth === 0) return text.slice(p, i + 1);
+      }
+    }
+    return '';
+  }
+
+  function getInitialPlayerResponseDurationSec() {
+    try {
+      const direct = durationFromPlayerResponse(window.ytInitialPlayerResponse);
+      if (direct != null) return direct;
+    } catch (_e) { /* isolated world usually cannot see page globals */ }
+
+    const markers = ['ytInitialPlayerResponse =', 'ytInitialPlayerResponse='];
+    for (const script of document.scripts) {
+      const text = script.textContent || '';
+      if (!text.includes('ytInitialPlayerResponse')) continue;
+      for (const marker of markers) {
+        const idx = text.indexOf(marker);
+        if (idx === -1) continue;
+        const json = extractBalancedJson(text, idx + marker.length);
+        if (!json) continue;
+        try {
+          const parsed = JSON.parse(json);
+          const durationSec = durationFromPlayerResponse(parsed);
+          if (durationSec != null) return durationSec;
+        } catch (_e) { /* try the next script */ }
+      }
+    }
+    return null;
+  }
+
+  function parseIso8601Duration(text) {
+    if (!text) return null;
+    const m = String(text).trim().match(/^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/i);
+    if (!m) return null;
+    const days = Number(m[1] || 0);
+    const hours = Number(m[2] || 0);
+    const minutes = Number(m[3] || 0);
+    const seconds = Number(m[4] || 0);
+    const total = days * 86400 + hours * 3600 + minutes * 60 + seconds;
+    return total > 0 ? total : null;
+  }
+
+  function getCurrentVideoDurationSec() {
+    const fromPlayer = getInitialPlayerResponseDurationSec();
+    if (fromPlayer != null) return fromPlayer;
+    const meta = document.querySelector('meta[itemprop="duration"]');
+    const fromMeta = parseIso8601Duration(meta ? meta.content : '');
+    if (fromMeta != null) return fromMeta;
+    const video = document.querySelector('video');
+    if (video) {
+      // ライブ配信は video.duration が Infinity になる。Number.isFinite で弾く前に
+      // 判定する必要がある（L1: review 2026-05-12）。
+      if (video.duration === Infinity) return -1;
+      if (Number.isFinite(video.duration) && video.duration > 0) {
+        return Math.round(video.duration);
+      }
+    }
+    const durationEl = document.querySelector('.ytp-time-duration');
+    return parseDurationText(durationEl ? durationEl.textContent : '');
+  }
+
   // Verify the watch-metadata DOM currently reflects the given videoId.
   // Returns true if we can confirm the match, false if uncertain.
   function watchMetadataMatches(videoId) {
@@ -412,7 +524,8 @@ window._ytWatchedHider = (() => {
       const domAgrees = watchMetadataMatches(videoId);
       const title = domAgrees ? getWatchPageTitle() : '';
       const channel = domAgrees ? getWatchPageChannel() : '';
-      await DBClient.addWatched(videoId, title, 'self', channel);
+      const durationSec = domAgrees ? getCurrentVideoDurationSec() : null;
+      await DBClient.addWatched(videoId, title, 'self', channel, durationSec);
       watchedCache.add(videoId);
       console.log(`[YT-Watched-Hider] Recorded: ${title || videoId}${domAgrees ? '' : ' (id only, scheduling backfill)'}`);
 
@@ -520,7 +633,8 @@ window._ytWatchedHider = (() => {
           watchedCache.add(videoId);
           const title = getTitleFromCard(card);
           const channel = getChannelFromCard(card);
-          DBClient.addWatched(videoId, title, 'seekbar', channel).then((res) => {
+          const durationSec = getDurationFromCard(card);
+          DBClient.addWatched(videoId, title, 'seekbar', channel, durationSec).then((res) => {
             if (res && res.isNew) showImportToast(1);
           }).catch(() => {});
           // If we couldn't extract title or channel from the card (some
@@ -1126,7 +1240,8 @@ window._ytWatchedHider = (() => {
           watchedCache.add(videoId);
           const title = getTitleFromCard(card);
           const channel = getChannelFromCard(card);
-          DBClient.addWatched(videoId, title, 'seekbar', channel).then((res) => {
+          const durationSec = getDurationFromCard(card);
+          DBClient.addWatched(videoId, title, 'seekbar', channel, durationSec).then((res) => {
             if (res && res.isNew) showImportToast(1);
           }).catch(() => {});
           // If we couldn't extract title or channel from the card (some
@@ -1197,6 +1312,9 @@ window._ytWatchedHider = (() => {
     const out = [];
     for (const card of cards) {
       if (card.style.display === 'none') continue;
+      // 関連サイドバーの先頭にある chip フィルター用などの 0x0 隠しセクション配下
+      // のカードを除外（offsetParent===null で可視判定）
+      if (card.offsetParent === null) continue;
       if (card.dataset.watchedHidden === 'true') continue;
       const link = card.querySelector('a[href*="/watch?v="]');
       if (!link) continue;
@@ -1408,7 +1526,10 @@ window._ytWatchedHider = (() => {
       'align-self:flex-start',
       'white-space:nowrap',
       'overflow:hidden',
-      'text-overflow:ellipsis'
+      'text-overflow:ellipsis',
+      // YouTubeの関連動画リストが display:grid のときに 0px のimplicit cellに
+      // 押し込まれて見えなくなるのを防ぐ。grid container 外では無害。
+      'grid-column:1 / -1'
     ].join(';') + ';';
     queueAllBtn.addEventListener('click', onQueueAllClick);
     firstCard.parentNode.insertBefore(queueAllBtn, firstCard);
@@ -1445,6 +1566,9 @@ window._ytWatchedHider = (() => {
     const out = [];
     for (const card of cards) {
       if (card.style.display === 'none') continue;
+      // 関連サイドバーの先頭にある chip フィルター用などの 0x0 隠しセクション配下
+      // のカードを除外（offsetParent===null で可視判定）
+      if (card.offsetParent === null) continue;
       if (card.dataset.watchedHidden === 'true') continue;
       if (card.dataset.shortsHidden === 'true') continue;
       if (card.dataset.movieHidden === 'true') continue;
@@ -1557,12 +1681,19 @@ window._ytWatchedHider = (() => {
 
   function findWatchLaterAnchor() {
     // /watch ページ専用: 関連動画の先頭（キューボタンの隣に置けるよう同じ親）
-    return document.querySelector(
+    // 注意: 関連サイドバーには chip フィルター用などの 0x0 隠しセクションが
+    // 存在し、querySelector が先にそれを拾ってしまうことがある。
+    // offsetParent !== null（=可視）なカードのみを採用する。
+    const candidates = document.querySelectorAll(
       'ytd-watch-next-secondary-results-renderer yt-lockup-view-model, ' +
       'ytd-watch-next-secondary-results-renderer ytd-compact-video-renderer, ' +
       '#related yt-lockup-view-model, ' +
       '#related ytd-compact-video-renderer'
     );
+    for (const el of candidates) {
+      if (el.offsetParent !== null) return el;
+    }
+    return null;
   }
 
   function ensureWatchLaterButton() {
@@ -1611,7 +1742,10 @@ window._ytWatchedHider = (() => {
       'align-self:flex-start',
       'white-space:nowrap',
       'overflow:hidden',
-      'text-overflow:ellipsis'
+      'text-overflow:ellipsis',
+      // YouTubeの関連動画リストが display:grid のときに 0px のimplicit cellに
+      // 押し込まれて見えなくなるのを防ぐ。grid container 外では無害。
+      'grid-column:1 / -1'
     ].join(';') + ';';
     watchLaterBtn.addEventListener('click', onWatchLaterClick);
     anchor.parentNode.insertBefore(watchLaterBtn, anchor);
