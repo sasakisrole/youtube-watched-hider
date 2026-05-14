@@ -2,7 +2,7 @@
 
 > A Chrome extension (Manifest V3) that hides watched videos from YouTube recommendations.
 > Includes a history viewer and a music taste analyzer that summarizes your listening habits from YouTube Topic channels.
-> **Fully local** — no external servers, no tracking, no analytics.
+> **Fully local storage** — no developer servers, no tracking, no analytics.
 >
 > **English:** This overview is all that's in English. Full documentation below is in Japanese.
 
@@ -23,7 +23,7 @@ YouTubeのおすすめから**視聴済み動画を非表示**にするChrome拡
 - 個別削除、再生回数順・チャンネル名順などの並び替え
 - エクスポート／インポート（JSON）で端末間移行も可能
 - **自動バックアップ**：毎日JSONをダウンロードフォルダに書き出し
-- Export schema v2では視聴履歴に加えて高評価同期データと同期メタ情報も保存（v1形式の`records`互換も維持）
+- Export schema v2では視聴履歴に加えて高評価同期データと同期メタ情報も保存（旧`records`形式のインポート互換も維持）
 - **Fix Channels**：YouTube oEmbed APIを使ってチャンネル名の欠損を補完
 - **Fix Credits**：概要欄から作曲・作詞・編曲クレジットを補完
 - **Fix Durations**：watchページHTMLから視聴済み動画の長さ（`durationSec`）を補完
@@ -58,7 +58,7 @@ Historyビューアーの「Analyze」ボタンから起動する音楽傾向分
 ## プライバシー
 
 - **データは全てブラウザ内（IndexedDB / `chrome.storage.local`）に保存**
-- 第三者への送信は一切ありません
+- 保存したローカルデータを開発者サーバーや解析ツールへ送信しません
 - 外部通信は以下のみ：
   - **YouTube oEmbed API**（`https://www.youtube.com/oembed`）：タイトル/チャンネル名の補完
   - **YouTube watchページHTML取得**：埋め込み禁止動画のメタデータ抽出フォールバック、動画長（`lengthSeconds`）の補完
@@ -91,13 +91,14 @@ Historyビューアーの「Analyze」ボタンから起動する音楽傾向分
 
 v1.36.0以降のエクスポートJSONは`schemaVersion: 2`のenvelopeです。
 
-- `watchedVideos`: 視聴履歴
-- `likedVideos`: 高評価同期データ
-- `likedSyncMeta`: 同期アカウントのメタ情報（Cookie / 認証ヘッダは含めません）
-- `counts`: 各データ種別の件数
-- `records`: v1 importer互換の視聴履歴エイリアス
+- `schemaVersion`: 現行は`2`
+- `exportedAt` / `appVersion` / `source`: 書き出し日時・拡張バージョン・書き出し元
+- `counts`: `watchedVideos` / `likedVideos` の件数
+- `watchedVideos`: 視聴履歴。`videoId`、タイトル、チャンネル、視聴日時、再生回数、検出元、クレジット情報、`durationSec`（動画長。ライブは`-1`、未取得は`null`）などを含みます
+- `likedVideos`: ユーザー操作で同期した高評価動画
+- `likedSyncMeta`: 高評価同期のメタ情報（Cookie / 認証ヘッダは含めません）
 
-旧形式のraw arrayと`{ records: [...] }`は引き続きインポートできます。v1.35.0以前へダウングレードした場合も、v2 JSON内の`records`から視聴履歴のみ復元できます。
+旧形式のraw arrayと`{ records: [...] }`は引き続きインポートできます。v2エクスポートはファイルサイズ抑制のため`records`エイリアスを出力しません。v1.35.0以前へダウングレードする必要がある場合は、v2 JSON内の`watchedVideos`を手動で抜き出して視聴履歴のみ復元してください。
 
 ## 非公式ツールについて
 
