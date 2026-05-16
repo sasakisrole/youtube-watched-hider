@@ -456,7 +456,21 @@ function broadcastToYouTubeTabs(message) {
 }
 
 function broadcastCacheInvalidated(detail = {}) {
-  broadcastToYouTubeTabs({ type: 'CACHE_INVALIDATED', ...detail });
+  const mode = detail.mode || (detail.clear ? 'reload' : 'patch');
+  broadcastToYouTubeTabs({ type: 'CACHE_INVALIDATED', ...detail, mode });
+}
+
+async function getContentCacheStats() {
+  const tabs = await chrome.tabs.query({ url: '*://*.youtube.com/*' });
+  for (const tab of tabs) {
+    try {
+      const response = await chrome.tabs.sendMessage(tab.id, { type: 'GET_CACHE_STATS' });
+      if (response && response.success) return response;
+    } catch (_e) {
+      // Try next YouTube tab.
+    }
+  }
+  return null;
 }
 
 // Generate backup filename with date (e.g. yt-watched-backup-2026-04-03.json)
@@ -549,7 +563,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           migrationV135Counts: result,
         });
         setV135MigrationInProgress(false);
-        broadcastCacheInvalidated({ reason: 'migration-v135' });
+        broadcastCacheInvalidated({ reason: 'migration-v135', mode: 'reload' });
         console.info('[YT-Watched] v1.35 migration completed:', result);
         sendResponse({ success: true, ...result });
       } catch (e) {
@@ -561,13 +575,37 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'GET_STATS') {
-    sendToOffscreenDb('GET_STATS')
-      .then((stats) => sendResponse({
+    (async () => {
+      const [stats, cacheStats] = await Promise.all([
+        sendToOffscreenDb('GET_STATS'),
+        getContentCacheStats().catch(() => null),
+      ]);
+      const cache = cacheStats || {};
+      const positiveCacheSize = typeof cache.positiveCacheSize === 'number' ? cache.positiveCacheSize : 0;
+      sendResponse({
         ...stats,
         dbStatus: 'ready',
         dbOwner: 'offscreen',
-      }))
-      .catch((e) => sendResponse({ count: 0, dbStatus: 'error', error: e.message }));
+        cacheMode: cache.cacheMode || 'error',
+        positiveCacheSize,
+        recentCacheSize: typeof cache.recentCacheSize === 'number' ? cache.recentCacheSize : 0,
+        cacheLoadTime: typeof cache.cacheLoadTime === 'number' ? cache.cacheLoadTime : 0,
+        cacheLoadedPages: typeof cache.cacheLoadedPages === 'number' ? cache.cacheLoadedPages : 0,
+        cacheSize: positiveCacheSize,
+        cacheUnavailable: !cacheStats,
+      });
+    })()
+      .catch((e) => sendResponse({
+        count: 0,
+        dbStatus: 'error',
+        cacheMode: 'error',
+        positiveCacheSize: 0,
+        recentCacheSize: 0,
+        cacheLoadTime: 0,
+        cacheLoadedPages: 0,
+        cacheSize: 0,
+        error: e.message,
+      }));
     return true;
   }
 
@@ -592,7 +630,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendToOffscreenDb('IMPORT_DATA', { data: message.data })
       .then(async (result) => {
         await storeImportedMeta(result);
-        broadcastCacheInvalidated({ reason: 'import' });
+        const addedIds = Array.isArray(result.watchedIds) ? result.watchedIds : [];
+        broadcastCacheInvalidated({
+          reason: 'import',
+          mode: addedIds.length > 10000 ? 'reload' : 'patch',
+          addedIds,
+        });
         sendResponse({ success: true, ...result, count: result.count || 0 });
       })
       .catch((e) => sendResponse({ success: false, error: e.message }));
@@ -603,7 +646,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendToOffscreenDb('MERGE_IMPORT', { data: message.data })
       .then(async (result) => {
         await storeImportedMeta(result);
-        broadcastCacheInvalidated({ reason: 'merge-import' });
+        broadcastCacheInvalidated({ reason: 'merge-import', mode: 'reload' });
         sendResponse({ success: true, ...result });
       })
       .catch((e) => sendResponse({ success: false, error: e.message }));
@@ -613,7 +656,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'DELETE_VIDEO') {
     sendToOffscreenDb('DELETE_VIDEO', { videoId: message.videoId })
       .then(() => {
-        broadcastCacheInvalidated({ reason: 'delete', deletedIds: [message.videoId] });
+        broadcastCacheInvalidated({ reason: 'delete', mode: 'patch', deletedIds: [message.videoId] });
         sendResponse({ success: true });
       })
       .catch((e) => sendResponse({ success: false, error: e.message }));
@@ -623,7 +666,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'CLEAR_DATA') {
     sendToOffscreenDb('CLEAR_DATA')
       .then(() => {
-        broadcastCacheInvalidated({ reason: 'clear', clear: true });
+        broadcastCacheInvalidated({ reason: 'clear', mode: 'reload', clear: true });
         sendResponse({ success: true });
       })
       .catch((e) => sendResponse({ success: false, error: e.message }));

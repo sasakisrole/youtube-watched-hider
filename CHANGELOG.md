@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.39.0 (2026-05-16)
+- Feature: content script の watched 判定キャッシュを3層化
+  - `watchedPositive` は full preload 成功時に全 watched ID を保持し、50,000件超でも cache を破棄しない
+  - `recentLookup` は positive / negative の直近判定を LRU 20,000件で保持し、未視聴カードの1秒ポーリング中 DB 再照会を TTL 10分で抑制
+  - `pendingLookup` で同一 videoId の並行 `DB_CHECK_MULTIPLE` を coalesce
+- Improve: watched ID preload を `DB_GET_WATCHED_IDS_PAGE` の paged key load へ変更
+  - 1回 8,000件ずつ `openKeyCursor` で読み込み、巨大配列を offscreen から content へ単発転送しない
+  - 120,000件超は警告のみ、200,000件超は `partial` mode に切替し、読み込んだ positive Set は保持
+- Improve: import / merge / delete / clear 後に `CACHE_INVALIDATED` を YouTube タブへ broadcast
+  - small import / delete は patch、merge / clear / large import は reload で content cache を同期
+- Improve: `GET_STATS` に cache diagnostics を追加し、popup Settings に `cacheMode` badge と positive/recent/pages/load time を表示
+- Note: DB schema は v5 のまま。追加は RPC と content-side cache のみ
+
 ## v1.38.1 (2026-05-13)
 - Fix: Fix Durations のパーサー・一時失敗を `durationFetchFailed` に永続保存しないよう変更
   - 従来は env系（`no-youtube-tab` / `sorry-redirect` / `proxy-failed` / `fetch-error` / `http-429`）のみ除外する blacklist 方式

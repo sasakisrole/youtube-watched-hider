@@ -37,6 +37,9 @@ function revokeExportBlobUrl(message) {
 
 async function importPayload(message, merge) {
   const parsed = WatchedDB.parseImportData(message.data);
+  const watchedIds = parsed.watchedVideos
+    .map((record) => record && record.videoId)
+    .filter((videoId) => typeof videoId === 'string' && videoId);
   const watched = merge
     ? await WatchedDB.mergeImport(parsed.watchedVideos)
     : { count: await WatchedDB.importData(parsed.watchedVideos) };
@@ -48,6 +51,7 @@ async function importPayload(message, merge) {
     added: merge ? watched.added : undefined,
     skipped: merge ? watched.skipped : undefined,
     total: merge ? watched.total : parsed.watchedVideos.length,
+    watchedIds,
     watched,
     liked: { imported: likedCount },
     likedSyncMeta: parsed.likedSyncMeta,
@@ -60,9 +64,14 @@ async function handleDbRpc(message) {
       return WatchedDB.getStats();
     case 'GET_ALL_IDS':
       return WatchedDB.getAllIds();
+    case 'GET_WATCHED_IDS_PAGE':
+    case 'DB_GET_WATCHED_IDS_PAGE':
+      return WatchedDB.getWatchedIdsPage(message.cursor || null, message.limit || 8000);
     case 'CHECK_MULTIPLE':
+    case 'DB_CHECK_MULTIPLE':
       return WatchedDB.checkMultiple(message.videoIds || []);
     case 'ADD_WATCHED':
+    case 'DB_ADD_WATCHED':
       return WatchedDB.addWatched(message.videoId, message.title || '', message.source || 'self', message.channel || '', message.durationSec);
     case 'UPDATE_DURATION':
       return WatchedDB.updateDuration(message.videoId, message.durationSec);

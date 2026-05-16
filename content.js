@@ -86,12 +86,23 @@ window._ytWatchedHider = (() => {
   let currentVideoElement = null;
   let endedHandler = null;
 
-  // In-memory cache of watched video IDs to avoid repeated IndexedDB lookups
-  const CACHE_MAX_SIZE = 50000;
-  const watchedCache = new Set();
+  // Three-layer cache for large watched histories. Full preload is kept up to
+  // 200k IDs; above that we retain positives already loaded and fall back to
+  // paged/negative LRU lookups instead of discarding the cache.
+  const FULL_CACHE_SOFT_LIMIT = 120000; // warn only: current DB can still preload
+  const FULL_CACHE_HARD_LIMIT = 200000; // switch to partial mode beyond this
+  const RECENT_LOOKUP_MAX = 20000;
+  const RECENT_NEGATIVE_TTL_MS = 10 * 60 * 1000;
+  const PAGED_LOAD_CHUNK = 8000; // DB_GET_WATCHED_IDS_PAGE transfer size
+  const watchedPositive = new Set();
+  const recentLookup = new Map();
+  const pendingLookup = new Map();
   let cacheLoaded = false;
   let cacheLoadTime = 0;
+  let cacheLoadedPages = 0;
+  let cacheMode = 'full'; // 'full' | 'partial' | 'error'
   let dbStatus = 'loading'; // 'loading' | 'ready' | 'error'
+  let cacheLoadSeq = 0;
 
   function dbRpc(op, payload = {}) {
     return new Promise((resolve, reject) => {
@@ -115,38 +126,200 @@ window._ytWatchedHider = (() => {
 
   const DBClient = {
     getAllIds: () => dbRpc('GET_ALL_IDS'),
-    checkMultiple: (videoIds) => dbRpc('CHECK_MULTIPLE', { videoIds }),
+    getWatchedIdsPage: (cursor, limit) => dbRpc('DB_GET_WATCHED_IDS_PAGE', { cursor, limit }),
+    checkMultiple: (videoIds) => dbRpc('DB_CHECK_MULTIPLE', { videoIds }),
     addWatched: (videoId, title = '', source = 'self', channel = '', durationSec = null) =>
-      dbRpc('ADD_WATCHED', { videoId, title, source, channel, durationSec }),
+      dbRpc('DB_ADD_WATCHED', { videoId, title, source, channel, durationSec }),
     updateTitleAndChannel: (videoId, title, channel, force = false) =>
       dbRpc('UPDATE_TITLE_CHANNEL', { videoId, title, channel, force }),
     importData: (data) => dbRpc('IMPORT_DATA', { data }),
   };
 
-  // Load all watched IDs into cache at startup (lightweight: keys only)
+  function trimRecentLookup() {
+    while (recentLookup.size > RECENT_LOOKUP_MAX) {
+      const firstKey = recentLookup.keys().next().value;
+      if (firstKey === undefined) break;
+      recentLookup.delete(firstKey);
+    }
+  }
+
+  function setRecentLookup(videoId, watched) {
+    if (!videoId) return;
+    recentLookup.delete(videoId);
+    const entry = { watched: !!watched };
+    if (!watched) entry.expiresAt = Date.now() + RECENT_NEGATIVE_TTL_MS;
+    recentLookup.set(videoId, entry);
+    trimRecentLookup();
+  }
+
+  function getRecentLookup(videoId) {
+    const entry = recentLookup.get(videoId);
+    if (!entry) return undefined;
+    if (entry.expiresAt && entry.expiresAt <= Date.now()) {
+      recentLookup.delete(videoId);
+      return undefined;
+    }
+    recentLookup.delete(videoId);
+    recentLookup.set(videoId, entry);
+    return !!entry.watched;
+  }
+
+  function rememberWatched(videoId) {
+    if (!videoId) return;
+    watchedPositive.add(videoId);
+    setRecentLookup(videoId, true);
+  }
+
+  function rememberNotWatched(videoId) {
+    if (!videoId || watchedPositive.has(videoId)) return;
+    setRecentLookup(videoId, false);
+  }
+
+  function forgetWatched(videoId) {
+    if (!videoId) return;
+    watchedPositive.delete(videoId);
+    recentLookup.delete(videoId);
+    pendingLookup.delete(videoId);
+  }
+
+  function getCachedWatchedState(videoId) {
+    if (!videoId) return false;
+    if (watchedPositive.has(videoId)) return true;
+    if (cacheMode === 'error') return false;
+    if (cacheLoaded && cacheMode === 'full') {
+      rememberNotWatched(videoId);
+      return false;
+    }
+    const recent = getRecentLookup(videoId);
+    return recent === undefined ? undefined : recent;
+  }
+
+  async function lookupWatchedForIds(videoIds) {
+    const results = {};
+    const uniqueIds = [];
+    const seen = new Set();
+    for (const id of videoIds || []) {
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      uniqueIds.push(id);
+    }
+
+    const waits = [];
+    const toQuery = [];
+    for (const id of uniqueIds) {
+      const cached = getCachedWatchedState(id);
+      if (cached !== undefined) {
+        results[id] = cached;
+        continue;
+      }
+      const pending = pendingLookup.get(id);
+      if (pending) {
+        waits.push(pending.then((watched) => { results[id] = watched; }));
+        continue;
+      }
+      toQuery.push(id);
+    }
+
+    if (toQuery.length > 0) {
+      const batchPromise = DBClient.checkMultiple(toQuery);
+      let errorLogged = false;
+      for (const id of toQuery) {
+        let lookupPromise;
+        lookupPromise = batchPromise
+          .then((batch) => {
+            const watched = !!(batch && batch[id]);
+            if (watched) {
+              rememberWatched(id);
+            } else {
+              rememberNotWatched(id);
+            }
+            return watched;
+          })
+          .catch((e) => {
+            if (!errorLogged) {
+              errorLogged = true;
+              console.warn('[YT-Watched-Hider] DB_CHECK_MULTIPLE failed:', e);
+            }
+            return false;
+          })
+          .finally(() => {
+            if (pendingLookup.get(id) === lookupPromise) pendingLookup.delete(id);
+          });
+        pendingLookup.set(id, lookupPromise);
+        waits.push(lookupPromise.then((watched) => { results[id] = watched; }));
+      }
+    }
+
+    if (waits.length > 0) await Promise.all(waits);
+    return results;
+  }
+
+  function getCacheStats() {
+    return {
+      cacheMode,
+      positiveCacheSize: watchedPositive.size,
+      recentCacheSize: recentLookup.size,
+      cacheLoadTime,
+      cacheLoadedPages,
+      cacheSize: watchedPositive.size,
+      cacheLoaded,
+      dbStatus,
+    };
+  }
+
+  // Load watched IDs into the positive cache in pages to avoid one huge RPC.
   async function loadCache() {
+    const seq = ++cacheLoadSeq;
     const t0 = performance.now();
+    watchedPositive.clear();
+    recentLookup.clear();
+    pendingLookup.clear();
+    cacheLoaded = false;
+    cacheLoadedPages = 0;
+    cacheMode = 'full';
+    dbStatus = 'loading';
     try {
-      const ids = await DBClient.getAllIds();
-      for (const id of ids) {
-        watchedCache.add(id);
+      let cursor = null;
+      let hardLimitHit = false;
+      while (true) {
+        const page = await DBClient.getWatchedIdsPage(cursor, PAGED_LOAD_CHUNK);
+        if (seq !== cacheLoadSeq) return;
+        const ids = Array.isArray(page && page.ids) ? page.ids : [];
+        cacheLoadedPages++;
+        for (const id of ids) {
+          if (watchedPositive.size >= FULL_CACHE_HARD_LIMIT) {
+            hardLimitHit = true;
+            break;
+          }
+          watchedPositive.add(id);
+        }
+        if (!hardLimitHit && watchedPositive.size >= FULL_CACHE_HARD_LIMIT && page && page.nextCursor) {
+          hardLimitHit = true;
+        }
+        if (hardLimitHit) break;
+        cursor = page && page.nextCursor ? page.nextCursor : null;
+        if (!cursor) break;
       }
       cacheLoaded = true;
       cacheLoadTime = Math.round(performance.now() - t0);
+      cacheMode = hardLimitHit ? 'partial' : 'full';
       dbStatus = 'ready';
-      if (watchedCache.size > CACHE_MAX_SIZE) {
-        console.warn(`[YT-Watched-Hider] Cache exceeds ${CACHE_MAX_SIZE}, falling back to DB queries`);
-        watchedCache.clear();
-        cacheLoaded = false;
+      if (watchedPositive.size > FULL_CACHE_SOFT_LIMIT) {
+        console.warn(`[YT-Watched-Hider] Positive cache above soft limit (${watchedPositive.size}/${FULL_CACHE_SOFT_LIMIT})`);
       }
-      console.log(`[YT-Watched-Hider] DB ready: ${watchedCache.size} videos cached in ${cacheLoadTime}ms`);
+      if (hardLimitHit) {
+        console.warn(`[YT-Watched-Hider] Cache hard limit reached at ${watchedPositive.size}; continuing in partial mode`);
+      }
+      console.log(`[YT-Watched-Hider] DB ready: ${watchedPositive.size} positives, mode=${cacheMode}, pages=${cacheLoadedPages}, ${cacheLoadTime}ms`);
       // Cache is now ready — run a full pass to catch anything missed during phase 1
       if (enabled) processPage();
     } catch (e) {
+      if (seq !== cacheLoadSeq) return;
       cacheLoadTime = Math.round(performance.now() - t0);
+      cacheLoadedPages = 0;
+      cacheMode = 'error';
       dbStatus = 'error';
       console.error(`[YT-Watched-Hider] DB load failed (${cacheLoadTime}ms):`, e);
-      // Fall back to per-query DB access
       cacheLoaded = false;
     }
   }
@@ -231,7 +404,9 @@ window._ytWatchedHider = (() => {
         if (chrome.runtime.lastError || !result || !result.success) return;
         const count = (result.watched || 0) + (result.liked || 0);
         if (count > 0) {
-          watchedCache.clear();
+          watchedPositive.clear();
+          recentLookup.clear();
+          pendingLookup.clear();
           cacheLoaded = false;
           loadCache();
         }
@@ -526,7 +701,7 @@ window._ytWatchedHider = (() => {
       const channel = domAgrees ? getWatchPageChannel() : '';
       const durationSec = domAgrees ? getCurrentVideoDurationSec() : null;
       await DBClient.addWatched(videoId, title, 'self', channel, durationSec);
-      watchedCache.add(videoId);
+      rememberWatched(videoId);
       console.log(`[YT-Watched-Hider] Recorded: ${title || videoId}${domAgrees ? '' : ' (id only, scheduling backfill)'}`);
 
       if (!domAgrees || !title || !channel) {
@@ -612,9 +787,6 @@ window._ytWatchedHider = (() => {
       // Collect video IDs from cards
       const cardMap = new Map(); // videoId -> [card elements]
       for (const card of cards) {
-        // Skip already-processed hidden cards
-        if (card.dataset.watchedHidden === 'true') continue;
-
         // Skip playlist/mix cards — they contain /watch?v= links but are not single videos
         if (isPlaylistCard(card)) continue;
 
@@ -624,13 +796,25 @@ window._ytWatchedHider = (() => {
         const videoId = getVideoIdFromHref(link.href);
         if (!videoId) continue;
 
+        if (card.dataset.watchedHidden === 'true') {
+          if (card.dataset.watchedVideoId === videoId) continue;
+          card.style.display = '';
+          delete card.dataset.watchedHidden;
+          delete card.dataset.watchedVideoId;
+        }
+
+        if (card.dataset.watchedCheckedId) {
+          if (card.dataset.watchedCheckedId === videoId) continue;
+          delete card.dataset.watchedCheckedId;
+        }
+
         // Don't hide the currently playing video's card
         if (videoId === getCurrentVideoId()) continue;
 
         // Check YouTube seekbar first (no DB needed)
         if (hasYouTubeSeekbar(card)) {
           hideCard(card, videoId);
-          watchedCache.add(videoId);
+          rememberWatched(videoId);
           const title = getTitleFromCard(card);
           const channel = getChannelFromCard(card);
           const durationSec = getDurationFromCard(card);
@@ -653,10 +837,15 @@ window._ytWatchedHider = (() => {
           continue;
         }
 
-        // Check in-memory cache first (fast path)
-        if (cacheLoaded && watchedCache.has(videoId)) {
+        // Check positive/full/recent cache first (fast path)
+        const cached = getCachedWatchedState(videoId);
+        if (cached === true) {
           hideCard(card, videoId);
           hiddenByCache++;
+          continue;
+        }
+        if (cached === false) {
+          card.dataset.watchedCheckedId = videoId;
           continue;
         }
 
@@ -669,16 +858,17 @@ window._ytWatchedHider = (() => {
       // Batch check remaining IDs against IndexedDB (only uncached ones)
       const videoIds = Array.from(cardMap.keys());
       if (videoIds.length > 0) {
-        const results = await DBClient.checkMultiple(videoIds);
+        const results = await lookupWatchedForIds(videoIds);
         for (const [videoId, isWatched] of Object.entries(results)) {
           const matchingCards = cardMap.get(videoId) || [];
           if (isWatched) {
-            watchedCache.add(videoId);
+            rememberWatched(videoId);
             for (const card of matchingCards) {
               hideCard(card, videoId);
               hiddenByDb++;
             }
           } else {
+            rememberNotWatched(videoId);
             // Mark as checked with the specific videoId so sidebar polling skips these
             for (const card of matchingCards) {
               card.dataset.watchedCheckedId = videoId;
@@ -715,6 +905,26 @@ window._ytWatchedHider = (() => {
       card.style.display = '';
       delete card.dataset.watchedHidden;
       delete card.dataset.watchedVideoId;
+    }
+    const checked = document.querySelectorAll('[data-watched-checked-id]');
+    for (const card of checked) {
+      delete card.dataset.watchedCheckedId;
+    }
+  }
+
+  function showCardsForVideoIds(videoIds) {
+    const ids = new Set((videoIds || []).filter(Boolean));
+    if (ids.size === 0) return;
+    const hidden = document.querySelectorAll('[data-watched-hidden="true"]');
+    for (const card of hidden) {
+      if (!ids.has(card.dataset.watchedVideoId)) continue;
+      card.style.display = '';
+      delete card.dataset.watchedHidden;
+      delete card.dataset.watchedVideoId;
+    }
+    const checked = document.querySelectorAll('[data-watched-checked-id]');
+    for (const card of checked) {
+      if (ids.has(card.dataset.watchedCheckedId)) delete card.dataset.watchedCheckedId;
     }
   }
 
@@ -952,7 +1162,7 @@ window._ytWatchedHider = (() => {
       if (newRecords.length > 0) {
         try {
           await DBClient.importData(newRecords);
-          for (const r of newRecords) watchedCache.add(r.videoId);
+          for (const r of newRecords) rememberWatched(r.videoId);
           showImportToast(newRecords.length);
           added = newRecords.length;
           console.log(`[YT-Watched-Hider] Imported ${added} new videos from history`);
@@ -1232,12 +1442,14 @@ window._ytWatchedHider = (() => {
           delete card.dataset.watchedVideoId;
         }
 
-        if (card.dataset.watchedCheckedId === videoId) continue; // already checked this exact video
-
+        if (card.dataset.watchedCheckedId) {
+          if (card.dataset.watchedCheckedId === videoId) continue; // already checked this exact video
+          delete card.dataset.watchedCheckedId;
+        }
         // Check YouTube seekbar first (hide immediately, no DB lookup needed)
         if (hasYouTubeSeekbar(card)) {
           hideCard(card, videoId);
-          watchedCache.add(videoId);
+          rememberWatched(videoId);
           const title = getTitleFromCard(card);
           const channel = getChannelFromCard(card);
           const durationSec = getDurationFromCard(card);
@@ -1259,9 +1471,14 @@ window._ytWatchedHider = (() => {
           continue;
         }
 
-        // Check in-memory cache (fast path, no DB access)
-        if (cacheLoaded && watchedCache.has(videoId)) {
+        // Check positive/full/recent cache (fast path, no DB access)
+        const cached = getCachedWatchedState(videoId);
+        if (cached === true) {
           hideCard(card, videoId);
+          continue;
+        }
+        if (cached === false) {
+          card.dataset.watchedCheckedId = videoId;
           continue;
         }
 
@@ -1271,12 +1488,13 @@ window._ytWatchedHider = (() => {
       if (unchecked.length === 0) return;
 
       const ids = unchecked.map(c => c.videoId);
-      const results = await DBClient.checkMultiple(ids);
+      const results = await lookupWatchedForIds(ids);
       for (const { card, videoId } of unchecked) {
         if (results[videoId]) {
-          watchedCache.add(videoId);
+          rememberWatched(videoId);
           hideCard(card, videoId);
         } else {
+          rememberNotWatched(videoId);
           // Store the checked videoId so we can detect recycling
           card.dataset.watchedCheckedId = videoId;
         }
@@ -1875,16 +2093,28 @@ window._ytWatchedHider = (() => {
       }
     }
 
+    if (message.type === 'GET_CACHE_STATS') {
+      sendResponse({ success: true, ...getCacheStats() });
+      return true;
+    }
+
     if (message.type === 'CACHE_INVALIDATED') {
-      if (message.clear) {
-        watchedCache.clear();
-        showAllCards();
-      } else if (Array.isArray(message.deletedIds)) {
-        for (const id of message.deletedIds) watchedCache.delete(id);
-      } else {
-        watchedCache.clear();
+      const mode = message.mode || (message.clear ? 'reload' : 'patch');
+      if (mode === 'reload') {
+        watchedPositive.clear();
+        recentLookup.clear();
+        pendingLookup.clear();
         cacheLoaded = false;
+        showAllCards();
         loadCache();
+      } else {
+        if (Array.isArray(message.addedIds)) {
+          for (const id of message.addedIds) rememberWatched(id);
+        }
+        if (Array.isArray(message.deletedIds)) {
+          for (const id of message.deletedIds) forgetWatched(id);
+          showCardsForVideoIds(message.deletedIds);
+        }
       }
       if (enabled) setTimeout(processPage, 250);
       sendResponse({ success: true });

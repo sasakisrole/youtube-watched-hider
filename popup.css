@@ -412,6 +412,43 @@ input:checked + .slider::before {
   line-height: 1.5;
 }
 
+.cache-setting {
+  padding-top: 0;
+}
+
+.cache-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  min-width: 48px;
+  justify-content: center;
+  padding: 2px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+
+.cache-full {
+  color: var(--success);
+  background: var(--success-soft);
+  border-color: var(--success);
+}
+
+.cache-partial {
+  color: var(--warning);
+  background: var(--warning-soft);
+  border-color: var(--warning);
+}
+
+.cache-error {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+
 .backup-status {
   color: var(--text-muted);
 }

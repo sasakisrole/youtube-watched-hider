@@ -17,6 +17,7 @@ YouTubeのおすすめから**視聴済み動画を非表示**にするChrome拡
 - ホーム・検索結果・関連動画など、YouTube内の各種フィードから視聴済み動画を自動で隠す
 - 動画のシークバー検知・watchページ遷移の両方で視聴を記録
 - ショート動画 / 映画コンテンツも別トグルで非表示化可能
+- 3層LRUキャッシュにより、10万件規模の視聴履歴でも5万件超過時にcacheを破棄せず watched 判定を維持
 
 ### 視聴履歴ビューア（History）
 - 視聴済み動画をカレンダー形式で一覧・検索・ソート
@@ -86,6 +87,7 @@ Historyビューアーの「Analyze」ボタンから起動する音楽傾向分
 - IndexedDB ownerは extension offscreen document（`offscreen.html` / `offscreen.js`）
 - service worker（`background.js`）はUI/アラーム/ダウンロードを中継
 - バックアップは offscreen document でBlob URLを生成し、`chrome.downloads.download` で保存
+- watched ID の初期読み込みは paged key load（8,000件単位）で実行し、content script 側で positive Set / recent LRU / pending lookup の3層キャッシュを管理
 
 ## Export schema v2
 

@@ -30,6 +30,8 @@ const syncImportBtn = document.getElementById('syncImportBtn');
 const syncFileInput = document.getElementById('syncFileInput');
 const syncStatus = document.getElementById('syncStatus');
 const migrationBanner = document.getElementById('migrationBanner');
+const cacheModeBadge = document.getElementById('cacheModeBadge');
+const cacheDetail = document.getElementById('cacheDetail');
 
 let allHistoryData = [];
 let filteredHistoryData = [];
@@ -41,6 +43,25 @@ function showStatus(msg, isError = false) {
   statusEl.textContent = msg;
   statusEl.style.color = isError ? 'var(--danger)' : 'var(--success)';
   setTimeout(() => { statusEl.textContent = ''; }, 3000);
+}
+
+function renderCacheStats(response) {
+  const mode = response && response.cacheMode ? response.cacheMode : 'error';
+  const positive = response && typeof response.positiveCacheSize === 'number' ? response.positiveCacheSize : 0;
+  const recent = response && typeof response.recentCacheSize === 'number' ? response.recentCacheSize : 0;
+  const pages = response && typeof response.cacheLoadedPages === 'number' ? response.cacheLoadedPages : 0;
+  const loadMs = response && typeof response.cacheLoadTime === 'number' ? response.cacheLoadTime : 0;
+
+  if (cacheModeBadge) {
+    cacheModeBadge.textContent = mode;
+    cacheModeBadge.className = `cache-mode-badge cache-${mode}`;
+  }
+  if (cacheDetail) {
+    cacheDetail.textContent = response && response.cacheUnavailable
+      ? 'YouTubeタブ未接続。DB件数は表示中、content cacheは次回YouTube表示時に取得します。'
+      : `positive ${positive.toLocaleString()} / recent ${recent.toLocaleString()} / pages ${pages.toLocaleString()} / load ${loadMs.toLocaleString()}ms`;
+  }
+  return { mode, positive, recent, pages, loadMs };
 }
 
 function unwrapWatchedRecords(data) {
@@ -80,11 +101,12 @@ function loadStats(retries = 3) {
     if (response && typeof response.count === 'number') {
       countEl.textContent = response.count.toLocaleString();
       countEl.title = '';
+      const cache = renderCacheStats(response);
       if (response.dbStatus) {
         const statusMap = {
           ready: response.dbOwner === 'offscreen'
-            ? 'DB ready (offscreen)'
-            : `DB ready (cache: ${(response.cacheSize || 0).toLocaleString()}, ${response.cacheLoadTime || 0}ms)`,
+            ? `DB ready (offscreen, cache: ${cache.positive.toLocaleString()}, ${cache.mode})`
+            : `DB ready (cache: ${cache.positive.toLocaleString()}, ${cache.loadMs}ms)`,
           loading: 'DB loading...',
           error: 'DB error',
         };

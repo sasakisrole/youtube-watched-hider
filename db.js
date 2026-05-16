@@ -389,13 +389,20 @@ if (typeof WatchedDB === 'undefined') {
       const db = await openDB();
       return new Promise((resolve, reject) => {
         const results = {};
+        const uniqueIds = [];
+        const seen = new Set();
+        for (const id of videoIds || []) {
+          if (!id || seen.has(id)) continue;
+          seen.add(id);
+          uniqueIds.push(id);
+        }
         const tx = db.transaction(STORE_NAME, 'readonly');
         const store = tx.objectStore(STORE_NAME);
 
-        let pending = videoIds.length;
+        let pending = uniqueIds.length;
         if (pending === 0) return resolve(results);
 
-        for (const id of videoIds) {
+        for (const id of uniqueIds) {
           const request = store.get(id);
           request.onsuccess = () => {
             results[id] = !!request.result;
@@ -667,6 +674,42 @@ if (typeof WatchedDB === 'undefined') {
       });
     }
 
+    async function getWatchedIdsPage(cursor = null, limit = 8000) {
+      const db = await openDB();
+      const pageLimit = Math.max(1, Math.min(Number(limit) || 8000, 50000));
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const store = tx.objectStore(STORE_NAME);
+        const range = cursor ? IDBKeyRange.lowerBound(String(cursor), true) : null;
+        const request = store.openKeyCursor(range);
+        const ids = [];
+        let lastKey = null;
+        let resolved = false;
+
+        function finish(nextCursor) {
+          if (resolved) return;
+          resolved = true;
+          resolve({ ids, nextCursor: nextCursor || null });
+        }
+
+        request.onsuccess = (event) => {
+          const c = event.target.result;
+          if (!c) {
+            finish(null);
+            return;
+          }
+          if (ids.length >= pageLimit) {
+            finish(lastKey);
+            return;
+          }
+          lastKey = String(c.key);
+          ids.push(lastKey);
+          c.continue();
+        };
+        request.onerror = (event) => reject(event.target.error);
+      });
+    }
+
     async function deleteOne(videoId) {
       const db = await openDB();
       return new Promise((resolve, reject) => {
@@ -872,7 +915,7 @@ if (typeof WatchedDB === 'undefined') {
       return { total: all.length, accounts: [...accounts.entries()] };
     }
 
-    return { openDB, addWatched, updateDuration, markDurationFailed, markDurationLive, updateTitle, updateTitleAndChannel, updateCredits, markCreditsChecked, markCreditsFailed, cleanAllCredits, isWatched, checkMultiple, getStats, getAllIds, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport, unwrapWatchedRecords, parseImportData,
+    return { openDB, addWatched, updateDuration, markDurationFailed, markDurationLive, updateTitle, updateTitleAndChannel, updateCredits, markCreditsChecked, markCreditsFailed, cleanAllCredits, isWatched, checkMultiple, getStats, getAllIds, getWatchedIdsPage, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport, unwrapWatchedRecords, parseImportData,
       upsertLiked, getAllLiked, importLikedData, clearLikedByAccount, getLikedStats };
   })();
 }
