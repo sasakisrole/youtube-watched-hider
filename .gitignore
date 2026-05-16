@@ -6,6 +6,7 @@ store-assets/
 # ワークスペース内部用（公開リポには含めない）
 measurements/
 scripts/
+credits-enrich/
 
 # OS
 .DS_Store

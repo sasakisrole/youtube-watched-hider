@@ -255,6 +255,7 @@ const maintenanceButtons = [
   { key: 'fixChannels', el: document.getElementById('fixChannels') },
   { key: 'fixChannelsForce', el: document.getElementById('fixChannelsForce') },
   { key: 'fixCredits', el: document.getElementById('fixCredits') },
+  { key: 'enrichCredits', el: document.getElementById('enrichCredits') },
   { key: 'fixDurations', el: document.getElementById('fixDurations') },
 ].filter(item => item.el).map(item => ({
   ...item,
@@ -518,6 +519,27 @@ if (fixCreditsBtn) {
       });
     const label = includeGen ? 'クレジット補完（Topic+一般）' : 'Topic動画のクレジット補完';
     runFixCredits(targets, sources, label);
+  });
+}
+
+const enrichCreditsBtn = document.getElementById('enrichCredits');
+let enrichCreditsController = null;
+if (enrichCreditsBtn && window.EnrichCredits) {
+  enrichCreditsController = window.EnrichCredits.create({
+    getRecords: () => allData,
+    notify: (message) => { fixStatus.textContent = message; },
+    reloadData: () => loadData(),
+    beginMaintenance: (activeText, allowAbort) => beginMaintenance('enrichCredits', { activeText, allowAbort }),
+    updateMaintenance: (activeText, allowAbort) => updateRunningMaintenance('enrichCredits', { activeText, allowAbort }),
+    endMaintenance: () => endMaintenance('enrichCredits'),
+  });
+
+  enrichCreditsBtn.addEventListener('click', () => {
+    if (runningMaintenance && runningMaintenance !== 'enrichCredits') {
+      fixStatus.textContent = '他のメンテナンス処理が実行中';
+      return;
+    }
+    enrichCreditsController.open();
   });
 }
 

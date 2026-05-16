@@ -635,13 +635,13 @@ PR 1: Offscreen DB RPC foundation
 - YouTube fetch 系は content.js に残す。
 - YouTube タブ無しで History / Popup Export が読めることを確認。
 
-PR 2: DB v6 + account identity foundation
+PR 2: DB v6 + account identity foundation **【2026-05-12 凍結（§1/§4）+ §6 v1.38.0 実装済】**
 
-- `likedVideos` を `[accountId, videoId]` に migration。
-- `likedSyncMeta` を v2 storage 形式に migration。
-- `syncLikedPlaylist()` の accountInfo 抽出を導入。
-- `X-Goog-AuthUser: '0'` 固定をやめる。
-- `watched` レコードに `durationSec` を追加（既存 `null`）。content.js watch ページ取得・`FIX_DURATIONS` バックフィル・analyzer の累計時間集計を同梱。
+- `likedVideos` を `[accountId, videoId]` に migration。**【凍結】**
+- `likedSyncMeta` を v2 storage 形式に migration。**【凍結】**
+- `syncLikedPlaylist()` の accountInfo 抽出を導入。**【凍結】**
+- `X-Goog-AuthUser: '0'` 固定をやめる。**【凍結】**
+- `watched` レコードに `durationSec` を追加（既存 `null`）。content.js watch ページ取得・`FIX_DURATIONS` バックフィル・analyzer の累計時間集計を同梱。**【v1.38.0 実装済】**
 
 PR 3: Export schema v2 + Blob URL backup
 
@@ -649,7 +649,7 @@ PR 3: Export schema v2 + Blob URL backup
 - `EXPORT_DOWNLOAD` / `BACKUP_NOW` / Auto Backup を offscreen Blob URL 経路へ移す。
 - Popup / History / Analyzer の unwrap helper を v2 対応にする。
 
-PR 4: Cache LRU / paged key load
+PR 4: Cache LRU / paged key load **【v1.39.0 実装済】**
 
 - `DB_GET_WATCHED_IDS_PAGE` / `DB_CHECK_MULTIPLE` を使う content cache に更新。
 - `watchedPositive` / `recentLookup` / `pendingLookup` を導入。

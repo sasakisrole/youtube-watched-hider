@@ -473,6 +473,387 @@ async function getContentCacheStats() {
   return null;
 }
 
+// --- Enrich Credits external lookup helpers ---
+// Test-case mapping for DESIGN_enrich_credits.md:
+// Case 2-4 are enforced by parseUtanetArtistSongs + history-side similarity thresholding.
+// Case 5 is enforced by runEnrichRateLimited, which serializes each source at >=1s/request.
+// Case 7 is enforced by returning empty song/candidate payloads without creating tabs.
+const ENRICH_RATE_LIMIT_MS = 1000;
+const ENRICH_FETCH_TIMEOUT_MS = 30000;
+const ENRICH_MB_USER_AGENT = 'yt-watched-hider/1.40.0 (https://github.com/sasakisrole/youtube-watched-hider)';
+const enrichRateState = {
+  utanet: { lastStartedAt: 0, queue: Promise.resolve() },
+  mb: { lastStartedAt: 0, queue: Promise.resolve() },
+};
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function runEnrichRateLimited(source, task) {
+  const state = enrichRateState[source];
+  if (!state) return task();
+
+  const run = async () => {
+    const now = Date.now();
+    const waitMs = Math.max(0, ENRICH_RATE_LIMIT_MS - (now - state.lastStartedAt));
+    if (waitMs > 0) await sleep(waitMs);
+    state.lastStartedAt = Date.now();
+    return task();
+  };
+
+  const next = state.queue.catch(() => {}).then(run);
+  state.queue = next.catch(() => {});
+  return next;
+}
+
+async function fetchEnrichText(source, url, headers = {}) {
+  return runEnrichRateLimited(source, async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ENRICH_FETCH_TIMEOUT_MS);
+    try {
+      const response = await fetch(url, {
+        headers,
+        signal: controller.signal,
+        credentials: 'omit',
+        cache: 'no-store',
+      });
+      const text = await response.text();
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return { text, status: response.status, finalUrl: response.url || url };
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+}
+
+async function fetchEnrichJson(source, url, headers = {}) {
+  const result = await fetchEnrichText(source, url, headers);
+  return JSON.parse(result.text);
+}
+
+function decodeHtmlEntities(value) {
+  const entityMap = {
+    amp: '&',
+    lt: '<',
+    gt: '>',
+    quot: '"',
+    apos: "'",
+    nbsp: ' ',
+    '#39': "'",
+  };
+  return String(value || '').replace(/&#(\d+);|&#x([0-9a-fA-F]+);|&([a-zA-Z][a-zA-Z0-9]+);/g, (_m, dec, hex, named) => {
+    if (dec) return String.fromCodePoint(parseInt(dec, 10));
+    if (hex) return String.fromCodePoint(parseInt(hex, 16));
+    return Object.prototype.hasOwnProperty.call(entityMap, named) ? entityMap[named] : `&${named};`;
+  });
+}
+
+function stripHtml(value) {
+  return decodeHtmlEntities(String(value || '')
+    .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' '))
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeCreditLookupText(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .replace(/\s*-\s*Topic\s*$/i, '')
+    .replace(/[\s・･.\-_!?！？♪♥'"`/\\()[\]{}<>:;,\u3000]+/g, '')
+    .toLowerCase();
+}
+
+function sequenceRatio(a, b) {
+  if (a === b) return 1;
+  if (!a || !b) return 0;
+  const prev = new Array(b.length + 1).fill(0);
+  const curr = new Array(b.length + 1).fill(0);
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      curr[j] = a[i - 1] === b[j - 1]
+        ? prev[j - 1] + 1
+        : Math.max(prev[j], curr[j - 1]);
+    }
+    for (let j = 0; j <= b.length; j++) prev[j] = curr[j];
+  }
+  return (2 * prev[b.length]) / (a.length + b.length);
+}
+
+function extractHtmlCells(rowHtml) {
+  const cells = [];
+  const cellRe = /<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/gi;
+  let match;
+  while ((match = cellRe.exec(rowHtml))) cells.push(match[1]);
+  return cells;
+}
+
+function parseUtanetArtistLinks(html, keyword) {
+  const raw = [];
+  const linkRe = /<a\b[^>]*href=["']\/artist\/(\d+)\/?["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let match;
+  while ((match = linkRe.exec(html))) {
+    const id = match[1];
+    const name = stripHtml(match[2]);
+    if (!id || !name || name.length > 120) continue;
+    raw.push({ id, name });
+  }
+
+  const seen = new Set();
+  const keywordNorm = normalizeCreditLookupText(keyword);
+  return raw
+    .filter((item) => {
+      if (seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    })
+    .map((item) => {
+      const nameNorm = normalizeCreditLookupText(item.name);
+      const score = keywordNorm && nameNorm
+        ? (nameNorm === keywordNorm ? 1 : sequenceRatio(keywordNorm, nameNorm))
+        : 0;
+      return { ...item, score };
+    })
+    .sort((a, b) => b.score - a.score);
+}
+
+function extractUtanetTitle(titleCell, hatsuCell) {
+  const titleSpan = titleCell.match(/<span\b[^>]*class=["'][^"']*songlist-title[^"']*["'][^>]*>([\s\S]*?)<\/span>/i);
+  const linkText = titleCell.match(/<a\b[^>]*>([\s\S]*?)<\/a>/i);
+  let title = stripHtml(titleSpan ? titleSpan[1] : (linkText ? linkText[1] : titleCell));
+  const hatsu = stripHtml(hatsuCell || '');
+  if (hatsu && title.endsWith(hatsu)) {
+    title = title.slice(0, -hatsu.length).trim();
+  }
+  return title;
+}
+
+function parseUtanetArtistSongs(html) {
+  const songs = [];
+  const tableRe = /<table\b[\s\S]*?<\/table>/gi;
+  let tableMatch;
+  while ((tableMatch = tableRe.exec(html))) {
+    const table = tableMatch[0];
+    if (!table.includes('曲名') || !table.includes('作曲者名')) continue;
+    const rows = table.match(/<tr\b[\s\S]*?<\/tr>/gi) || [];
+    if (rows.length < 2) continue;
+    const headers = extractHtmlCells(rows[0]).map(stripHtml);
+    const idx = {};
+    headers.forEach((h, i) => { idx[h] = i; });
+    if (idx['曲名'] == null || idx['作曲者名'] == null) continue;
+
+    for (const row of rows.slice(1)) {
+      const cells = extractHtmlCells(row);
+      if (cells.length < headers.length) continue;
+      const titleCell = cells[idx['曲名']] || '';
+      const href = (titleCell.match(/href=["']([^"']+)["']/i) || [])[1] || '';
+      const title = extractUtanetTitle(titleCell, cells[idx['歌い出し']] || '');
+      if (!title) continue;
+      songs.push({
+        title,
+        songUrl: href,
+        lyricist: stripHtml(cells[idx['作詞者名']] || ''),
+        composer: stripHtml(cells[idx['作曲者名']] || ''),
+        arranger: idx['編曲者名'] == null ? '' : stripHtml(cells[idx['編曲者名']] || ''),
+      });
+    }
+  }
+  return songs;
+}
+
+async function enrichCreditsFetchUtanet(artist) {
+  const keyword = String(artist || '').replace(/\s*-\s*Topic\s*$/i, '').trim();
+  if (!keyword) return { success: false, reason: 'empty-artist', songs: [] };
+
+  const searchUrl = `https://www.uta-net.com/search/?Aselect=1&Bselect=4&Keyword=${encodeURIComponent(keyword)}`;
+  const search = await fetchEnrichText('utanet', searchUrl, {
+    Accept: 'text/html,application/xhtml+xml',
+  });
+  const links = parseUtanetArtistLinks(search.text, keyword);
+  if (!links.length) {
+    const directSongs = parseUtanetArtistSongs(search.text);
+    return {
+      success: true,
+      artist: keyword,
+      searchedUrl: searchUrl,
+      selectedArtist: null,
+      artistCandidates: [],
+      songs: directSongs,
+    };
+  }
+
+  const selectedArtist = links[0];
+  const detailUrl = `https://www.uta-net.com/artist/${encodeURIComponent(selectedArtist.id)}/`;
+  const detail = await fetchEnrichText('utanet', detailUrl, {
+    Accept: 'text/html,application/xhtml+xml',
+  });
+  return {
+    success: true,
+    artist: keyword,
+    searchedUrl: searchUrl,
+    selectedArtist,
+    artistCandidates: links.slice(0, 10),
+    songs: parseUtanetArtistSongs(detail.text),
+  };
+}
+
+const MB_SUFFIX_PATTERNS = [
+  /\s*[-–—]\s*Live\s*\d{0,4}.*$/i,
+  /\s*[-–—]\s*Live at .*$/i,
+  /\s*[-–—]\s*Remix.*$/i,
+  /\s*[-–—]\s*Instrumental.*$/i,
+  /\s*[-–—]\s*Off\s*Vocal.*$/i,
+  /\s*[-–—]\s*Acoustic.*$/i,
+  /\s*[-–—]\s*[\w\s]*Style.*$/i,
+  /\s*〜.*?〜\s*$/i,
+  /\s*~.*?~\s*$/i,
+  /\s*feat[.\s].*$/i,
+  /\s*ft[.\s].*$/i,
+  /\s*\(feat[^)]*\)/i,
+  /\s*\[.*?]\s*$/i,
+  /\s*【.*?】\s*$/i,
+  /\s*（.*?）\s*$/i,
+  /\s*\(.*?\)\s*$/i,
+];
+
+function cleanMbTitle(title) {
+  let value = String(title || '');
+  for (let pass = 0; pass < 3; pass++) {
+    const prev = value;
+    for (const pattern of MB_SUFFIX_PATTERNS) value = value.replace(pattern, '');
+    if (value === prev) break;
+  }
+  return value.replace(/^[\s-–—]+|[\s-–—]+$/g, '');
+}
+
+async function mbGet(path, params) {
+  const query = new URLSearchParams(params);
+  const url = `https://musicbrainz.org/ws/2/${path}?${query.toString()}`;
+  return fetchEnrichJson('mb', url, {
+    Accept: 'application/json',
+    'User-Agent': ENRICH_MB_USER_AGENT,
+  });
+}
+
+function collectMbRole(roles, rel) {
+  const type = rel && rel.type;
+  if (!Object.prototype.hasOwnProperty.call(roles, type)) return;
+  const name = rel.artist && rel.artist.name;
+  if (name) roles[type].add(name);
+}
+
+async function getMbRecordingRoles(recordingId) {
+  const full = await mbGet(`recording/${encodeURIComponent(recordingId)}`, {
+    inc: 'work-rels+artist-rels',
+    fmt: 'json',
+  });
+  const roles = {
+    composer: new Set(),
+    lyricist: new Set(),
+    arranger: new Set(),
+  };
+  const workIds = new Set();
+  for (const rel of full.relations || []) {
+    collectMbRole(roles, rel);
+    if (rel.work && rel.work.id) workIds.add(rel.work.id);
+  }
+  for (const workId of Array.from(workIds).slice(0, 3)) {
+    const work = await mbGet(`work/${encodeURIComponent(workId)}`, {
+      inc: 'artist-rels',
+      fmt: 'json',
+    });
+    for (const rel of work.relations || []) collectMbRole(roles, rel);
+  }
+  return {
+    composer: Array.from(roles.composer).sort(),
+    lyricist: Array.from(roles.lyricist).sort(),
+    arranger: Array.from(roles.arranger).sort(),
+  };
+}
+
+function hasAnyMbRole(roles) {
+  return !!(roles && (roles.composer.length || roles.lyricist.length || roles.arranger.length));
+}
+
+function joinMbRoles(values) {
+  return Array.isArray(values) ? values.join('・') : '';
+}
+
+function mbArtistMatches(artist, recording) {
+  const target = normalizeCreditLookupText(artist);
+  const credits = recording['artist-credit'] || [];
+  return credits.some((credit) => {
+    const names = [credit.name, credit.artist && credit.artist.name].filter(Boolean);
+    return names.some((name) => {
+      const norm = normalizeCreditLookupText(name);
+      return norm && (norm.includes(target) || target.includes(norm) || sequenceRatio(target, norm) >= 0.7);
+    });
+  });
+}
+
+async function enrichCreditsLookupMb(artist, title) {
+  const cleanArtist = String(artist || '').replace(/\s*-\s*Topic\s*$/i, '').trim();
+  const cleanTitle = cleanMbTitle(title);
+  if (!cleanArtist || !cleanTitle) return { success: false, reason: 'empty-query' };
+
+  const strictQuery = `artist:"${cleanArtist}" AND recording:"${cleanTitle}"`;
+  const strict = await mbGet('recording/', { query: strictQuery, fmt: 'json', limit: '5' });
+  let chosen = null;
+  let stage = '';
+  const strictRecordings = strict.recordings || [];
+  if (strictRecordings.length && Number(strictRecordings[0].score || 0) >= 90) {
+    chosen = strictRecordings[0];
+    stage = 'strict';
+  } else {
+    const titleOnly = await mbGet('recording/', { query: `recording:"${cleanTitle}"`, fmt: 'json', limit: '10' });
+    for (const recording of titleOnly.recordings || []) {
+      if (mbArtistMatches(cleanArtist, recording)) {
+        chosen = recording;
+        stage = 'fuzzy';
+        break;
+      }
+    }
+    if (!chosen && titleOnly.recordings && titleOnly.recordings.length) {
+      const top = titleOnly.recordings[0];
+      const sim = sequenceRatio(normalizeCreditLookupText(top.title || ''), normalizeCreditLookupText(cleanTitle));
+      if (sim >= 0.85) {
+        chosen = top;
+        stage = 'title-only';
+      }
+    }
+  }
+
+  if (!chosen || !chosen.id) {
+    return { success: true, artist: cleanArtist, title: cleanTitle, candidate: null, reason: 'no-recording' };
+  }
+
+  const roles = await getMbRecordingRoles(chosen.id);
+  if (!hasAnyMbRole(roles)) {
+    return { success: true, artist: cleanArtist, title: cleanTitle, candidate: null, reason: 'no-roles' };
+  }
+  const sim = sequenceRatio(normalizeCreditLookupText(cleanTitle), normalizeCreditLookupText(chosen.title || ''));
+  return {
+    success: true,
+    artist: cleanArtist,
+    title: cleanTitle,
+    candidate: {
+      composer: joinMbRoles(roles.composer),
+      lyricist: joinMbRoles(roles.lyricist),
+      arranger: joinMbRoles(roles.arranger),
+      mbid: chosen.id,
+      mbTitle: chosen.title || '',
+      stage,
+      score: chosen.score || 0,
+      sim,
+    },
+  };
+}
+
 // Generate backup filename with date (e.g. yt-watched-backup-2026-04-03.json)
 function getBackupFilename() {
   const d = new Date();
@@ -814,6 +1195,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'BACKUP_NOW') {
     performAutoBackup({ source: 'backup-now', respectEnabled: false }).then(sendResponse);
+    return true;
+  }
+
+  if (message.type === 'enrichCreditsUtanet') {
+    enrichCreditsFetchUtanet(message.artist || '')
+      .then(sendResponse)
+      .catch((e) => sendResponse({ success: false, reason: 'fetch-error', error: e.message, songs: [] }));
+    return true;
+  }
+
+  if (message.type === 'enrichCreditsMb') {
+    enrichCreditsLookupMb(message.artist || '', message.title || '')
+      .then(sendResponse)
+      .catch((e) => sendResponse({ success: false, reason: 'fetch-error', error: e.message }));
     return true;
   }
 

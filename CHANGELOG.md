@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.40.0 (2026-05-16)
+- Feature: History Viewer に Enrich Credits UI を追加
+  - 未割当 `creditsRaw` を固定ルール、uta-net、MusicBrainz の順に照合し、composer / lyricist / arranger 候補をチャンネル単位タブで確認できるようにした
+  - `composer_rules.json` を同梱し、fripSide - Topic / Nobuo Uematsu - Topic / YOASOBI - Topic / Berlinist - Topic の4件の固定作曲者ルールを初期収録
+  - uta-net / MusicBrainz fetch は service worker 経由にし、各ソース1req/秒のレート制限を追加
+  - 類似度 `sim >= 0.95` は自動選択、`0.85 <= sim < 0.95` は目視確認用に未選択、`sim < 0.85` は非表示
+  - 書き戻し前に確定予定JSONを保存できるボタンを追加し、誤確定時のロールバック材料を残せるようにした
+- Improve: Enrich Credits の書き戻しは既存DBスキーマを変更せず、既存値が空の role フィールドだけを既存 `UPDATE_CREDITS` RPC 経由で更新
+- Note: 既存の Fix Credits（概要欄fetch）ルート、content.js、db.js、popup.js、analyzer.js は変更なし
+
 ## v1.39.0 (2026-05-16)
 - Feature: content script の watched 判定キャッシュを3層化
   - `watchedPositive` は full preload 成功時に全 watched ID を保持し、50,000件超でも cache を破棄しない

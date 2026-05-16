@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "updated": "2026-05-16",
+  "rules": [
+    {
+      "channel": "fripSide - Topic",
+      "composer": "Satoshi Yaginuma",
+      "evidence": "creditsRaw all-song verification showed Satoshi Yaginuma appears as the stable composer."
+    },
+    {
+      "channel": "Nobuo Uematsu - Topic",
+      "composer": "Nobuo Uematsu",
+      "evidence": "Solo composer Topic channel verified in the enrichment reference data."
+    },
+    {
+      "channel": "YOASOBI - Topic",
+      "composer": "Ayase",
+      "evidence": "All 7 creditsRaw entries include Ayase. Ayase is the sole songwriter for YOASOBI (public knowledge)."
+    },
+    {
+      "channel": "Berlinist - Topic",
+      "composer": "Marco Albano, Luigi Gervasi",
+      "evidence": "All 7 creditsRaw entries include both names. Berlinist is the Italian music duo Marco Albano & Luigi Gervasi (e.g. GRIS soundtrack)."
+    }
+  ]
+}

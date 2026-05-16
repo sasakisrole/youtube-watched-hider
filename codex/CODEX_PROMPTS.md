@@ -198,3 +198,152 @@
 
 - 設計書を出した段階で **停止**。実装フェーズは別委託。
 - 設計だけで判断不能な箇所は「⚠️判断要」として未決のまま残す（Claude+ユーザーで決める）。
+
+---
+
+## Enrich Credits UI 委託（v1.40.0・2026-05-16）
+
+返答は `C:\Users\sasaki\Dropbox\claude-workspace\codex-reports\ad-hoc\yt-watched-hider-enrich-credits_2026-05-16.md` に出力してください。方針は `.claude/codex-context.md` および `AGENTS.md` に従う。
+
+[SESSION] 目的:Chrome拡張 yt-watched-hider に Enrich Credits UI 追加 | 編集:実装主導 | 出力:projects/youtube-watched-hider/ 直下に直接書込 | 完了条件:設計書テストケース Case 1-8 を全てpassかつ動作確認可能なv1.40.0が成立
+
+# タスク: yt-watched-hider Enrich Credits UI 実装
+
+## プロジェクト
+- パス: `C:\Users\sasaki\Dropbox\claude-workspace\projects\youtube-watched-hider\`
+- **設計書（必読・本タスクの正本）**: `projects/youtube-watched-hider/DESIGN_enrich_credits.md`
+- 既存ファイル（変更対象）: manifest.json / background.js / history.html / history.js / CHANGELOG.md
+- 既存ファイル（参照のみ・変更禁止）: content.js / popup.js / db.js / analyzer.js
+- 既存検証成果物（リファレンス実装・Python）: `projects/youtube-watched-hider/credits-enrich/`
+  - `utanet_fetch.py` — uta-net HTML パース実装の参考
+  - `mb_trial2.py` — MusicBrainz v2正規化ロジックの参考
+  - `match.py` — タイトル類似度マッチングの参考
+  - `step1_rule_based.py` — 固定ルール適用の参考
+  - `enrichment_step1.json` / `enrichment_step2_utanet.json` — 期待出力の参考データ
+
+## 会話文脈サマリ
+
+### 確定前提
+- バージョン: v1.40.0（manifest.json の version 1.39.0 → 1.40.0）
+- アーキテクチャ: content script (history.js) → SW (background.js) → uta-net/MB fetch のリレー構成（MV3 CORS制約のため）
+- uta-net 正規URL: `https://www.uta-net.com/search/?Aselect=1&Bselect=4&Keyword=<artist>`（Aselect=1, Bselect=4 で確定済み）
+- レート制限: uta-net 1req/秒・MusicBrainz 1req/秒（SW側で厳守）
+- composer_rules.json は拡張同梱（初版は fripSide / Nobuo Uematsu の2件のみ）
+- 書き戻し方針: 既存値が空のフィールドのみ上書き（既に composer がある行は触らない）
+- 補完優先順: ①固定ルール → ②uta-net → ③MusicBrainz（ルール適用済はuta-net検索スキップ）
+- sim 閾値: 0.95以上で自動チェック / 0.85以上0.95未満で要目視（チェックOFF初期） / 0.85未満は非表示
+- 各候補に `source` 記録（"rule" / "utanet" / "mb"）→ DB書き戻し時 `creditsSource` を `enrich:rule` / `enrich:utanet` / `enrich:mb` で記録
+- UI: history.html にモーダル追加（背景クリックで閉じない・Esc/×/キャンセルでのみ閉じる）
+
+### 未決事項
+- Lucide SVGアイコンの具体的な選定: 仮置きOK
+- モーダルのCSSアニメーション: 仮置きOK（既存トーンに合わせる）
+- 大量行のchunked rendering詳細: 仮置きOK（50件/chunk）
+
+### 変更禁止
+- 既存 `fixCreditsForRange`（history.js:412〜）の概要欄fetchルートは温存・変更しない
+- content.js / popup.js / db.js / analyzer.js は変更しない
+- 既存 manifest.json の host_permissions（`*://*.youtube.com/*`）・permissions は維持（追加のみ）
+- 既存IndexedDBスキーマ（db.js）の変更禁止。書き込みは既存 `composer/lyricist/arranger/creditsSource` フィールドのみ
+- 既存 history.html のヘッダー・既存ボタン群のレイアウト変更禁止（「Enrich Credits」ボタンを追加するのみ）
+
+### 検証条件（ルーブリック）
+1. **manifest.json**: version="1.40.0" / host_permissions に `https://www.uta-net.com/*` `https://musicbrainz.org/*` が追加されている → pass/fail
+2. **composer_rules.json**: 拡張ルートに存在し、fripSide-Topic と Nobuo Uematsu-Topic の2ルールを含む → pass/fail
+3. **Case 1 (rule適用)**: fripSide-Topic チャンネルの未割当行に対し source="rule" sim=null selected=true の候補が生成される → pass/fail
+4. **Case 2 (uta-net高精度)**: uta-net 検索でタイトル完全一致時 sim>=0.95 / selected=true / 行背景緑 → pass/fail
+5. **Case 3 (uta-net要目視)**: sim 0.85-0.95 で selected=false / 行背景黄 / タイトルクリックで youtu.be/{videoId} が新タブで開く → pass/fail
+6. **Case 4 (マッチ失敗)**: sim<0.85 は候補テーブルに表示されない → pass/fail
+7. **Case 5 (レート制限)**: uta-net への連続fetch が1req/秒以下に制御される（SW側のタイマーで確認可能） → pass/fail
+8. **Case 6 (冪等性)**: 既に composer が埋まっている行は候補抽出時点でスキップされる → pass/fail
+9. **Case 7 (全ソース0件)**: ルール未該当・uta-net 0件・MB 0件のチャンネルはタブ表示されない → pass/fail
+10. **Case 8 (rule優先)**: rule該当チャンネルは uta-net 検索がスキップされる → pass/fail
+11. **書き戻し**: 確認ダイアログ → 既存値が空のフィールドのみ上書き → 完了トースト → モーダル閉じる、の動線が成立 → pass/fail
+12. **デザイン**: 絵文字なし・Lucide SVG・ネイビー基調・ダークモード対応 → pass/fail
+13. **CHANGELOG.md**: v1.40.0 エントリが先頭に追加されている → pass/fail
+14. **既存機能の回帰なし**: 既存の az クレジットタブ・概要欄fetch（fixCreditsForRange）・履歴同期等が破壊されていない → pass/fail
+
+## ⚠️ 重要: 既存ストレージへの書き戻し
+
+書き戻しは **既存IndexedDB（db.js）の既存スキーマ・既存フィールドのみ** に行う。新スキーマ追加禁止。
+
+### 書き込み対象フィールド
+既存db.js のレコード構造（スキーマ変更禁止）:
+- `videoId`: string（変更禁止）
+- `composer`: string（既存値が空文字の場合のみ上書き）
+- `lyricist`: string（既存値が空文字の場合のみ上書き）
+- `arranger`: string（既存値が空文字の場合のみ上書き）
+- `creditsSource`: string（"enrich:rule" / "enrich:utanet" / "enrich:mb" を記録）
+- `creditsRaw`: string（変更禁止・読み出しのみ）
+
+### 書き込み実装
+db.js の既存メソッド（既存 updateCredits 系・db.js:228 付近）を活用すること。新規メソッド追加が必要なら最小限に。
+
+## やってほしいこと
+
+1. **設計書 `DESIGN_enrich_credits.md` を最初に熟読** し、未決事項以外は設計書の指示に従う。
+2. composer_rules.json を新規作成（fripSide / Nobuo Uematsu の2件）。
+3. manifest.json 更新（host_permissions追加・version=1.40.0）。
+4. background.js に message handler 追加: `enrichCreditsUtanet`（artist → 曲リスト）/ `enrichCreditsMb`（artist+title → composer候補）。レート制御は SW グローバル状態で実装。HTMLパース処理も SW 側で完結（content scriptに渡さない）。
+5. enrich_credits.js 新規作成: 候補抽出（DB読み出し+フィルタ）/ ルール適用 / マッチング（タイトル類似度・正規化はPython `match.py` 同等）/ 選択管理 / 書き戻し。
+6. history.html にモーダルDOM・CSS追加（ネイビー基調・ダークモード対応・Lucide SVG）。
+7. history.js に「Enrich Credits」ボタン押下ハンドラ・モーダル開閉・候補テーブル描画（chunked rendering 50件/chunk）追加。
+8. CHANGELOG.md に v1.40.0 エントリ追加（先頭に追加・既存エントリ削除禁止）。
+9. Playwright等での実画面検証は **不要**（拡張機能のためE2E困難）。代わりに各JSファイルの構文チェック（`node -c` 相当）と、設計書テストケース Case 1-8 のロジックを単体検証可能な形でコードコメントに残すこと。
+
+## 入力データ仕様
+
+### IndexedDB 抽出条件
+`record.creditsRaw && !record.composer && !record.lyricist && !record.arranger`
+
+### uta-net HTMLパース対象（リファレンス: credits-enrich/utanet_fetch.py）
+- 検索結果ページのアーティスト一覧テーブル → アーティスト詳細ページURL抽出
+- アーティスト詳細ページの曲リスト → 各曲の composer/lyricist/arranger 抽出
+- 文字コード: UTF-8（uta-net は標準UTF-8配信）
+
+### MusicBrainz API（リファレンス: credits-enrich/mb_trial2.py）
+- エンドポイント: `https://musicbrainz.org/ws/2/recording/?query=...&fmt=json`
+- User-Agent ヘッダ必須: `yt-watched-hider/1.40.0 (https://github.com/yourrepo)` 形式
+- レート: 1req/秒
+
+## テストデータ・サンプルパス（絶対パス）
+- 期待出力リファレンス（rule適用済220件）: `C:\Users\sasaki\Dropbox\claude-workspace\projects\youtube-watched-hider\credits-enrich\enrichment_step1.json`
+- 期待出力リファレンス（uta-netマッチ77件・sim付き）: `C:\Users\sasaki\Dropbox\claude-workspace\projects\youtube-watched-hider\credits-enrich\enrichment_step2_utanet.json`
+- uta-net取得済キャッシュ: `C:\Users\sasaki\Dropbox\claude-workspace\projects\youtube-watched-hider\credits-enrich\cache\utanet_*.json`
+- 未解決チャンネル一覧: `C:\Users\sasaki\Dropbox\claude-workspace\projects\youtube-watched-hider\credits-enrich\unresolved.tsv`
+
+これらは「Python版で動作確認済の期待挙動」を示すリファレンス。JS実装は同等のマッチング結果を再現することが望ましい。
+
+## 制約・注意
+
+- **Chrome MV3 制約**: content scriptから直接 uta-net.com / musicbrainz.org への fetch は CORS で失敗する。必ず Service Worker (background.js) 経由でリレーする
+- **レート制御**: SW のグローバル状態で「最後にfetchした時刻」を保持し、1秒経過していなければ `setTimeout` で待機。複数チャンネル並列処理時も全体で1req/秒を厳守
+- **HTMLパース**: DOMParser を SW で使う場合は offscreen document が必要（background.js は DOMParser を持たない）。既存 `offscreen.html`/`offscreen.js` の活用検討（既にoffscreen permission 付与済）。または正規表現ベースのパースで対応
+- **デザインシステム**: `AGENTS.md`（ワークスペースルート）の規約に従う。ネイビー基調 / 絵文字なし / Lucide SVG / ダークモード対応
+- **既存スタイル整合**: history.html の既存CSS変数（`--text-muted` 等）を流用すること
+
+## ⚠️ 重要: 想定リスク（設計書「想定リスク」セクション再掲）
+
+**HIDDEN ASSUMPTION**: 「動画タイトルとuta-net曲タイトルの類似度0.85-0.95は人間が目視で判断可能」 — 同名カバー曲・instrumentalバージョン等で目視判別困難なケースがある。書き戻し前のロールバック手段として、確定対象の `{videoId, composer, lyricist, arranger, source, sim}` を JSON でダウンロードできるボタンをモーダルフッターに追加すること（設計書セクション「UI仕様詳細 > 書き戻し」記載済）。
+
+## 完成物
+
+1. `projects/youtube-watched-hider/composer_rules.json`（新規）
+2. `projects/youtube-watched-hider/manifest.json`（更新）
+3. `projects/youtube-watched-hider/background.js`（追記）
+4. `projects/youtube-watched-hider/history.html`（追記）
+5. `projects/youtube-watched-hider/history.js`（追記）
+6. `projects/youtube-watched-hider/enrich_credits.js`（新規）
+7. `projects/youtube-watched-hider/CHANGELOG.md`（追記）
+8. **成果物レポート**: `codex-reports/ad-hoc/yt-watched-hider-enrich-credits_2026-05-16.md`
+   - 作成・変更ファイル一覧
+   - 検証条件1-14のpass/fail判定（自己採点）
+   - 設計書からの逸脱があれば項目別に明記
+   - 未決事項の仮置き判断とその根拠
+   - 動作確認手順（Chrome に読み込ませてから何を確認すべきか）
+
+## 進め方
+
+- 設計書 `DESIGN_enrich_credits.md` を熟読 → 不明点があればレポート冒頭に「⚠️判断要」として記載しつつも、未決事項に該当する範囲なら仮置きで進めて構わない
+- 既存ファイル（manifest.json / background.js / history.html / history.js）は **必ず先にRead** してから編集。既存スタイル・既存命名規則に合わせる
+- credits-enrich/ 配下のPythonリファレンス実装を読んで、同等のマッチングロジックをJSで再現する
