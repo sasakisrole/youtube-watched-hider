@@ -1372,6 +1372,8 @@ window._ytWatchedHider = (() => {
     } else {
       stopRecoPolling();
     }
+    ensureQueueAllButton();
+    ensureWatchLaterButton();
     // Reset flags on navigation (sidebar content changes)
     for (const card of document.querySelectorAll('[data-watched-hidden="true"]')) {
       card.style.display = '';
@@ -1512,6 +1514,87 @@ window._ytWatchedHider = (() => {
     '#related yt-lockup-view-model, ' +
     'ytd-watch-next-secondary-results-renderer ytd-compact-video-renderer, ' +
     'ytd-watch-next-secondary-results-renderer yt-lockup-view-model';
+  const CHANNEL_GRID_CARD_SELECTOR = 'ytd-rich-grid-renderer ytd-rich-item-renderer';
+  const BULK_LARGE_COUNT_THRESHOLD = 50;
+
+  function isChannelVideosPath() {
+    const path = location.pathname.replace(/\/+$/, '');
+    return /^\/(@[^/]+|channel\/[^/]+|c\/[^/]+|user\/[^/]+)\/videos$/.test(path);
+  }
+
+  function isChannelVideosPage() {
+    return isChannelVideosPath() && !!document.querySelector('ytd-rich-grid-renderer');
+  }
+
+  function getBulkPageContext() {
+    if (location.pathname === '/watch') return 'watch';
+    if (isChannelVideosPage()) return 'channel';
+    return null;
+  }
+
+  function hasLiveBadge(card) {
+    const liveBadge = card.querySelector(
+      '.badge-style-type-live-now, ' +
+      '[aria-label*="ライブ"], ' +
+      '[aria-label*="LIVE"]'
+    );
+    if (liveBadge) return true;
+
+    const badges = card.querySelectorAll('badge-shape, .badge-shape-wiz__text, .yt-badge-shape__text');
+    for (const badge of badges) {
+      const text = (badge.textContent || '').trim();
+      if (/ライブ|live/i.test(text)) return true;
+    }
+    return false;
+  }
+
+  function isChannelBulkActionCard(card) {
+    if (card.style.display === 'none') return false;
+    if (card.offsetParent === null) return false;
+    if (card.dataset.watchedHidden === 'true') return false;
+    if (card.dataset.shortsHidden === 'true') return false;
+    if (card.dataset.movieHidden === 'true') return false;
+    if (isPlaylistCard(card)) return false;
+    if (isCardShorts(card)) return false;
+    if (hasLiveBadge(card)) return false;
+
+    const link = card.querySelector('a[href*="/watch?v="]');
+    if (!link) return false;
+    return !!getVideoIdFromHref(link.href);
+  }
+
+  function findChannelBulkActionCards() {
+    const cards = document.querySelectorAll(CHANNEL_GRID_CARD_SELECTOR);
+    const out = [];
+    for (const card of cards) {
+      if (isChannelBulkActionCard(card)) out.push(card);
+    }
+    return out;
+  }
+
+  function buildBulkConfirmMessage(kind, count, context) {
+    if (kind === 'queue') {
+      if (context === 'watch') {
+        return `${count}件の関連動画をキューに追加します。\n処理中YouTubeのメニューが順次開閉します。続行しますか？`;
+      }
+      let message = `${count}件の表示中動画をキューに追加します。\n処理中YouTubeのメニューが順次開閉します。続行しますか？`;
+      if (count > BULK_LARGE_COUNT_THRESHOLD) {
+        const minutes = Math.max(1, Math.ceil((count * 0.6) / 60));
+        message += `\n\n件数が多いため、完了まで約${minutes}分以上かかる可能性があります。途中で中止する場合は処理中のボタンをクリックしてください。`;
+      }
+      return message;
+    }
+
+    if (context === 'watch') {
+      return `${count}件の動画を「後で見る」に追加します。\nメニューが順次開閉します。続行しますか？`;
+    }
+    let message = `${count}件の表示中動画を「後で見る」に追加します。\nメニューが順次開閉します。続行しますか？`;
+    if (count > BULK_LARGE_COUNT_THRESHOLD) {
+      const minutes = Math.max(1, Math.ceil((count * 0.65) / 60));
+      message += `\n\n件数が多いため、完了まで約${minutes}分以上かかる可能性があります。途中で中止する場合は処理中のボタンをクリックしてください。`;
+    }
+    return message;
+  }
 
   // ===== Queue All feature =====
   // Adds a button on watch pages to bulk-enqueue all visible related videos.
@@ -1520,12 +1603,139 @@ window._ytWatchedHider = (() => {
   let queueInProgress = false;
   let queueAbort = false;
   let queueBtnObserver = null;
+  let queueButtonContext = null;
+  let bulkButtonBar = null;
 
   function sleep(ms) {
     return new Promise(r => setTimeout(r, ms));
   }
 
-  function findQueueableCards() {
+  function removeBulkButtonBarIfEmpty() {
+    if (bulkButtonBar && (!bulkButtonBar.isConnected || bulkButtonBar.children.length === 0)) {
+      bulkButtonBar.remove();
+      bulkButtonBar = null;
+    }
+  }
+
+  function removeQueueAllButton() {
+    if (queueBtnObserver) { queueBtnObserver.disconnect(); queueBtnObserver = null; }
+    if (queueAllBtn) { queueAllBtn.remove(); queueAllBtn = null; }
+    queueButtonContext = null;
+    removeBulkButtonBarIfEmpty();
+  }
+
+  function getBulkButtonStyle(kind, context) {
+    const isQueue = kind === 'queue';
+    const margin = context === 'channel' ? '0' : (isQueue ? '8px 12px 12px' : '8px 8px 12px 0');
+    return [
+      'display:inline-block',
+      'box-sizing:border-box',
+      `margin:${margin}`,
+      'padding:8px 14px',
+      `background:${isQueue ? '#ff4444' : '#1565c0'}`,
+      'color:#fff',
+      'border:none',
+      'border-radius:18px',
+      'cursor:pointer',
+      'font-size:13px',
+      'font-weight:500',
+      'font-family:Roboto, Arial, sans-serif',
+      'line-height:1.2',
+      'width:auto',
+      'height:auto',
+      'max-height:40px',
+      'min-height:32px',
+      'max-width:calc(100% - 24px)',
+      'flex:0 0 auto',
+      'align-self:flex-start',
+      'white-space:nowrap',
+      'overflow:hidden',
+      'text-overflow:ellipsis',
+      // YouTubeの関連動画/チャンネルグリッドが display:grid のときに
+      // 0px のimplicit cellへ押し込まれて見えなくなるのを防ぐ。
+      'grid-column:1 / -1'
+    ].join(';') + ';';
+  }
+
+  function isChipBarHost(el) {
+    return !!el && (el.tagName === 'CHIP-BAR-VIEW-MODEL' ||
+      el.tagName === 'YTD-FEED-FILTER-CHIP-BAR-RENDERER');
+  }
+
+  function ensureChannelBulkButtonBar(anchor) {
+    if (!anchor) return null;
+    const chipMode = isChipBarHost(anchor);
+    if (!bulkButtonBar || !document.body.contains(bulkButtonBar)) {
+      bulkButtonBar = document.createElement('div');
+      bulkButtonBar.id = 'yt-watched-hider-channel-bulk-bar';
+    }
+    // チップ行（新しい順/人気の動画/古い順）に置く場合は margin-left:auto で右端寄せ。
+    // チップ行が見つからない場合はグリッド先頭カードの前に全幅バーとして挿入。
+    bulkButtonBar.style.cssText = chipMode
+      ? [
+          'display:flex',
+          'box-sizing:border-box',
+          'gap:8px',
+          'align-items:center',
+          'flex-wrap:nowrap',
+          'margin:0 0 0 auto',
+          'padding:0',
+          'width:auto',
+          'flex:0 0 auto',
+          'white-space:nowrap'
+        ].join(';') + ';'
+      : [
+          'display:flex',
+          'box-sizing:border-box',
+          'gap:8px',
+          'align-items:center',
+          'flex-wrap:wrap',
+          'margin:8px 12px 12px',
+          'padding:0',
+          'width:auto',
+          'max-width:calc(100% - 24px)',
+          'grid-column:1 / -1'
+        ].join(';') + ';';
+
+    if (chipMode) {
+      // チップ行の最後の子として追加（margin-left:auto で右端へ寄る）
+      if (bulkButtonBar.parentNode !== anchor || bulkButtonBar !== anchor.lastElementChild) {
+        anchor.appendChild(bulkButtonBar);
+      }
+    } else {
+      const parent = anchor.parentNode;
+      if (!parent) return null;
+      if (bulkButtonBar.parentNode !== parent || bulkButtonBar.nextSibling !== anchor) {
+        parent.insertBefore(bulkButtonBar, anchor);
+      }
+    }
+    return bulkButtonBar;
+  }
+
+  function insertBulkButton(button, context, anchor, kind) {
+    if (context === 'channel') {
+      const bar = ensureChannelBulkButtonBar(anchor);
+      if (!bar) return false;
+      if (kind === 'queue') {
+        if (button.parentNode !== bar || button !== bar.firstElementChild) {
+          bar.insertBefore(button, bar.firstChild);
+        }
+      } else if (button.parentNode !== bar || button.previousElementSibling !== queueAllBtn) {
+        bar.appendChild(button);
+      }
+      return true;
+    }
+
+    if (!anchor || !anchor.parentNode) return false;
+    anchor.parentNode.insertBefore(button, anchor);
+    removeBulkButtonBarIfEmpty();
+    return true;
+  }
+
+  function findQueueableCards(context = getBulkPageContext()) {
+    if (context === 'channel') return findChannelBulkActionCards();
+    if (context !== 'watch') return [];
+
     const cards = document.querySelectorAll(RELATED_CARD_SELECTORS);
     const out = [];
     for (const card of cards) {
@@ -1643,7 +1853,7 @@ window._ytWatchedHider = (() => {
 
   function updateQueueButtonLabel() {
     if (!queueAllBtn || queueInProgress) return;
-    const count = findQueueableCards().length;
+    const count = findQueueableCards(queueButtonContext || getBulkPageContext()).length;
     queueAllBtn.textContent = `⏭ キューに追加 (${count})`;
     queueAllBtn.disabled = count === 0;
     queueAllBtn.style.opacity = count === 0 ? '0.5' : '1';
@@ -1652,31 +1862,35 @@ window._ytWatchedHider = (() => {
   async function onQueueAllClick() {
     if (queueInProgress) {
       queueAbort = true;
-      queueAllBtn.textContent = '中止中...';
+      if (queueAllBtn) queueAllBtn.textContent = '中止中...';
       return;
     }
-    const cards = findQueueableCards();
+    const context = getBulkPageContext();
+    const cards = findQueueableCards(context);
     if (cards.length === 0) return;
-    if (!confirm(`${cards.length}件の関連動画をキューに追加します。\n処理中YouTubeのメニューが順次開閉します。続行しますか？`)) return;
+    if (!confirm(buildBulkConfirmMessage('queue', cards.length, context))) return;
 
     queueInProgress = true;
     queueAbort = false;
-    queueAllBtn.style.background = '#888';
+    if (queueAllBtn) queueAllBtn.style.background = '#888';
     let success = 0, failed = 0;
 
-    // Seed the queue with the currently playing video first, so related
-    // videos get appended AFTER it (otherwise YouTube starts a new queue
-    // with the first added video placed above the current one).
-    try {
-      queueAllBtn.textContent = '現在の動画をキューに追加中...';
-      await seedQueueWithCurrentVideo();
-      await sleep(200);
-    } catch (e) {
-      console.warn('[YT-Watched-Hider] seed queue error:', e);
+    if (context === 'watch') {
+      // Seed the queue with the currently playing video first, so related
+      // videos get appended AFTER it (otherwise YouTube starts a new queue
+      // with the first added video placed above the current one).
+      try {
+        if (queueAllBtn) queueAllBtn.textContent = '現在の動画をキューに追加中...';
+        await seedQueueWithCurrentVideo();
+        await sleep(200);
+      } catch (e) {
+        console.warn('[YT-Watched-Hider] seed queue error:', e);
+      }
     }
 
     for (let i = 0; i < cards.length; i++) {
       if (queueAbort) break;
+      if (!queueAllBtn) break;
       queueAllBtn.textContent = `追加中 ${i + 1}/${cards.length}(クリックで中止)`;
       try {
         const res = await queueOneCard(cards[i]);
@@ -1690,30 +1904,38 @@ window._ytWatchedHider = (() => {
 
     queueInProgress = false;
     queueAbort = false;
+    if (!queueAllBtn) return;
     queueAllBtn.style.background = '#ff4444';
     queueAllBtn.textContent = `完了: ${success}件追加${failed ? ` / ${failed}件失敗` : ''}`;
     setTimeout(updateQueueButtonLabel, 3000);
   }
 
   function ensureQueueAllButton() {
-    if (location.pathname !== '/watch') {
-      if (queueBtnObserver) { queueBtnObserver.disconnect(); queueBtnObserver = null; }
-      if (queueAllBtn) { queueAllBtn.remove(); queueAllBtn = null; }
+    const context = getBulkPageContext();
+    if (!context) {
+      removeQueueAllButton();
       return;
     }
     // Insert right before the first visible related video card to avoid
     // inheriting weird flex/grid sizing from container elements.
-    const firstCard = findWatchLaterAnchor();
-    if (!firstCard) return;
+    const firstCard = findBulkActionAnchor(context);
+    if (!firstCard) {
+      if (queueButtonContext && queueButtonContext !== context) removeQueueAllButton();
+      return;
+    }
 
     if (queueAllBtn && document.body.contains(queueAllBtn)) {
+      if (queueButtonContext !== context) {
+        queueAllBtn.style.cssText = getBulkButtonStyle('queue', context);
+      }
       // Re-position if parent changed (SPA nav, container swap) or first card moved
-      if (queueAllBtn.parentNode !== firstCard.parentNode || queueAllBtn.nextSibling !== firstCard) {
-        firstCard.parentNode.insertBefore(queueAllBtn, firstCard);
+      if (context === 'channel' || queueAllBtn.parentNode !== firstCard.parentNode || queueAllBtn.nextSibling !== firstCard) {
+        insertBulkButton(queueAllBtn, context, firstCard, 'queue');
         if (queueBtnObserver) queueBtnObserver.disconnect();
         queueBtnObserver = new MutationObserver(onQueueBtnMutation);
         queueBtnObserver.observe(firstCard.parentNode, { childList: true });
       }
+      queueButtonContext = context;
       updateQueueButtonLabel();
       return;
     }
@@ -1721,36 +1943,10 @@ window._ytWatchedHider = (() => {
     // Wrap button in a container with fixed styling to isolate from parent layout
     queueAllBtn = document.createElement('button');
     queueAllBtn.id = 'yt-watched-hider-queue-all';
-    queueAllBtn.style.cssText = [
-      'display:inline-block',
-      'box-sizing:border-box',
-      'margin:8px 12px 12px',
-      'padding:8px 14px',
-      'background:#ff4444',
-      'color:#fff',
-      'border:none',
-      'border-radius:18px',
-      'cursor:pointer',
-      'font-size:13px',
-      'font-weight:500',
-      'font-family:Roboto, Arial, sans-serif',
-      'line-height:1.2',
-      'width:auto',
-      'height:auto',
-      'max-height:40px',
-      'min-height:32px',
-      'max-width:calc(100% - 24px)',
-      'flex:0 0 auto',
-      'align-self:flex-start',
-      'white-space:nowrap',
-      'overflow:hidden',
-      'text-overflow:ellipsis',
-      // YouTubeの関連動画リストが display:grid のときに 0px のimplicit cellに
-      // 押し込まれて見えなくなるのを防ぐ。grid container 外では無害。
-      'grid-column:1 / -1'
-    ].join(';') + ';';
+    queueAllBtn.style.cssText = getBulkButtonStyle('queue', context);
     queueAllBtn.addEventListener('click', onQueueAllClick);
-    firstCard.parentNode.insertBefore(queueAllBtn, firstCard);
+    insertBulkButton(queueAllBtn, context, firstCard, 'queue');
+    queueButtonContext = context;
     updateQueueButtonLabel();
 
     // Watch for removal: YouTube sometimes replaces the recommendations container,
@@ -1777,8 +1973,19 @@ window._ytWatchedHider = (() => {
   let watchLaterInProgress = false;
   let watchLaterAbort = false;
   let watchLaterBtnObserver = null;
+  let watchLaterButtonContext = null;
 
-  function findWatchLaterableCards() {
+  function removeWatchLaterButton() {
+    if (watchLaterBtnObserver) { watchLaterBtnObserver.disconnect(); watchLaterBtnObserver = null; }
+    if (watchLaterBtn) { watchLaterBtn.remove(); watchLaterBtn = null; }
+    watchLaterButtonContext = null;
+    removeBulkButtonBarIfEmpty();
+  }
+
+  function findWatchLaterableCards(context = getBulkPageContext()) {
+    if (context === 'channel') return findChannelBulkActionCards();
+    if (context !== 'watch') return [];
+
     const currentVid = getCurrentVideoId();
     const cards = document.querySelectorAll(RELATED_CARD_SELECTORS);
     const out = [];
@@ -1853,7 +2060,7 @@ window._ytWatchedHider = (() => {
 
   function updateWatchLaterButtonLabel() {
     if (!watchLaterBtn || watchLaterInProgress) return;
-    const count = findWatchLaterableCards().length;
+    const count = findWatchLaterableCards(watchLaterButtonContext || getBulkPageContext()).length;
     watchLaterBtn.textContent = `後で見る (${count})`;
     watchLaterBtn.disabled = count === 0;
     watchLaterBtn.style.opacity = count === 0 ? '0.5' : '1';
@@ -1862,20 +2069,22 @@ window._ytWatchedHider = (() => {
   async function onWatchLaterClick() {
     if (watchLaterInProgress) {
       watchLaterAbort = true;
-      watchLaterBtn.textContent = '中止中...';
+      if (watchLaterBtn) watchLaterBtn.textContent = '中止中...';
       return;
     }
-    const cards = findWatchLaterableCards();
+    const context = getBulkPageContext();
+    const cards = findWatchLaterableCards(context);
     if (cards.length === 0) return;
-    if (!confirm(`${cards.length}件の動画を「後で見る」に追加します。\nメニューが順次開閉します。続行しますか？`)) return;
+    if (!confirm(buildBulkConfirmMessage('watchLater', cards.length, context))) return;
 
     watchLaterInProgress = true;
     watchLaterAbort = false;
-    watchLaterBtn.style.background = '#555';
+    if (watchLaterBtn) watchLaterBtn.style.background = '#555';
     let success = 0, failed = 0;
 
     for (let i = 0; i < cards.length; i++) {
       if (watchLaterAbort) break;
+      if (!watchLaterBtn) break;
       watchLaterBtn.textContent = `追加中 ${i + 1}/${cards.length}（クリックで中止）`;
       try {
         const res = await watchLaterOneCard(cards[i]);
@@ -1888,13 +2097,10 @@ window._ytWatchedHider = (() => {
 
     watchLaterInProgress = false;
     watchLaterAbort = false;
+    if (!watchLaterBtn) return;
     watchLaterBtn.style.background = '#1565c0';
     watchLaterBtn.textContent = `完了: ${success}件追加${failed ? ` / ${failed}件失敗` : ''}`;
     setTimeout(updateWatchLaterButtonLabel, 4000);
-  }
-
-  function isWatchLaterSupportedPage() {
-    return location.pathname === '/watch';
   }
 
   function findWatchLaterAnchor() {
@@ -1914,75 +2120,93 @@ window._ytWatchedHider = (() => {
     return null;
   }
 
+  function findChannelChipBar() {
+    return document.querySelector('chip-bar-view-model') ||
+      document.querySelector('ytd-feed-filter-chip-bar-renderer');
+  }
+
+  function findChannelBulkAnchor() {
+    // 第一候補: フィルターチップ行（新しい順/人気の動画/古い順）。右端に寄せる。
+    const chipBar = findChannelChipBar();
+    if (chipBar && chipBar.offsetParent !== null) return chipBar;
+
+    // フォールバック: グリッド先頭の可視カードの前に全幅バーとして挿入。
+    const grid = document.querySelector('ytd-rich-grid-renderer #contents') ||
+      document.querySelector('ytd-rich-grid-renderer');
+    if (!grid) return null;
+
+    const candidates = grid.querySelectorAll('ytd-rich-item-renderer');
+    for (const el of candidates) {
+      if (el.offsetParent !== null) return el;
+    }
+    return null;
+  }
+
+  function findBulkActionAnchor(context) {
+    if (context === 'channel') return findChannelBulkAnchor();
+    if (context === 'watch') return findWatchLaterAnchor();
+    return null;
+  }
+
   function ensureWatchLaterButton() {
-    if (!isWatchLaterSupportedPage()) {
-      if (watchLaterBtnObserver) { watchLaterBtnObserver.disconnect(); watchLaterBtnObserver = null; }
-      if (watchLaterBtn) { watchLaterBtn.remove(); watchLaterBtn = null; }
+    const context = getBulkPageContext();
+    if (!context) {
+      removeWatchLaterButton();
       return;
     }
 
-    const anchor = findWatchLaterAnchor();
-    if (!anchor) return;
+    const anchor = findBulkActionAnchor(context);
+    if (!anchor) {
+      if (watchLaterButtonContext && watchLaterButtonContext !== context) removeWatchLaterButton();
+      return;
+    }
 
     if (watchLaterBtn && document.body.contains(watchLaterBtn)) {
-      // /watch 以外では先頭カードが動くので再配置
-      if (watchLaterBtn.nextSibling !== anchor && watchLaterBtn.parentNode !== anchor.parentNode) {
-        anchor.parentNode.insertBefore(watchLaterBtn, anchor);
-      } else if (watchLaterBtn.nextSibling !== anchor) {
-        anchor.parentNode.insertBefore(watchLaterBtn, anchor);
+      if (watchLaterButtonContext !== context) {
+        watchLaterBtn.style.cssText = getBulkButtonStyle('watchLater', context);
       }
+      // /watch 以外では先頭カードが動くので再配置
+      let moved = false;
+      if (context === 'channel' || (watchLaterBtn.nextSibling !== anchor && watchLaterBtn.parentNode !== anchor.parentNode)) {
+        insertBulkButton(watchLaterBtn, context, anchor, 'watchLater');
+        moved = true;
+      } else if (watchLaterBtn.nextSibling !== anchor) {
+        insertBulkButton(watchLaterBtn, context, anchor, 'watchLater');
+        moved = true;
+      }
+      if (moved || watchLaterButtonContext !== context) {
+        if (watchLaterBtnObserver) watchLaterBtnObserver.disconnect();
+        watchLaterBtnObserver = new MutationObserver(onWatchLaterBtnMutation);
+        watchLaterBtnObserver.observe(anchor.parentNode, { childList: true });
+      }
+      watchLaterButtonContext = context;
       updateWatchLaterButtonLabel();
       return;
     }
 
     watchLaterBtn = document.createElement('button');
     watchLaterBtn.id = 'yt-watched-hider-watch-later';
-    watchLaterBtn.style.cssText = [
-      'display:inline-block',
-      'box-sizing:border-box',
-      'margin:8px 8px 12px 0',
-      'padding:8px 14px',
-      'background:#1565c0',
-      'color:#fff',
-      'border:none',
-      'border-radius:18px',
-      'cursor:pointer',
-      'font-size:13px',
-      'font-weight:500',
-      'font-family:Roboto, Arial, sans-serif',
-      'line-height:1.2',
-      'width:auto',
-      'height:auto',
-      'max-height:40px',
-      'min-height:32px',
-      'max-width:calc(100% - 24px)',
-      'flex:0 0 auto',
-      'align-self:flex-start',
-      'white-space:nowrap',
-      'overflow:hidden',
-      'text-overflow:ellipsis',
-      // YouTubeの関連動画リストが display:grid のときに 0px のimplicit cellに
-      // 押し込まれて見えなくなるのを防ぐ。grid container 外では無害。
-      'grid-column:1 / -1'
-    ].join(';') + ';';
+    watchLaterBtn.style.cssText = getBulkButtonStyle('watchLater', context);
     watchLaterBtn.addEventListener('click', onWatchLaterClick);
-    anchor.parentNode.insertBefore(watchLaterBtn, anchor);
+    insertBulkButton(watchLaterBtn, context, anchor, 'watchLater');
+    watchLaterButtonContext = context;
     updateWatchLaterButtonLabel();
 
     if (watchLaterBtnObserver) watchLaterBtnObserver.disconnect();
-    watchLaterBtnObserver = new MutationObserver((mutations) => {
-      for (const m of mutations) {
-        for (const n of m.removedNodes) {
-          if (n === watchLaterBtn || (n.contains && n.contains(watchLaterBtn))) {
-            watchLaterBtnObserver.disconnect();
-            watchLaterBtnObserver = null;
-            setTimeout(ensureWatchLaterButton, 100);
-            return;
-          }
+    watchLaterBtnObserver = new MutationObserver(onWatchLaterBtnMutation);
+    watchLaterBtnObserver.observe(anchor.parentNode, { childList: true });
+  }
+
+  function onWatchLaterBtnMutation(mutations) {
+    for (const m of mutations) {
+      for (const n of m.removedNodes) {
+        if (n === watchLaterBtn || (n.contains && n.contains(watchLaterBtn))) {
+          if (watchLaterBtnObserver) { watchLaterBtnObserver.disconnect(); watchLaterBtnObserver = null; }
+          setTimeout(ensureWatchLaterButton, 100);
+          return;
         }
       }
-    });
-    watchLaterBtnObserver.observe(anchor.parentNode, { childList: true });
+    }
   }
 
   function startRecoPolling() {
@@ -2002,8 +2226,7 @@ window._ytWatchedHider = (() => {
       clearInterval(recoInterval);
       recoInterval = null;
     }
-    if (queueBtnObserver) { queueBtnObserver.disconnect(); queueBtnObserver = null; }
-    if (queueAllBtn) { queueAllBtn.remove(); queueAllBtn = null; }
+    removeQueueAllButton();
   }
 
   // Initial processing
@@ -2011,7 +2234,7 @@ window._ytWatchedHider = (() => {
     attachVideoEndedListener();
     startRecoPolling();
   } else {
-    setTimeout(ensureWatchLaterButton, 600);
+    setTimeout(() => { ensureQueueAllButton(); ensureWatchLaterButton(); }, 600);
   }
   if (isHistoryPage()) {
     setTimeout(scrapeHistoryPage, 500);
@@ -2231,6 +2454,7 @@ window._ytWatchedHider = (() => {
     if (queueAllBtn) { queueAllBtn.remove(); queueAllBtn = null; }
     if (watchLaterBtnObserver) { watchLaterBtnObserver.disconnect(); watchLaterBtnObserver = null; }
     if (watchLaterBtn) { watchLaterBtn.remove(); watchLaterBtn = null; }
+    if (bulkButtonBar) { bulkButtonBar.remove(); bulkButtonBar = null; }
   }
 
   return { cleanup };

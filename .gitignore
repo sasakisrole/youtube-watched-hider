@@ -20,3 +20,6 @@ Thumbs.db
 *.zip
 *.log
 node_modules/
+
+# レコメンド出力（個人用・公開リポには含めない）
+recommend_output/

@@ -347,3 +347,112 @@ db.js の既存メソッド（既存 updateCredits 系・db.js:228 付近）を�
 - 設計書 `DESIGN_enrich_credits.md` を熟読 → 不明点があればレポート冒頭に「⚠️判断要」として記載しつつも、未決事項に該当する範囲なら仮置きで進めて構わない
 - 既存ファイル（manifest.json / background.js / history.html / history.js）は **必ず先にRead** してから編集。既存スタイル・既存命名規則に合わせる
 - credits-enrich/ 配下のPythonリファレンス実装を読んで、同等のマッチングロジックをJSで再現する
+
+
+---
+
+## チャンネルページ 一括キュー/後で見る 対応（v1.41.0・2026-05-22 委託）
+
+[SESSION] 目的:チャンネル動画ページで表示中動画を一括キュー/後で見る追加するボタンを設置 | 編集:実装主導 | 出力:プロジェクトパスに直接書込 | 完了条件:検証条件を全てpass
+
+# タスク: yt-watched-hider チャンネルページ一括キュー/後で見るボタン
+
+> 全体方針: `.claude/codex-context.md` に従う。HTMLデザインシステムは対象外（拡張機能のUI注入であり既存ボタンのスタイルを踏襲する）。
+
+## プロジェクト
+
+- パス: `C:\Users\sasaki\Dropbox\claude-workspace\projects\youtube-watched-hider`
+- 改修対象: `content.js`（2237行・MV3 content script）、`manifest.json`（versionバンプ）、`CHANGELOG.md`（追記）
+- リポジトリ: https://github.com/sasakisrole/youtube-watched-hider （公開済み・MV3）
+
+## 背景
+
+現在 v1.40.0 で、**watchページ（/watch）の関連動画サイドバー** に対しては既に2つの一括ボタンが実装済み：
+
+- 「⏭ キューに追加 (N)」… `ensureQueueAllButton()` / `findQueueableCards()` / `queueOneCard()` / `onQueueAllClick()`
+- 「後で見る (N)」… `ensureWatchLaterButton()` / `findWatchLaterableCards()` / `watchLaterOneCard()` / `onWatchLaterClick()`
+
+仕組みは「対象カードのケバブ（︙ = `button[aria-label*="その他の操作"]`）をプログラムからクリック → ポップアップから『キューに追加』『後で見る』の項目を探してクリック」という DOM 自動操作。
+
+これを **チャンネルの動画一覧ページ（例: https://www.youtube.com/@ferumi/videos）** でも使えるようにしたい。「表示中の動画一式」をまとめてキュー追加・後で見る追加できるボタンをグリッド上部に出す。
+
+## 会話文脈サマリ（Claude側で確定済み・Codexは会話履歴を見られない前提）
+
+### 確定前提
+- 対象は **チャンネルの「動画」タブ**（`/@handle/videos`, `/channel/<ID>/videos`, `/c/<name>/videos`, `/user/<name>/videos`）。「ライブ」「ショート」タブやホームタブは今回スコープ外（ただし誤動作せず単に非表示ならOK）。
+- 「表示中の動画一式」= DOMにレンダリング済みのグリッドカードを対象とする（既存watch実装と同じ「可視カードのみ」方針）。ユーザーがスクロールして読み込んだ分が対象。全動画の自動スクロール収集は **しない**。
+- 既存のwatchページ向け挙動は **一切変えない**（リグレッション厳禁）。チャンネル対応は追加であって置換ではない。
+- ボタンのスタイル・文言・確認ダイアログ・中止ボタン挙動は既存2ボタンを踏襲する。
+
+### 実機確認済みDOM（2026-05-22 ユーザーのブラウザのコンソールで確認）
+チャンネル動画ページ `https://www.youtube.com/@ferumi/videos` で実測：
+```json
+{
+  "gridExists": true,                  // ytd-rich-grid-renderer が存在
+  "richItemCount": 777,                // ytd-rich-item-renderer の数（スクロール蓄積分）
+  "mediaTag": "yt-lockup-view-model",  // カード内のメディア要素は新UIの yt-lockup-view-model
+  "kebabAria": "その他の操作",          // ★既存コードのケバブセレクタと完全一致
+  "linkSel": "/watch?v=GneSXH6lt0Q",   // a[href*="/watch?v="] で動画リンク取得可
+  "firstItemTags": ["div", "yt-interaction"]  // rich-item-renderer直下はdiv/yt-interaction（lockupはさらに内側）
+}
+```
+→ **カードコンテナは `ytd-rich-item-renderer`**。その内側に `yt-lockup-view-model` と動画リンク `a[href*="/watch?v="]`、ケバブ `button[aria-label*="その他の操作"]`（=既存 `queueOneCard`/`watchLaterOneCard` のセレクタがそのまま当たる）。
+
+### 未決事項（Codex仮置き判断でOK）
+- ボタンの正確な挿入位置: グリッド最上部（フィルターチップ行の下・1枚目のカードの上あたり）に横並びで2ボタン。具体的なアンカー要素はDOM構造に合わせてCodexが選定してよい。`ytd-rich-grid-renderer` の直前、または `#contents.ytd-rich-grid-renderer` の最初のカードの前など、レイアウトが崩れない位置を選ぶ。
+- 大量カード時の安全策のUI文言（下記「要件7」参照）。
+
+### 変更禁止
+- 既存の `/watch` ページ向けボタン挙動・セレクタ・関数の外部から見える振る舞い。
+- `seedQueueWithCurrentVideo()` の watch時の動作。
+- IndexedDB・background.js・popup 系には触らない。
+
+### 検証条件（ルーブリック・全てpassで完成）
+1. `/@handle/videos` を開くと、グリッド上部に「⏭ キューに追加 (N)」「後で見る (N)」の2ボタンが表示される（N=対象カード数）。pass/fail
+2. 「キューに追加」を押すと確認ダイアログ → OKで各カードのケバブが順次開閉し、表示中動画がYouTubeのキューに追加される。pass/fail
+3. 「後で見る」を押すと同様に各動画が「後で見る」に追加される。pass/fail
+4. 処理中はボタンが「追加中 i/N（クリックで中止）」表示になり、クリックで中止できる（既存挙動と同じ）。pass/fail
+5. Shorts・ライブ・プレイリスト/ミックスのカードは対象から除外される。pass/fail
+6. **`/watch` ページの既存2ボタンが従来通り動作する**（リグレッションなし）。pass/fail
+7. チャンネルページ ⇄ watchページ ⇄ ホーム のSPA遷移でボタンが正しく出現/消滅し、二重生成・幽霊ボタンが残らない。pass/fail
+8. 対象カード数が多い場合（例: 50件超）に確認ダイアログで件数と所要見込みを警告する。pass/fail
+
+## やってほしいこと
+
+既存のwatchページ向け一括ボタン実装を **チャンネル動画ページにも対応させる**。実装方針はCodexが選んでよいが、推奨は「ページコンテキスト（watch / channel）を判定し、カード探索セレクタ・アンカー探索・現在動画シードの有無をコンテキストで分岐させる」リファクタ。既存watch挙動を壊さない範囲で共通化する。
+
+## 要件
+
+1. **ページ判定の追加**: 現状 `ensureQueueAllButton()` は `location.pathname !== '/watch'` で早期return、`isWatchLaterSupportedPage()` も `=== '/watch'` 限定。これをチャンネル動画ページでも有効になるよう拡張する。チャンネル動画ページの判定は `location.pathname` が `/videos` で終わる、かつ `ytd-rich-grid-renderer` が存在することを条件にする（`/@`, `/channel/`, `/c/`, `/user/` 配下いずれも）。
+2. **チャンネルグリッド用カードセレクタ**: 対象カード = `ytd-rich-grid-renderer ytd-rich-item-renderer` のうち、内部に `a[href*="/watch?v="]` を持つもの。既存の除外条件（`offsetParent === null` 非可視、`dataset.watchedHidden/shortsHidden/movieHidden === 'true'`、Shortsリンク `a[href*="/shorts/"]`、ライブバッジ、プレイリスト/ミックス）をチャンネルカードにも適用する。`isPlaylistCard()` 相当の判定も流用する。
+3. **per-card処理の流用**: `queueOneCard()` / `watchLaterOneCard()` のケバブ→メニュー項目クリックのロジックはチャンネルカードでもそのまま使える（ケバブ `aria-label="その他の操作"` 一致を実機確認済み）。新規に書き直さず流用すること。
+4. **現在動画シードのスキップ**: チャンネルページには再生中動画が無いため、`onQueueAllClick()` の `seedQueueWithCurrentVideo()` 呼び出しはチャンネルコンテキストでは実行しない（watch時のみ）。
+5. **ボタン挿入とアンカー**: チャンネル用のアンカー探索関数を用意し、グリッド上部にボタンを置く。`grid-column:1 / -1` 等で grid セル内に押し込まれて 0px にならないよう注意（既存watch実装の `queueAllBtn` で同じ対策あり・content.js内コメント参照）。既存watchボタンと同じスタイル/文言を使う。
+6. **SPA遷移・DOM再生成への追従**: 既存の MutationObserver 再挿入（`onQueueBtnMutation` 等）と `ensureQueueAllButton`/`ensureWatchLaterButton` 呼び出し箇所（content.js 1352-1385 付近の observer デバウンス・初期 setTimeout）を、チャンネルページでも正しく出現/消滅するよう調整する。watch→channel→home の遷移で幽霊ボタンが残らないこと。
+7. **大量カード時の安全策**: チャンネルページは数百カードがDOMに載りうる（実測777件）。確認ダイアログに件数を明示し、件数が多いと処理に時間がかかり順次メニューが開閉する旨を警告する（既存の confirm 文言を活かしつつ件数連動で注意を強める）。可能なら処理間 sleep は既存値を踏襲（キュー120ms / 後で見る150ms）。
+
+## ⚠️ 重要: 既存実装の特異点（必ず content.js を Read してから着手）
+
+- `RELATED_CARD_SELECTORS`（content.js:1510付近）は **watch関連動画専用**。チャンネルグリッドには使えないので別セレクタを用意する。
+- `findQueueableCards()` / `findWatchLaterableCards()` は現状 `RELATED_CARD_SELECTORS` をハードコード参照。コンテキスト分岐 or 引数化して、チャンネル時は rich-grid セレクタを使うようにする。
+- `findWatchLaterAnchor()` は watch専用（`ytd-watch-next-secondary-results-renderer` 等）。チャンネル用アンカーは別関数に。
+- ボタンのstate変数（`queueAllBtn`, `queueInProgress`, `watchLaterBtn` 等）はモジュールスコープのシングルトン。ページ種別が変わったときに前ページのボタン参照が残らないよう破棄する（既存の `if (location.pathname !== '/watch') { ...remove... }` パターンを一般化）。
+- 既存の getter（`getVideoIdFromHref`, `getCurrentVideoId`）を流用する。チャンネルでは現在動画IDは無いので watch later の「現在動画を除外」条件はチャンネル時はスキップでよい。
+
+## 完成物
+
+1. `content.js`（チャンネルページ対応の追加・既存watch挙動は不変）
+2. `manifest.json`（version 1.40.0 → 1.41.0 にバンプ）
+3. `CHANGELOG.md`（v1.41.0 エントリ追記。先頭に追加）
+4. **成果物レポート**: `codex-reports/ad-hoc/yt-watched-hider-channel-bulk_2026-05-22.md`
+   - 作成・変更ファイル一覧と差分概要
+   - 検証条件1-8の自己採点（pass/fail）。実ブラウザ動作はCodexでは確認不能なので「コード上の根拠」で判定し、ブラウザ実機確認が必要な項目はその旨明記
+   - 採用した実装方針（コンテキスト分岐 or 共通化の設計）
+   - 未決事項（ボタン位置等）の仮置き判断とその根拠
+   - **ユーザー（Claude/けんと）が手元のChromeで確認すべき手順**（拡張リロード→対象URL→何を見るか）
+
+## 進め方
+
+- まず `content.js` の該当領域（1352-1385 の observer 呼び出し / 1509-1761 の Queue All / 1775-2000付近の Watch Later）を **必ず Read** してから着手。既存命名・既存スタイルに合わせる。
+- watch挙動のリグレッションを避けるため、既存関数の振る舞いは温存し、チャンネル分岐を「足す」方針を優先する。大規模な共通化リファクタをするなら、watch経路の出力が変わらないことをコード上で担保する。
+- 実ブラウザ検証はCodex環境では不可。コードレビューで通る形まで仕上げ、レポートに「人間が実機で確認すべきチェックリスト」を残す。

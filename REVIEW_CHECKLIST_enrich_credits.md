@@ -70,7 +70,9 @@
 - [ ] 書き戻し前に確定対象 JSON をダウンロードできるボタンがフッターにある
 - [ ] ダウンロードJSONには {videoId, composer, lyricist, arranger, source, sim} が含まれる
 
-## 動作確認手順（納品後・Chrome実機）
+## 動作確認手順（実機・**未実施・ここから再開**）
+
+リリース済（[v1.40.0](https://github.com/sasakisrole/youtube-watched-hider/releases/tag/v1.40.0)）。実機での動作確認は別タイミングで実施。**再開時は手順1から進める**。
 
 1. `chrome://extensions/` で「パッケージ化されていない拡張機能を読み込む」→ `projects/youtube-watched-hider/` 選択
 2. 既存ユーザーは「更新」ボタンで再読み込み
