@@ -1850,6 +1850,45 @@ function extractItemsAndContinuation(data) {
   function walk(node) {
     if (!node || typeof node !== 'object') return;
     if (Array.isArray(node)) { for (const v of node) walk(v); return; }
+    // 2026+ structure: playlist items migrated from playlistVideoRenderer to
+    // the new lockupViewModel component. Extract videoId/title/channel from it.
+    if (node.lockupViewModel) {
+      const lv = node.lockupViewModel;
+      const ct = lv.contentType || '';
+      // Only video lockups carry a watchable videoId; skip playlist/channel lockups.
+      if (!ct || ct === 'LOCKUP_CONTENT_TYPE_VIDEO') {
+        const videoId = lv.contentId || '';
+        if (videoId) {
+          const lm = (lv.metadata && lv.metadata.lockupMetadataViewModel) || {};
+          let title = '';
+          if (lm.title && typeof lm.title.content === 'string') title = lm.title.content;
+          let channel = '';
+          const cmv = lm.metadata && lm.metadata.contentMetadataViewModel;
+          const rows = (cmv && cmv.metadataRows) || [];
+          // Prefer the metadata part linked to a channel (browseId starts with UC).
+          for (const row of rows) {
+            for (const part of (row.metadataParts || [])) {
+              const t = part.text;
+              if (!t || !t.content) continue;
+              const runs = t.commandRuns || [];
+              const linked = runs.some((r) => {
+                const be = r.onTap && r.onTap.innertubeCommand && r.onTap.innertubeCommand.browseEndpoint;
+                return be && typeof be.browseId === 'string' && be.browseId.startsWith('UC');
+              });
+              if (linked) { channel = t.content; break; }
+            }
+            if (channel) break;
+          }
+          // Fallback: first metadata part's text when no channel link found.
+          if (!channel && rows[0] && rows[0].metadataParts && rows[0].metadataParts[0]
+              && rows[0].metadataParts[0].text) {
+            channel = rows[0].metadataParts[0].text.content || '';
+          }
+          items.push({ videoId, title, channel, playlistIndex: 0 });
+        }
+      }
+      return;
+    }
     if (node.playlistVideoRenderer) {
       const r = node.playlistVideoRenderer;
       const videoId = r.videoId;
@@ -1877,6 +1916,17 @@ function extractItemsAndContinuation(data) {
     for (const k in node) walk(node[k]);
   }
   walk(data);
+  // Fallback: continuation responses (lockupViewModel-based) sometimes don't
+  // expose the next token via continuationItemRenderer in a shape the walker
+  // recognizes. Scan the stringified payload for the first continuationCommand
+  // token (mirrors parseLikedPlaylistHtml's fallback).
+  if (!continuation) {
+    try {
+      const s = JSON.stringify(data);
+      const m = s.match(/"continuationCommand":\{"token":"([^"]+)"/);
+      if (m) continuation = m[1];
+    } catch (_) {}
+  }
   return { items, continuation };
 }
 
@@ -2001,7 +2051,11 @@ async function syncLikedPlaylist({ confirmAccountChange, maxPages } = {}) {
   const html = resp.html || '';
   const parsed = parseLikedPlaylistHtml(html);
   if (parsed.error) return { success: false, reason: parsed.error };
-  if (!parsed.items.length) return { success: false, reason: 'no-items' };
+  // NOTE: Do NOT bail on zero static-HTML items here. YouTube no longer embeds
+  // liked-video items in the LL playlist's static HTML (they require an
+  // authenticated browse POST). Fall through to the VLLL browse fallback below,
+  // which populates items even when the initial HTML ships none. A final
+  // no-items guard after pagination handles the genuinely-empty / logged-out case.
 
   const ytcfg = extractYtcfg(html);
   const allItems = [...parsed.items];
@@ -2017,7 +2071,7 @@ async function syncLikedPlaylist({ confirmAccountChange, maxPages } = {}) {
   // If the initial HTML didn't expose a continuation token (LL often doesn't
   // ship one in the static HTML — it requires an authenticated browse POST),
   // ask the API for the full LL response which carries the first continuation.
-  if (!continuation) {
+  if (!continuation || !allItems.length) {
     try {
       const initResp = await sendToYouTubeTab({
         type: 'FETCH_INNERTUBE_BROWSE',
@@ -2081,6 +2135,10 @@ async function syncLikedPlaylist({ confirmAccountChange, maxPages } = {}) {
     seenFinal.add(it.videoId);
     uniqueItems.push({ ...it, playlistIndex: it.playlistIndex || uniqueItems.length + 1 });
   }
+
+  // Genuinely-empty / logged-out: static HTML had no items AND the authenticated
+  // browse fallback returned nothing either.
+  if (!uniqueItems.length) return { success: false, reason: 'no-items', errors };
 
   const accountId = parsed.ownerChannelId || parsed.ownerHandle || parsed.ownerName || 'unknown';
 

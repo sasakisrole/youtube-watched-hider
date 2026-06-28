@@ -583,7 +583,11 @@
         }
         if (!resp || !resp.success) {
           const r = resp && resp.reason ? resp.reason : 'unknown';
-          msg.textContent = `同期失敗: ${r}（YouTubeタブを開いて再試行してください）`;
+          const errDetail = resp && resp.errors && resp.errors.length
+            ? ` [${resp.errors.join(' / ')}]` : '';
+          msg.textContent = `同期失敗: ${r}${errDetail}（YouTubeタブを開いて再試行してください）`;
+          if (resp && resp.errors && resp.errors.length) console.warn('[liked-sync errors]', resp.errors);
+          if (resp && resp.diagnostics) console.info('[liked-sync diagnostics]', resp.diagnostics);
           return;
         }
         const errTag = resp.errors && resp.errors.length ? ` / 警告${resp.errors.length}件` : '';

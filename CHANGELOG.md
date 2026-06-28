@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.41.1 (2026-06-28)
+- Fix: 高評価同期が `no-items` で失敗する問題を修正（YouTube側の構造変更への追従）
+  - YouTubeが高評価プレイリストの動画項目を旧 `playlistVideoRenderer` から新 `lockupViewModel` 構造へ移行したため、`extractItemsAndContinuation` が項目を抽出できず0件になっていた。`lockupViewModel`（`contentId`=videoId / `lockupMetadataViewModel.title.content`=タイトル / `metadataRows` のチャンネルリンク=チャンネル名）に対応
+  - 静的HTMLに項目が無くても早期returnせず認証browse（VLLL）フォールバックへ流すよう変更（`!continuation || !allItems.length` で発火）。最終的に0件のときだけ `no-items` を返す末尾ガードを追加
+  - continuation応答から次ページトークンを取りこぼし2ページ（200件）で止まる問題も修正（stringify+正規表現フォールバックを追加）。これで最大5000件・50ページまで遡れる
+  - 同期失敗時に画面メッセージとconsoleへエラー内訳（`errors` 配列・例: `init-browse: http-401`）を表示
+  - 旧 `playlistVideoRenderer` 経路・ログイン状態・アカウント検出・アカウント変更検知のロジックは変更なし
+
 ## v1.41.0 (2026-05-22)
 - Feature: チャンネルの「動画」タブでも一括「キューに追加」「後で見る」ボタンを表示
   - `@handle/videos` / `channel/<id>/videos` / `c/<name>/videos` / `user/<name>/videos` のフィルター行（新しい順/人気の動画/古い順）の右端に、表示中グリッド動画数つきの既存スタイルボタンを追加（フィルター行が無い場合はグリッド先頭にフォールバック）
