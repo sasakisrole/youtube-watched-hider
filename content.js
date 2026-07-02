@@ -128,8 +128,8 @@ window._ytWatchedHider = (() => {
     getAllIds: () => dbRpc('GET_ALL_IDS'),
     getWatchedIdsPage: (cursor, limit) => dbRpc('DB_GET_WATCHED_IDS_PAGE', { cursor, limit }),
     checkMultiple: (videoIds) => dbRpc('DB_CHECK_MULTIPLE', { videoIds }),
-    addWatched: (videoId, title = '', source = 'self', channel = '', durationSec = null) =>
-      dbRpc('DB_ADD_WATCHED', { videoId, title, source, channel, durationSec }),
+    addWatched: (videoId, title = '', source = 'self', channel = '', durationSec = null, category = '') =>
+      dbRpc('DB_ADD_WATCHED', { videoId, title, source, channel, durationSec, category }),
     updateTitleAndChannel: (videoId, title, channel, force = false) =>
       dbRpc('UPDATE_TITLE_CHANNEL', { videoId, title, channel, force }),
     importData: (data) => dbRpc('IMPORT_DATA', { data }),
@@ -605,6 +605,69 @@ window._ytWatchedHider = (() => {
     return null;
   }
 
+  // microformat category ("Music" / "Gaming" / "Education" / "Comedy" ...).
+  // Captured as a forward-only evidence field (PENDING L98): the analyzer uses
+  // category != "Music" as NEGATIVE evidence for music, never as positive proof
+  // (教則/機材/替え歌 all report "Music"). Missing -> '' -> analyzer falls back.
+  // Value is trimmed at capture (L1: tolerate stray whitespace so the analyzer's
+  // exact-match veto isn't tripped by " Music ").
+  function categoryFromPlayerResponse(playerResponse) {
+    const mf = playerResponse && playerResponse.microformat
+      && playerResponse.microformat.playerMicroformatRenderer;
+    const cat = mf && mf.category;
+    return typeof cat === 'string' && cat.trim() ? cat.trim() : '';
+  }
+
+  // videoId carried by a player response, if any. Used to confirm the response
+  // actually belongs to the video we are recording (see getCurrentVideoCategory).
+  function videoIdFromPlayerResponse(playerResponse) {
+    const vd = playerResponse && playerResponse.videoDetails;
+    const vid = vd && vd.videoId;
+    return typeof vid === 'string' && vid ? vid : '';
+  }
+
+  // Category for the CURRENT video. H1 (Codex wrapup-review_4): a stale
+  // ytInitialPlayerResponse script from a prior SPA page can linger in
+  // document.scripts; without verifying its videoId we could attach the
+  // PREVIOUS video's category (flipping a music-titled video to non-music via
+  // the analyzer's negative-evidence veto). When expectedVideoId is supplied we
+  // only trust a response that POSITIVELY matches it; an unattributable response
+  // (missing or different id) is treated as stale and skipped.
+  function getCurrentVideoCategory(expectedVideoId) {
+    const accept = (playerResponse) => {
+      const cat = categoryFromPlayerResponse(playerResponse);
+      if (!cat) return '';
+      if (expectedVideoId
+          && videoIdFromPlayerResponse(playerResponse) !== expectedVideoId) {
+        return '';
+      }
+      return cat;
+    };
+
+    try {
+      const direct = accept(window.ytInitialPlayerResponse);
+      if (direct) return direct;
+    } catch (_e) { /* isolated world usually cannot see page globals */ }
+
+    const markers = ['ytInitialPlayerResponse =', 'ytInitialPlayerResponse='];
+    for (const script of document.scripts) {
+      const text = script.textContent || '';
+      if (!text.includes('ytInitialPlayerResponse')) continue;
+      for (const marker of markers) {
+        const idx = text.indexOf(marker);
+        if (idx === -1) continue;
+        const json = extractBalancedJson(text, idx + marker.length);
+        if (!json) continue;
+        try {
+          const parsed = JSON.parse(json);
+          const cat = accept(parsed);
+          if (cat) return cat;
+        } catch (_e) { /* try the next script */ }
+      }
+    }
+    return '';
+  }
+
   function parseIso8601Duration(text) {
     if (!text) return null;
     const m = String(text).trim().match(/^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/i);
@@ -700,7 +763,11 @@ window._ytWatchedHider = (() => {
       const title = domAgrees ? getWatchPageTitle() : '';
       const channel = domAgrees ? getWatchPageChannel() : '';
       const durationSec = domAgrees ? getCurrentVideoDurationSec() : null;
-      await DBClient.addWatched(videoId, title, 'self', channel, durationSec);
+      // category is only reliable on the watch page; seekbar-card paths omit it.
+      // Pass videoId so a stale ytInitialPlayerResponse (SPA leftover) can't
+      // attach the previous video's category (H1).
+      const category = domAgrees ? getCurrentVideoCategory(videoId) : '';
+      await DBClient.addWatched(videoId, title, 'self', channel, durationSec, category);
       rememberWatched(videoId);
       console.log(`[YT-Watched-Hider] Recorded: ${title || videoId}${domAgrees ? '' : ' (id only, scheduling backfill)'}`);
 

@@ -98,7 +98,7 @@ if (typeof WatchedDB === 'undefined') {
       return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
     }
 
-    async function addWatched(videoId, title = '', source = 'self', channel = '', durationSec = null) {
+    async function addWatched(videoId, title = '', source = 'self', channel = '', durationSec = null, category = '') {
       const db = await openDB();
       return new Promise((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -113,6 +113,10 @@ if (typeof WatchedDB === 'undefined') {
           if (existing) {
             // Only increment playCount for actual plays (source='self'), not seekbar re-detection
             const shouldIncrement = source === 'self';
+            // Use ?? (not ||) so a real playCount of 0 (seekbar-created record,
+            // never actually played) is preserved: 0 self-play -> 1, not 0->2.
+            // || would coerce 0 to 1 (M1 bug: over-counted engagement).
+            const prevPlayCount = existing.playCount ?? 0;
             const nextRecord = {
               ...existing,
               videoId,
@@ -120,9 +124,13 @@ if (typeof WatchedDB === 'undefined') {
               channel: channel || existing.channel || '',
               watchedAt: shouldIncrement ? Date.now() : existing.watchedAt,
               firstWatchedAt: existing.firstWatchedAt || existing.watchedAt,
-              playCount: shouldIncrement ? (existing.playCount || 1) + 1 : (existing.playCount || 1),
+              playCount: shouldIncrement ? prevPlayCount + 1 : prevPlayCount,
               source: existing.source === 'self' ? 'self' : source,
               durationSec: nextDuration != null ? nextDuration : (Object.prototype.hasOwnProperty.call(existing, 'durationSec') ? existing.durationSec : null),
+              // microformat category (PENDING L98): set when newly captured, else
+              // preserve any prior value (never wipe on re-watch/seekbar).
+              category: (typeof category === 'string' && category) ? category
+                : (typeof existing.category === 'string' ? existing.category : ''),
               // Preserve credit fields — addWatched must not wipe them on re-watch/seekbar
               composer: existing.composer || '',
               lyricist: existing.lyricist || '',
@@ -146,6 +154,7 @@ if (typeof WatchedDB === 'undefined') {
               playCount: source === 'self' ? 1 : 0,
               source,
               durationSec: nextDuration,
+              category: typeof category === 'string' ? category : '',
             });
           }
         };
@@ -552,7 +561,7 @@ if (typeof WatchedDB === 'undefined') {
     // Validate and normalize a record
     function isValidRecord(record) {
       if (!record || typeof record !== 'object' || typeof record.videoId !== 'string' || record.videoId.length === 0) return false;
-      const stringFields = ['title', 'channel', 'source', 'composer', 'lyricist', 'arranger', 'creditsSource', 'creditsRaw', 'creditsFetchFailReason', 'durationFetchFailed'];
+      const stringFields = ['title', 'channel', 'source', 'composer', 'lyricist', 'arranger', 'creditsSource', 'creditsRaw', 'creditsFetchFailReason', 'durationFetchFailed', 'category'];
       const numberFields = ['watchedAt', 'firstWatchedAt', 'playCount', 'durationSec', 'creditsCheckedAt', 'creditsFetchAttemptedAt'];
       for (const field of stringFields) {
         if (record[field] != null && typeof record[field] !== 'string') return false;
@@ -631,6 +640,7 @@ if (typeof WatchedDB === 'undefined') {
         creditsFetchFailReason: typeof record.creditsFetchFailReason === 'string' ? record.creditsFetchFailReason : '',
         creditsFetchAttemptedAt: typeof record.creditsFetchAttemptedAt === 'number' && record.creditsFetchAttemptedAt > 0 ? record.creditsFetchAttemptedAt : 0,
         durationFetchFailed: typeof record.durationFetchFailed === 'string' ? record.durationFetchFailed : '',
+        category: typeof record.category === 'string' ? record.category : '',
       };
     }
 
@@ -795,6 +805,13 @@ if (typeof WatchedDB === 'undefined') {
               if (record.creditsFetchAttemptedAt > (existing.creditsFetchAttemptedAt || 0)) {
                 existing.creditsFetchFailReason = record.creditsFetchFailReason || '';
                 existing.creditsFetchAttemptedAt = record.creditsFetchAttemptedAt;
+                updated = true;
+              }
+              // microformat category (PENDING L98 / M3): backfill from an import
+              // that captured it when the local record predates the capture
+              // change. Forward-only field, so only fill when missing locally.
+              if (record.category && !existing.category) {
+                existing.category = record.category;
                 updated = true;
               }
               if (updated) store.put(existing);

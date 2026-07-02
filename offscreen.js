@@ -72,7 +72,7 @@ async function handleDbRpc(message) {
       return WatchedDB.checkMultiple(message.videoIds || []);
     case 'ADD_WATCHED':
     case 'DB_ADD_WATCHED':
-      return WatchedDB.addWatched(message.videoId, message.title || '', message.source || 'self', message.channel || '', message.durationSec);
+      return WatchedDB.addWatched(message.videoId, message.title || '', message.source || 'self', message.channel || '', message.durationSec, message.category || '');
     case 'UPDATE_DURATION':
       return WatchedDB.updateDuration(message.videoId, message.durationSec);
     case 'MARK_DURATION_FAILED':

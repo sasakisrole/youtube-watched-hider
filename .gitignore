@@ -23,3 +23,6 @@ node_modules/
 
 # レコメンド出力（個人用・公開リポには含めない）
 recommend_output/
+
+# 旧アイコンのローカルバックアップ（公開リポには含めない）
+icons/_old_redcircle/

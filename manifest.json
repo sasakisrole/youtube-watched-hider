@@ -1,17 +1,31 @@
 {
   "manifest_version": 3,
   "name": "YouTube Watched Hider",
-  "version": "1.41.1",
+  "version": "1.42.2",
   "description": "YouTubeのおすすめから視聴済み動画を非表示にする拡張機能",
-  "permissions": ["storage", "downloads", "alarms", "contextMenus", "offscreen"],
-  "host_permissions": ["*://*.youtube.com/*", "https://www.uta-net.com/*", "https://musicbrainz.org/*"],
+  "permissions": [
+    "storage",
+    "downloads",
+    "alarms",
+    "contextMenus",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "*://*.youtube.com/*",
+    "https://www.uta-net.com/*",
+    "https://musicbrainz.org/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": ["*://*.youtube.com/*"],
-      "js": ["content.js"],
+      "matches": [
+        "*://*.youtube.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
   ],

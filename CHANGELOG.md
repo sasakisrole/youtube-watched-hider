@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.42.2 (2026-07-02)
+- Fix(M1): `addWatched()` が seekbar 由来レコード（`playCount:0`）を self 再生したとき、再生回数が `0→2` に跳ねる既存バグを修正（PENDING L99）。原因は `(existing.playCount || 1) + 1` の `||` が実数 0 を 1 に coerce していたこと。`??`（nullish）に変更し、真の 0 は保持して `0→1`（初回 self 再生）、`1→2`（2回目）と正しく数える。保持側（seekbar 再検出）も同根で `0→1` に化けていたのを `0→0` へ修正。playCount 過大計上による関与度（artist/channel ランキング）の過大評価を解消。
+- category とは無関係の既存挙動・低影響（db.js のみ変更）。null/undefined フォールバックは 0（移行済みレコードは v2 migration で playCount≥1・normalizeRecord も 0 既定のため実挙動は不変）。
+- Chore: アイコン刷新（icon16/48/128.png）。旧アイコンは `icons/_old_redcircle/`（gitignore）に退避。
+- 注記: 本リリースは未タグだった v1.42.0（category 前進キャプチャ）・v1.42.1（category ハードニング・実機スモークPASS済）を含めて v1.42.2 として一括公開。
+
+## v1.42.1 (2026-06-29)
+- Fix(H1・実害級): `getCurrentVideoCategory()` に **videoId 照合** を追加（PENDING L98 / Codex wrapup-review_4）。SPA遷移後に前ページの `ytInitialPlayerResponse` script が `document.scripts` に残っていると、現在動画に**前動画の category** を付けてしまい（音楽タイトル動画が誤って非音楽 veto される）盲点があった。`recordCurrentVideo` から現在 `videoId` を渡し、`videoDetails.videoId` が一致する player response のみ採用（不一致・videoId 欠落は stale 扱いでスキップ＝誤attach するくらいなら空で返す）。duration の proven path は未変更（category 経路のみに限定）。
+- Fix(L1・locale堅牢化): category の veto を **既知の非音楽カテゴリ集合**一致時のみに限定（`analyze_video_taste.py`）。従来は `category != 'Music'` の完全一致依存で、JP locale の localized 値（「音楽」等）・空白・大小文字差が来ると全動画が非Music扱いになり音楽タイトルを全 veto する恐れがあった。保存時 `trim()`＋分析時 `strip().casefold()`＋既知集合照合に変更。未知値（localized/将来/typo）は **veto に使わず** §0.6b 監査枠に surface（`category_unknown_values` metric）。
+- Fix(M3): `mergeImport()` の既存レコード補完に `category` を追加（db.js）。category 入りバックアップを merge してもローカル既存レコードが欠損のままだった漏れを修正（durationSec backfill と同パターン・前進のみ補完）。
+- 退行ゼロ: 実データ 28,039 件で music 17,080 / 非音楽 10,959・§0.5 残存 1 が v1.42.0 baseline と一致（category 空のため pre-fix と同一挙動）。H1（videoId 照合 6 ケース）・L1（locale/strip/casefold/L97保持/強ch優先 9 ケース）は合成データで検証済。
+- ⚠️ 実機スモーク（実 watch ページで category が DB 保存され export に乗るか・保存値が en か localized か）は拡張再読込が必要なため未実施。
+
+## v1.42.0 (2026-06-29)
+- Feature: 視聴記録に YouTube の microformat `category`（"Music" / "Gaming" / "Education" / "Comedy" …）を**前進キャプチャ**で保存（PENDING L98）
+  - `/watch` ページの `ytInitialPlayerResponse.microformat.playerMicroformatRenderer.category` を duration と同じ経路で抽出し、`recordCurrentVideo`（source=self）で取得。seekbar カード経路は microformat を持たないため未取得（`category: ''`）
+  - DB（`addWatched` / `normalizeRecord` / `isValidRecord`）に `category` 文字列フィールドを追加。新規ストア・index は増やさないため IndexedDB のバージョン bump は不要（既存レコードはキー不在＝分析側で空文字フォールバック）。エクスポートは生レコードを直列化するため自動で `category` が乗る
+  - 履歴の一括 harvest（background.js のクレジット取得経路）は今回触らない＝過去レコードには付かない前進キャプチャのみ。費用対効果が低い「おまけ」のため evidence 扱い限定（`projects/video-taste/music-tagging-detail.md` の 2026-06-29 GO/NO-GO 判定に準拠）
+  - 分析側 `analyze_video_taste.py` は `category` を **負の証拠**として使用: `category != "Music"`（Gaming/Comedy/Education…）は最弱の title 正規表現ヒットを veto して非音楽確定。`category == "Music"` は確定証拠にしない（教則/機材/替え歌が全て Music を返すため・2026-06-29 probe）＝既存 is_music へフォールバック。category 欠損時は pre-L98 と完全に同一挙動（実データ 28,039 件で music 17,080 / 非音楽 10,959・§0.5 残存 1 件が baseline と一致を確認）
+  - 非音楽側のジャンル粒度（おまけ）として §0.6「非音楽ジャンル内訳」を追加（前進キャプチャ分が蓄積するまでは静かにスキップ）
+  - content.js / db.js / offscreen.js のみ変更。background.js / analyzer.js / popup.js は変更なし
+
 ## v1.41.1 (2026-06-28)
 - Fix: 高評価同期が `no-items` で失敗する問題を修正（YouTube側の構造変更への追従）
   - YouTubeが高評価プレイリストの動画項目を旧 `playlistVideoRenderer` から新 `lockupViewModel` 構造へ移行したため、`extractItemsAndContinuation` が項目を抽出できず0件になっていた。`lockupViewModel`（`contentId`=videoId / `lockupMetadataViewModel.title.content`=タイトル / `metadataRows` のチャンネルリンク=チャンネル名）に対応
