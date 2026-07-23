@@ -111,14 +111,14 @@
     const q = document.getElementById('azArtistFilter').value.trim().toLowerCase();
     const topicOnly = document.getElementById('azTopicOnly').checked;
     let list = [...chCount.entries()];
-    if (topicOnly) list = list.filter(([k]) => k.endsWith('- Topic'));
+    if (topicOnly) list = list.filter(([k]) => window.CreditTarget.isTopicChannelName(k));
     if (q) list = list.filter(([k]) => k.toLowerCase().includes(q));
     list.sort(sortByCountThenName);
 
     tbody.textContent = '';
     const frag = document.createDocumentFragment();
     list.slice(0, 300).forEach(([name, stat], i) => {
-      const clean = name.replace(/ - Topic$/, '');
+      const clean = window.CreditTarget.stripTopicChannelSuffix(name);
       const qn = encodeURIComponent(clean);
       const qTopic = encodeURIComponent(clean + ' - Topic');
       const tr = document.createElement('tr');
@@ -159,7 +159,7 @@
   }
 
   function renderKeywords(data, chCount) {
-    const topicSet = new Set([...chCount.keys()].filter(k => k.endsWith('- Topic')));
+    const topicSet = new Set([...chCount.keys()].filter(k => window.CreditTarget.isTopicChannelName(k)));
     const titles = data.filter(d => topicSet.has(d.channel)).map(d => d.title || '');
     const kws = extractKeywords(titles).slice(0, 80);
     const box = document.getElementById('azKwList');
@@ -191,7 +191,7 @@
   // 動画の creditsSource を判定（未記録は channel から後方互換推定）
   function sourceOf(d) {
     if (d.creditsSource === 'topic' || d.creditsSource === 'general') return d.creditsSource;
-    if (d.channel && / - Topic$/.test(d.channel)) return 'topic';
+    if (d.channel && window.CreditTarget.isTopicChannelName(d.channel)) return 'topic';
     return 'general';
   }
 
@@ -280,7 +280,7 @@
     const credited = new Map();
     for (const d of data) {
       if (!d.channel) continue;
-      if (/ - Topic$/.test(d.channel)) continue;
+      if (window.CreditTarget.isTopicChannelName(d.channel)) continue;
       total.set(d.channel, (total.get(d.channel) || 0) + 1);
       if (d.composer || d.lyricist || d.arranger) {
         credited.set(d.channel, (credited.get(d.channel) || 0) + 1);
@@ -291,6 +291,7 @@
 
   // Filter out junk credit names (Twitter URLs, stray parens, etc.) that leak in from upstream extraction.
   function isCleanCreditName(name) {
+    if (!window.CreditTarget.isValidCreditValue(name)) return false;
     if (!name || name.length < 2 || name.length > 60) return false;
     if (/https?:|twitter\.com|x\.com|t\.co\//i.test(name)) return false;
     if (/^[\(\)\[\]【】（）]/.test(name) || /[\(\[【（][^\)\]】）]*$/.test(name)) return false;
@@ -312,8 +313,45 @@
   }
 
   let likedRecords = [];
+  let likedMeta = null; // M1: cache of likedSyncMeta so renderPrompt can note partial state
+  // M2b (v1.42.6, Codex 2026-07-10): likedMeta must be loaded BEFORE renderPrompt()
+  // runs. Previously renderLikedPanel() fetched GET_LIKED_META asynchronously while
+  // renderPrompt() was called synchronously right after, so the prompt read a stale
+  // (usually null) likedMeta and the partial-sync note never made it into the copied
+  // recommendation prompt. Promise-ify the meta load and await it at every call site.
+  let loadLikedMetaSeq = 0;
 
-  function loadLiked() {
+  function loadLikedMeta(onLate) {
+    const mySeq = ++loadLikedMetaSeq;
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(); } };
+      const timer = setTimeout(finish, 3000); // never hang the analyzer
+      try {
+        chrome.runtime.sendMessage({ type: 'GET_LIKED_META' }, (resp) => {
+          const late = done; // response arrived after the 3s timeout already resolved
+          clearTimeout(timer);
+          // Same generation guard as loadLiked: a superseded response must not
+          // clobber newer meta.
+          if (mySeq !== loadLikedMetaSeq) { finish(); return; }
+          likedMeta = (resp && resp.meta) || null;
+          finish();
+          // M1/l1cm: a slow GET_LIKED_META can land after the timeout. Re-render so
+          // the meta row and the copied prompt reflect the freshly-loaded partial flag.
+          if (late && typeof onLate === 'function') { try { onLate(); } catch (_) {} }
+        });
+      } catch (_e) { clearTimeout(timer); finish(); }
+    });
+  }
+  // M2: monotonic generation id. Each loadLiked() call bumps it; a response is
+  // only applied if it belongs to the newest call. This stops a slow earlier
+  // GET_LIKED (e.g. the 3s-timeout initial load) from landing after a newer load
+  // (e.g. the post-sync await loadLiked()) and overwriting fresh likedRecords
+  // with stale/empty data.
+  let loadLikedSeq = 0;
+
+  function loadLiked(onLate) {
+    const mySeq = ++loadLikedSeq;
     return new Promise((resolve) => {
       let done = false;
       const finish = () => { if (!done) { done = true; resolve(); } };
@@ -321,12 +359,29 @@
       const timer = setTimeout(finish, 3000);
       try {
         chrome.runtime.sendMessage({ type: 'GET_LIKED' }, (resp) => {
+          const late = done; // response arrived after the 3s timeout already resolved
           clearTimeout(timer);
+          // M2: a superseded request must never clobber a newer load's data or
+          // trigger a stale re-render.
+          if (mySeq !== loadLikedSeq) { finish(); return; }
           likedRecords = (resp && resp.success && resp.rows) ? resp.rows : [];
           finish();
+          // L2: a slow GET_LIKED (large liked set) can land after the timeout.
+          // Re-render so the analyzer doesn't keep showing stale/empty liked data.
+          if (late && typeof onLate === 'function') { try { onLate(); } catch (_) {} }
         });
       } catch (_e) { clearTimeout(timer); finish(); }
     });
+  }
+
+  // l1cm: single refresh path shared by the initial analysis and the post-sync
+  // reload. Re-reads allData at call time (not a captured snapshot) so a late
+  // GET_LIKED / GET_LIKED_META response re-renders both the liked panel and the
+  // copied recommendation prompt with the full, current dataset.
+  function refreshLikedViews() {
+    const d = (typeof allData !== 'undefined' && allData) ? allData : [];
+    renderLikedPanel();
+    renderPrompt(d, buildChannelCount(d));
   }
 
   function buildLikedArtistCount() {
@@ -356,17 +411,44 @@
     });
     tbody.appendChild(frag);
 
-    // Account meta line
-    try {
-      chrome.runtime.sendMessage({ type: 'GET_LIKED_META' }, (resp) => {
-        const meta = resp && resp.meta;
-        const el = document.getElementById('azLikedAccount');
-        if (!meta) { el.textContent = '未同期'; return; }
+    // Account meta line — reads the cached likedMeta synchronously (M2b).
+    // Callers must `await loadLikedMeta()` before renderLikedPanel()/renderPrompt().
+    {
+      const meta = likedMeta;
+      const el = document.getElementById('azLikedAccount');
+      // L1: clear the partial danger color when there is no meta at all, so a
+      // previously-partial state doesn't leave '未同期' rendered in red.
+      if (!meta) { el.textContent = '未同期'; el.classList.remove('liked-partial'); } else {
         const when = new Date(meta.lastSyncedAt || 0).toLocaleString();
         const acc = meta.ownerHandle || meta.ownerName || meta.accountId || '(unknown)';
-        el.textContent = `アカウント: ${acc} / 最終同期: ${when} / ${(meta.count || 0).toLocaleString()}件`;
-      });
-    } catch (_) {}
+        let line = `アカウント: ${acc} / 最終同期: ${when} / ${(meta.count || 0).toLocaleString()}件`;
+        // M1: persist the partial-sync warning across reloads. v1.42.5 saved
+        // partial/hasMore/lastError to likedSyncMeta but only surfaced it in the
+        // transient post-sync toast, so reopening the analyzer hid the warning
+        // and the user could trust incomplete liked data. Show it on the meta row.
+        if (meta.partial) {
+          line += ' / ⚠️ 部分同期（全件取得できていません・再同期推奨）';
+          if (meta.lastError) line += ` [${meta.lastError}]`;
+        }
+        // v1.42.10 (M1): a save made while the account could not be identified must not
+        // look identical to a normal, fully-identified sync — surface the confidence so
+        // the user knows a different account's likes could have merged in.
+        if (meta.identityConfidence === 'unknown-confirmed') {
+          line += ' / ⚠️ アカウント未識別のまま保存（確認済・別アカウント混入に注意）';
+        } else if (meta.identityConfidence === 'name-only') {
+          // v1.42.11 (M2): identity is a bare display name (no channelId/handle) — weak.
+          // A different account sharing the display name could merge in undetected, so
+          // this must not read like a normal, fully-identified sync.
+          line += ' / ⚠️ 表示名のみで識別（同名の別アカウント混入に注意・再同期で強い識別が付けば解消）';
+        } else if (meta.identityConfidence === 'browse-recovered') {
+          line += ' / ℹ️ アカウントはブラウズ応答から復元';
+        }
+        el.textContent = line;
+        el.classList.toggle('liked-partial', !!meta.partial
+          || meta.identityConfidence === 'unknown-confirmed'
+          || meta.identityConfidence === 'name-only');
+      }
+    }
   }
 
   function topLikedArtists(limit) {
@@ -374,9 +456,57 @@
     return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit);
   }
 
+  // v1.42.12 (M2, Codex 2026-07-11 wrapup-review_10): pure note-builder for the copied
+  // prompt's 高評価Top30 section. The partial / weak-identity warnings shown on the
+  // analyzer meta row (renderLikedPanel) previously did NOT survive into the exported
+  // prompt — renderPrompt only noted `partial` and ignored identityConfidence. That Top30
+  // is exactly the data carried out to an external recommender, so a name-only /
+  // unknown-confirmed liked set must not read as a clean, fully-identified set downstream.
+  // Kept pure (no DOM / closure deps) so it can be unit-tested without a renderPrompt DOM
+  // harness.
+  function likedPromptNotes(meta) {
+    const notes = [];
+    if (!meta) return notes;
+    if (meta.partial) {
+      notes.push('⚠️ 注記: 高評価データは**部分同期**です（全件取得できていません）。以下の集計は不完全な可能性があるため、参考程度に扱ってください。');
+    }
+    if (meta.identityConfidence === 'unknown-confirmed') {
+      notes.push('⚠️ 注記: 高評価データは**アカウント未識別のまま保存**されています（別アカウントの高評価が混入している可能性があります）。集計の帰属が不確実なため、参考程度に扱ってください。');
+    } else if (meta.identityConfidence === 'name-only') {
+      notes.push('⚠️ 注記: 高評価データのアカウント識別が**表示名のみ（弱識別）**です。同名の別アカウントの高評価が混入している可能性があるため、参考程度に扱ってください。');
+    }
+    return notes;
+  }
+
+  // Drive the SYNC_LIKED confirmation escalation. The background raises its guards
+  // in sequence — first `account-unknown` (this sync's owner couldn't be identified),
+  // then `account-changed` (the stored account differs from this sync's). Each guard
+  // is confirmed SEPARATELY and its flag accumulated: approving an unidentifiable
+  // account must NOT also silently pre-approve a known→unknown account CHANGE, or a
+  // degraded sync belonging to a different account would merge into a known account's
+  // likes undetected (Codex 2026-07-11 wrapup-review_9 M1). So confirming
+  // 'account-unknown' re-runs with confirmUnknownAccount ONLY; if the stored account
+  // was known, the background then returns 'account-changed', which is confirmed on
+  // its own before the final save. Pure (deps injected) so it is unit-testable.
+  async function resolveLikedSync({ doSync, confirm }) {
+    const flags = {};
+    let resp = await doSync({ ...flags });
+    if (resp && !resp.success && resp.reason === 'account-unknown') {
+      if (!confirm('account-unknown', resp)) return { cancelled: true, resp };
+      flags.confirmUnknownAccount = true;
+      resp = await doSync({ ...flags });
+    }
+    if (resp && !resp.success && resp.reason === 'account-changed') {
+      if (!confirm('account-changed', resp)) return { cancelled: true, resp };
+      flags.confirmAccountChange = true;
+      resp = await doSync({ ...flags });
+    }
+    return { cancelled: false, resp };
+  }
+
   function renderPrompt(data, chCount) {
     const topic = [...chCount.entries()]
-      .filter(([k]) => k.endsWith('- Topic'))
+      .filter(([k]) => window.CreditTarget.isTopicChannelName(k))
       .sort(sortByCountThenName)
       .slice(0, 40);
 
@@ -402,7 +532,7 @@
       const cutoff = span > 0 ? maxTs - span / 3 : 0;
       const recentCh = new Map();
       for (const d of data) {
-        if (!d.channel || !d.channel.endsWith(' - Topic')) continue;
+        if (!d.channel || !window.CreditTarget.isTopicChannelName(d.channel)) continue;
         const ts = d.watchedAt || d.firstWatchedAt || 0;
         if (ts < cutoff) continue;
         recentCh.set(d.channel, (recentCh.get(d.channel) || 0) + 1);
@@ -426,11 +556,11 @@
     lines.push('- **クレジット率** = そのチャンネルの動画でクレジット情報（作曲・作詞・編曲）が取得できた割合（高い＝楽曲制作主体の音楽チャンネルである可能性が高い）');
     lines.push('');
     lines.push('## 再生数Top40アーティスト（YouTube Topicチャンネル由来）');
-    topic.forEach(([k, v], i) => lines.push(`${i + 1}. ${k.replace(/ - Topic$/, '')} (${v.count}回)`));
+    topic.forEach(([k, v], i) => lines.push(`${i + 1}. ${window.CreditTarget.stripTopicChannelSuffix(k)} (${v.count}回)`));
     lines.push('');
     if (topicRecent.length) {
       lines.push('## 直近の傾向 Top15（視聴期間の後半1/3）');
-      topicRecent.forEach(([k, v], i) => lines.push(`${i + 1}. ${k.replace(/ - Topic$/, '')} (${v}回)`));
+      topicRecent.forEach(([k, v], i) => lines.push(`${i + 1}. ${window.CreditTarget.stripTopicChannelSuffix(k)} (${v}回)`));
       lines.push('');
     }
     lines.push('## よく聴いた作曲家 Top20（クレジット集計）');
@@ -446,7 +576,12 @@
     const liked = topLikedArtists(30);
     if (liked.length) {
       lines.push('## 高評価Top30アーティスト（YouTubeで高評価した動画のチャンネル別集計）');
-      liked.forEach(([k, v], i) => lines.push(`${i + 1}. ${k.replace(/ - Topic$/, '')} (${v}回)`));
+      // M1 / v1.42.12 (M2): warn in-prompt when the liked data is a partial sync OR was
+      // saved under a weak identity (name-only / unknown-confirmed), so the model (and
+      // reader) knows the ranking may be incomplete or account-ambiguous rather than
+      // treating it as the complete, cleanly-attributed liked set. See likedPromptNotes.
+      likedPromptNotes(likedMeta).forEach((n) => lines.push(n));
+      liked.forEach(([k, v], i) => lines.push(`${i + 1}. ${window.CreditTarget.stripTopicChannelSuffix(k)} (${v}回)`));
       lines.push('');
     }
     if (musicGeneral.length) {
@@ -494,8 +629,15 @@
   async function runAnalysis() {
     const data = (typeof allData !== 'undefined' && allData) ? allData : [];
     const chCount = buildChannelCount(data);
-    await loadLiked();
-    const topicCh = [...chCount.entries()].filter(([k]) => k.endsWith('- Topic'));
+    // L2: if the liked data arrives after the 3s timeout, re-render the liked
+    // panel and the recommendation prompt so they reflect the full dataset.
+    // Re-read allData at callback time (not the captured `data`) so a late
+    // response doesn't re-render with a stale snapshot.
+    // M2b: load meta alongside rows so renderPrompt() below sees the partial flag.
+    // l1cm: both loaders get refreshLikedViews as their late callback so a slow
+    // rows OR meta response re-renders the panel and prompt.
+    await Promise.all([loadLikedMeta(refreshLikedViews), loadLiked(refreshLikedViews)]);
+    const topicCh = [...chCount.entries()].filter(([k]) => window.CreditTarget.isTopicChannelName(k));
     const musicPlays = topicCh.reduce((s, [, v]) => s + v.count, 0);
 
     document.getElementById('azTotal').textContent = data.length.toLocaleString();
@@ -564,22 +706,33 @@
   if (syncLikedBtn) {
     syncLikedBtn.addEventListener('click', async () => {
       const msg = document.getElementById('azLikedMsg');
-      const doSync = (confirm) => new Promise((res) => {
-        chrome.runtime.sendMessage({ type: 'SYNC_LIKED', confirmAccountChange: !!confirm }, res);
+      const doSync = (opts = {}) => new Promise((res) => {
+        chrome.runtime.sendMessage({
+          type: 'SYNC_LIKED',
+          confirmAccountChange: !!opts.confirmAccountChange,
+          confirmUnknownAccount: !!opts.confirmUnknownAccount,
+        }, res);
       });
       msg.textContent = '同期中...（全件取得まで数十秒〜2分かかる場合があります）';
       syncLikedBtn.disabled = true;
       try {
-        let resp = await doSync(false);
-        if (resp && !resp.success && resp.reason === 'account-changed') {
-          const prev = (resp.previous && (resp.previous.ownerHandle || resp.previous.ownerName)) || resp.previous?.accountId || '(unknown)';
-          const cur = resp.current?.ownerHandle || resp.current?.ownerName || resp.current?.accountId || '(unknown)';
-          const ok = window.confirm(`アカウントが変更されています:\n旧: ${prev}\n新: ${cur}\nこのまま新アカウントの高評価を追加しますか？\n（旧アカウントのデータは保持されます。クリアしたい場合は別途「Clear」操作を追加予定）`);
-          if (!ok) {
-            msg.textContent = 'キャンセルしました';
-            return;
+        // H1/M1: account identity guards. The owner may be unidentifiable
+        // (account-unknown) and/or differ from the stored account (account-changed).
+        // Each guard gets its OWN confirmation — see resolveLikedSync — so approving
+        // an unidentified save can't silently approve a known→unknown account change.
+        const confirmGuard = (kind, r) => {
+          if (kind === 'account-unknown') {
+            return window.confirm('アカウントを識別できませんでした（YouTubeに未ログイン、またはページ構造の変更の可能性）。\nこのまま高評価データを保存しますか？\n※別アカウントのデータと混ざる恐れがあります。');
           }
-          resp = await doSync(true);
+          // account-changed
+          const prev = (r.previous && (r.previous.ownerHandle || r.previous.ownerName)) || r.previous?.accountId || '(unknown)';
+          const cur = r.current?.ownerHandle || r.current?.ownerName || r.current?.accountId || '(unknown)';
+          return window.confirm(`アカウントが変更されています:\n旧: ${prev}\n新: ${cur}\nこのまま新アカウントの高評価を追加しますか？\n（旧アカウントのデータは保持されます。クリアしたい場合は別途「Clear」操作を追加予定）`);
+        };
+        const { cancelled, resp } = await resolveLikedSync({ doSync, confirm: confirmGuard });
+        if (cancelled) {
+          msg.textContent = 'キャンセルしました';
+          return;
         }
         if (!resp || !resp.success) {
           const r = resp && resp.reason ? resp.reason : 'unknown';
@@ -591,14 +744,22 @@
           return;
         }
         const errTag = resp.errors && resp.errors.length ? ` / 警告${resp.errors.length}件` : '';
-        msg.textContent = `同期完了: 取得${resp.fetched}件 / 新規${resp.added}件 / ${resp.pages || 1}ページ${errTag}`;
+        // M1: pagination stopped before exhausting the playlist — surface it as a
+        // partial sync so the user knows to re-sync rather than trusting the count.
+        if (resp.partial) {
+          msg.textContent = `⚠️ 部分同期: 取得${resp.fetched}件 / 新規${resp.added}件 / ${resp.pages || 1}ページ${errTag}（全件を取得できていません。時間をおいて再同期してください）`;
+        } else {
+          msg.textContent = `同期完了: 取得${resp.fetched}件 / 新規${resp.added}件 / ${resp.pages || 1}ページ${errTag}`;
+        }
         if (resp.errors && resp.errors.length) console.warn('[liked-sync errors]', resp.errors);
         if (resp.diagnostics) console.info('[liked-sync diagnostics]', resp.diagnostics);
-        await loadLiked();
-        renderLikedPanel();
-        // Re-render prompt so the liked section reflects new data
-        const data = (typeof allData !== 'undefined' && allData) ? allData : [];
-        renderPrompt(data, buildChannelCount(data));
+        // M2b: refresh meta too, so the freshly-saved partial flag reaches both the
+        // meta row and the recommendation prompt in this same render pass.
+        // l1cm: pass refreshLikedViews as the late callback to both loaders — if a
+        // GET_LIKED response arrives after the 3s timeout, the panel and the copied
+        // prompt re-render instead of keeping the pre-sync (stale) likedRecords.
+        await Promise.all([loadLiked(refreshLikedViews), loadLikedMeta(refreshLikedViews)]);
+        refreshLikedViews();
       } catch (e) {
         msg.textContent = '同期エラー: ' + e.message;
       } finally {

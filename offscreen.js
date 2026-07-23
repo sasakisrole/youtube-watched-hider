@@ -20,6 +20,10 @@ function createExportBlobUrl(envelope) {
     requestId,
     blobUrl,
     counts: envelope.counts || { watchedVideos: envelope.watchedVideos.length, likedVideos: 0 },
+    // u1ps (Codex B1 VERIFY blocker 1): report meta presence so a records-empty
+    // but meta-present state is NOT treated as "no_data" and skipped during a
+    // pre-destructive safety backup.
+    hasLikedSyncMeta: !!envelope.likedSyncMeta,
     exportedAt: envelope.exportedAt,
   };
 }
@@ -43,18 +47,84 @@ async function importPayload(message, merge) {
   const watched = merge
     ? await WatchedDB.mergeImport(parsed.watchedVideos)
     : { count: await WatchedDB.importData(parsed.watchedVideos) };
-  const likedCount = parsed.likedVideos.length
-    ? await WatchedDB.importLikedData(parsed.likedVideos)
-    : 0;
+  // u1ps §7.3 (Codex B2 VERIFY blocker 1): "安全に統合" (merge) must keep current
+  // liked records (add-only); "backup優先で統合" (non-merge) overwrites (put).
+  let likedCount = 0;
+  if (parsed.likedVideos.length) {
+    if (merge) {
+      likedCount = (await WatchedDB.mergeLikedData(parsed.likedVideos)).added;
+    } else {
+      likedCount = await WatchedDB.importLikedData(parsed.likedVideos);
+    }
+  }
   return {
     count: merge ? watched.total : watched.count,
     added: merge ? watched.added : undefined,
     skipped: merge ? watched.skipped : undefined,
     total: merge ? watched.total : parsed.watchedVideos.length,
+    // M3: corrupt records dropped during parse (rest were restored).
+    dropped: {
+      watched: parsed.droppedWatched || 0,
+      liked: parsed.droppedLiked || 0,
+      // u1ps (Codex B1 VERIFY minor 2): non-array likedVideos block skipped whole.
+      likedStructural: !!parsed.likedStructuralError,
+    },
     watchedIds,
     watched,
     liked: { imported: likedCount },
     likedSyncMeta: parsed.likedSyncMeta,
+  };
+}
+
+// u1ps §7.3: read-only dry-run diff of an import backup vs the current DB.
+async function importDiff(message) {
+  const parsed = WatchedDB.parseImportData(message.data);
+  const currentWatchedIds = await WatchedDB.getAllIds();
+  const currentLikedRows = await WatchedDB.getAllLiked();
+  const currentLikedIds = currentLikedRows
+    .map((r) => r && r.videoId)
+    .filter((v) => typeof v === 'string' && v);
+  return { diff: WatchedDB.diffImport(parsed, currentWatchedIds, currentLikedIds) };
+}
+
+// u1ps §7.3: apply a "置換 (replace)" import. Final state = the backup's records.
+// Race-safe like CLEAR_ALL: the caller passes the ids captured in the pre-replace
+// backup SNAPSHOT (message.snapshotWatchedIds/snapshotLikedIds). We delete only
+// (snapshot \ new) — records added AFTER the snapshot are in neither list, so
+// they survive instead of being deleted-without-backup — then put the new
+// records (backup wins on overlap). Meta is returned for a FAITHFUL set by the
+// caller (including null -> clear; Codex B1 VERIFY blocker 3).
+async function replaceApply(message) {
+  const parsed = WatchedDB.parseImportData(message.data);
+  const newWatched = new Set(parsed.watchedVideos.map((r) => r.videoId));
+  const newLiked = new Set(parsed.likedVideos.map((r) => r.videoId));
+  const snapW = Array.isArray(message.snapshotWatchedIds) ? message.snapshotWatchedIds : [];
+  const snapL = Array.isArray(message.snapshotLikedIds) ? message.snapshotLikedIds : [];
+  const delWatched = snapW.filter((id) => !newWatched.has(id));
+  const delLiked = snapL.filter((id) => !newLiked.has(id));
+  // u1ps §7.3 (Codex B2 VERIFY blocker 3): ONE atomic transaction — delete
+  // snapshot-only + put the new records — so a mid-way failure leaves the DB
+  // unchanged rather than half-replaced.
+  const res = await WatchedDB.replaceRecords(delWatched, delLiked, parsed.watchedVideos, parsed.likedVideos);
+  const watchedIds = parsed.watchedVideos
+    .map((r) => r && r.videoId)
+    .filter((v) => typeof v === 'string' && v);
+  return {
+    replaced: true,
+    count: res.importedWatched,
+    removed: { watched: res.deletedWatched, liked: res.deletedLiked },
+    dropped: {
+      watched: parsed.droppedWatched || 0,
+      liked: parsed.droppedLiked || 0,
+      likedStructural: !!parsed.likedStructuralError,
+    },
+    watchedIds,
+    liked: { imported: res.importedLiked },
+    // Faithful replace: caller sets meta to exactly this (null clears). Replace
+    // intentionally imposes the backup's meta (it is a "restore to this backup"),
+    // unlike CLEAR_ALL which uses compare-and-set — see the REPLACE_IMPORT handler.
+    likedSyncMeta: parsed.likedSyncMeta,
+    metaFaithful: true,
   };
 }
 
@@ -97,10 +167,22 @@ async function handleDbRpc(message) {
       return importPayload(message, false);
     case 'MERGE_IMPORT':
       return importPayload(message, true);
+    case 'IMPORT_DIFF':
+      // u1ps §7.3: read-only dry-run diff (no mutation).
+      return importDiff(message);
+    case 'REPLACE_APPLY':
+      // u1ps §7.3: destructive replace (delete snapshot-only + import backup).
+      return replaceApply(message);
     case 'DELETE_VIDEO':
       return WatchedDB.deleteOne(message.videoId);
     case 'CLEAR_DATA':
       return WatchedDB.clearAll();
+    case 'DELETE_SNAPSHOT':
+      // u1ps §7.4 (Codex B1 VERIFY blocker 2, freeze-free): delete exactly the
+      // record IDs captured in the pre-reset backup snapshot. Records written
+      // AFTER the snapshot are absent from these lists, so they survive rather
+      // than being deleted-without-backup — no lock/freeze needed.
+      return WatchedDB.deleteManyRecords(message.watchedIds || [], message.likedIds || []);
     case 'UPSERT_LIKED':
       return WatchedDB.upsertLiked(message.items || [], message.accountId || '');
     case 'GET_LIKED':

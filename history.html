@@ -281,6 +281,9 @@
     }
     .video-row:hover .delete-btn { opacity: 1; }
     .delete-btn:hover { color: var(--danger); }
+    /* M1 (v1.42.6): partial liked-sync warning on the account meta row. Overrides
+       the element's inline text-muted color so the warning stands out on reload. */
+    #azLikedAccount.liked-partial { color: var(--danger) !important; }
 
     .badge {
       font-size: 10px;
@@ -750,7 +753,7 @@
         <span>Enrich Credits</span>
       </button>
       <button class="sort-btn" id="fixDurations" title="動画時間をwatchページから補完（ライブは-1として記録）">Fix Durations</button>
-      <label class="chk" title="前回「情報なし」だった動画は除外して取得"><input type="checkbox" id="skipCreditsChecked" checked>チェック済みスキップ</label>
+      <label class="chk" title="最近チェック済み（30日以内）の動画は除外して取得。作曲・作詞・編曲のどれかが空なら、それより前にチェックした動画は再取得の対象"><input type="checkbox" id="skipCreditsChecked" checked>チェック済みスキップ</label>
       <label class="chk" title="非Topicチャンネル（MV・公式配信など）も対象にする。ラベル付き行のみ採用"><input type="checkbox" id="includeGeneralCredits">一般も含める</label>
       <span id="fixStatus"></span>
     </div>
@@ -761,7 +764,7 @@
       <div class="enrich-header">
         <div class="enrich-title">
           <h2 id="enrichTitle">Enrich Credits</h2>
-          <p id="enrichSubtitle">未割当 creditsRaw を固定ルール、uta-net、MusicBrainz の順に照合します。</p>
+          <p id="enrichSubtitle">未割当 creditsRaw を固定ルール、MusicBrainz の順に照合します。</p>
         </div>
         <button class="enrich-icon-btn" id="enrichClose" type="button" aria-label="閉じる" title="閉じる">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
@@ -908,6 +911,7 @@
   </div>
 
   <script src="chart.umd.min.js"></script>
+  <script src="credit_target.js"></script>
   <script src="enrich_credits.js"></script>
   <script src="history.js"></script>
   <script src="analyzer.js"></script>

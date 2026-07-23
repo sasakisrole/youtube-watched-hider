@@ -501,20 +501,24 @@ if (fixCreditsBtn) {
     const includeGeneral = document.getElementById('includeGeneralCredits');
     const includeGen = !!(includeGeneral && includeGeneral.checked);
     const sources = {};
+    // Role-unit targeting + re-fetch cool-down (HANDOFF §3.1/§3.4 lightweight).
+    // OLD behavior excluded a video as soon as ANY role or creditsRaw was present,
+    // permanently stranding partial-credit videos ("composer filled, arranger
+    // blank"). CreditTarget.isFixCreditsTarget now includes a video while any of
+    // composer/lyricist/arranger is blank, and (when "チェック済みスキップ" is on)
+    // skips only videos re-checked within the cool-down window — so re-reading an
+    // unchanged 概要欄 every run can't hammer YouTube, but a video checked long ago
+    // (parser improved / description edited) becomes eligible again.
+    const now = Date.now();
     const targets = allData
       .filter(v => {
         if (!v.channel) return false;
-        const isTopic = / - Topic$/.test(v.channel);
+        const isTopic = window.CreditTarget.isTopicChannelName(v.channel);
         return isTopic || includeGen;
       })
-      // Re-fetching a video that already has any extracted credit info
-      // (role fields OR creditsRaw) yields the same data, so skip it. This
-      // includes records where Phase B captured the · separator line into
-      // creditsRaw without resolving roles.
-      .filter(v => !(v.composer || v.lyricist || v.arranger || v.creditsRaw))
-      .filter(v => !(skip && v.creditsCheckedAt))
+      .filter(v => window.CreditTarget.isFixCreditsTarget(v, { skipChecked: skip, now }))
       .map(v => {
-        sources[v.videoId] = / - Topic$/.test(v.channel) ? 'topic' : 'general';
+        sources[v.videoId] = window.CreditTarget.isTopicChannelName(v.channel) ? 'topic' : 'general';
         return v.videoId;
       });
     const label = includeGen ? 'クレジット補完（Topic+一般）' : 'Topic動画のクレジット補完';

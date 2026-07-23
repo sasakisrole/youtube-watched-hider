@@ -6,8 +6,20 @@ const enableToggle = document.getElementById('enableToggle');
 const toggleLabel = document.getElementById('toggleLabel');
 const exportBtn = document.getElementById('exportBtn');
 const importBtn = document.getElementById('importBtn');
-const clearBtn = document.getElementById('clearBtn');
+const clearWatchedBtn = document.getElementById('clearWatchedBtn');
+const clearLikedBtn = document.getElementById('clearLikedBtn');
+const clearAllBtn = document.getElementById('clearAllBtn');
 const fileInput = document.getElementById('fileInput');
+// u1ps §7.3: import-mode chooser
+const importModePanel = document.getElementById('importModePanel');
+const importDiffSummary = document.getElementById('importDiffSummary');
+const importReplaceBtn = document.getElementById('importReplaceBtn');
+const importSafeMergeBtn = document.getElementById('importSafeMergeBtn');
+const importBackupMergeBtn = document.getElementById('importBackupMergeBtn');
+const importCancelBtn = document.getElementById('importCancelBtn');
+let pendingImportData = null;
+let pendingImportDiff = null;
+let importGeneration = 0; // u1ps §7.3 (Codex B2 minor 1): ignore stale IMPORT_DIFF replies
 const statusEl = document.getElementById('status');
 const historyBtn = document.getElementById('historyBtn');
 const historyPanel = document.getElementById('historyPanel');
@@ -39,10 +51,11 @@ let historyRenderedCount = 0;
 let lastHistoryDateGroup = '';
 const HISTORY_PAGE_SIZE = 50;
 
-function showStatus(msg, isError = false) {
+function showStatus(msg, isError = false, isWarn = false) {
   statusEl.textContent = msg;
-  statusEl.style.color = isError ? 'var(--danger)' : 'var(--success)';
-  setTimeout(() => { statusEl.textContent = ''; }, 3000);
+  statusEl.style.color = isError ? 'var(--danger)' : (isWarn ? 'var(--warning)' : 'var(--success)');
+  // Keep warnings/errors on screen longer so a "N件スキップ" notice is readable.
+  setTimeout(() => { statusEl.textContent = ''; }, (isError || isWarn) ? 5000 : 3000);
 }
 
 function renderCacheStats(response) {
@@ -390,35 +403,123 @@ function unwrapImportData(parsed) {
   return unwrapWatchedRecords(parsed);
 }
 
+// u1ps §7.3: after a file is picked, compute a read-only diff and let the user
+// explicitly choose replace vs merge (instead of the old implicit put-overwrite).
 fileInput.addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
 
+  // Claim a generation at SELECTION time so the last-picked file wins even if an
+  // earlier file's read/diff completes later (Codex B2 minor 1).
+  const myGen = ++importGeneration;
   const reader = new FileReader();
   reader.onload = (event) => {
+    if (myGen !== importGeneration) return; // a newer file was picked while reading
+    let parsed;
     try {
-      const parsed = JSON.parse(event.target.result);
-      const data = unwrapImportData(parsed);
-      if (!data) {
-        showStatus('Invalid JSON format', true);
-        return;
-      }
-      chrome.runtime.sendMessage({ type: 'IMPORT_DATA', data: parsed }, (response) => {
-        if (response && response.success) {
-          const liked = response.liked && typeof response.liked.imported === 'number' ? ` / ${response.liked.imported} liked` : '';
-          showStatus(`Imported ${response.count} records${liked}`);
-          loadStats();
-          if (historyPanel.style.display !== 'none') loadHistory();
-        } else {
-          showStatus('Import failed: ' + ((response && response.error) || 'unknown'), true);
-        }
-      });
+      parsed = JSON.parse(event.target.result);
     } catch {
       showStatus('Failed to parse JSON', true);
+      return;
     }
+    if (!unwrapImportData(parsed)) {
+      showStatus('Invalid JSON format', true);
+      return;
+    }
+    pendingImportData = parsed;
+    pendingImportDiff = null;
+    showStatus('差分を計算中...');
+    chrome.runtime.sendMessage({ type: 'IMPORT_DIFF', data: parsed }, (response) => {
+      if (myGen !== importGeneration) return; // a newer file was picked; ignore stale reply
+      if (response && response.success && response.diff) {
+        pendingImportDiff = response.diff;
+        importDiffSummary.textContent = renderImportDiff(response.diff);
+        importModePanel.style.display = 'block';
+        statusEl.textContent = '';
+      } else {
+        pendingImportData = null;
+        showStatus('差分の計算に失敗しました: ' + ((response && response.error) || 'unknown'), true);
+      }
+    });
   };
   reader.readAsText(file);
   fileInput.value = '';
+});
+
+function renderImportDiff(diff) {
+  const w = diff.watched || {};
+  const l = diff.liked || {};
+  const inv = diff.invalid || {};
+  const invN = (inv.watched || 0) + (inv.liked || 0);
+  const lines = [
+    `視聴履歴: 追加 ${w.add || 0} / 更新 ${w.overlap || 0}（置換すると ${w.currentOnly || 0} 件削除）`,
+    `高評価: 追加 ${l.add || 0} / 更新 ${l.overlap || 0}（置換すると ${l.currentOnly || 0} 件削除）`,
+  ];
+  if (invN) lines.push(`無効データ: ${invN} 件スキップ`);
+  if (inv.likedStructural) lines.push('※ 高評価データの形式が不正なためスキップされます');
+  return lines.join('\n');
+}
+
+function handleImportResponse(response, label) {
+  if (response && response.success) {
+    const liked = response.liked && typeof response.liked.imported === 'number' ? ` / ${response.liked.imported} liked` : '';
+    const droppedN = response.dropped ? ((response.dropped.watched || 0) + (response.dropped.liked || 0)) : 0;
+    const structural = !!(response.dropped && response.dropped.likedStructural);
+    const removed = response.removed ? `, ${(response.removed.watched || 0) + (response.removed.liked || 0)}件削除` : '';
+    const droppedNote = droppedN ? ` (${droppedN}件スキップ)` : (structural ? '（高評価データ形式不正）' : '');
+    showStatus(`${label}: ${response.count} records${liked}${removed}${droppedNote}`, false, droppedN > 0 || structural);
+    loadStats();
+    if (historyPanel.style.display !== 'none') loadHistory();
+  } else if (response && response.reason === 'backup_failed') {
+    // Data-safety gate: nothing was changed because the pre-replace backup failed.
+    showStatus('バックアップに失敗したため中止しました（データは変更していません）', true);
+  } else {
+    showStatus(`${label} failed: ` + ((response && response.error) || 'unknown'), true);
+  }
+}
+
+function closeImportPanel() {
+  importModePanel.style.display = 'none';
+  importGeneration++; // invalidate any in-flight IMPORT_DIFF reply
+  const data = pendingImportData;
+  pendingImportData = null;
+  pendingImportDiff = null;
+  return data;
+}
+
+importSafeMergeBtn.addEventListener('click', () => {
+  const data = closeImportPanel();
+  if (!data) return;
+  showStatus('統合中...');
+  chrome.runtime.sendMessage({ type: 'MERGE_IMPORT', data }, (r) => handleImportResponse(r, '安全に統合'));
+});
+
+importBackupMergeBtn.addEventListener('click', () => {
+  const data = closeImportPanel();
+  if (!data) return;
+  showStatus('統合中...');
+  chrome.runtime.sendMessage({ type: 'IMPORT_DATA', data }, (r) => handleImportResponse(r, 'バックアップ優先で統合'));
+});
+
+importReplaceBtn.addEventListener('click', () => {
+  const diff = pendingImportDiff;
+  const delW = diff && diff.watched ? diff.watched.currentOnly : 0;
+  const delL = diff && diff.liked ? diff.liked.currentOnly : 0;
+  if (!confirm(`置換します。現在のデータを自動バックアップ（1件ダウンロード）してから、このファイルの内容に置き換えます。\n\nこのファイルに無い 視聴履歴 ${delW} 件・高評価 ${delL} 件が削除されます。続けますか？`)) return;
+  const data = closeImportPanel();
+  if (!data) return;
+  const btns = [importReplaceBtn, importSafeMergeBtn, importBackupMergeBtn, importBtn];
+  btns.forEach((b) => { b.disabled = true; });
+  showStatus('バックアップ中...');
+  chrome.runtime.sendMessage({ type: 'REPLACE_IMPORT', data }, (r) => {
+    btns.forEach((b) => { b.disabled = false; });
+    handleImportResponse(r, '置換');
+  });
+});
+
+importCancelBtn.addEventListener('click', () => {
+  closeImportPanel();
+  showStatus('インポートをキャンセルしました');
 });
 
 // Settings toggle
@@ -494,20 +595,60 @@ aboutBtn.addEventListener('click', () => {
 // Set version from manifest
 document.getElementById('aboutVersion').textContent = 'v' + chrome.runtime.getManifest().version;
 
-// Clear
-clearBtn.addEventListener('click', () => {
-  if (!confirm('WARNING: All watched history will be permanently deleted.\n\nThis cannot be undone. Continue?')) return;
-  if (!confirm('Are you really sure? Export a backup first if needed.')) return;
-
+// Clear: 視聴履歴だけ削除 (watched store only) — u1ps §7.4
+clearWatchedBtn.addEventListener('click', () => {
+  if (!confirm('視聴履歴（watched）を全て削除します。\n\n元に戻せません。続けますか？')) return;
   chrome.runtime.sendMessage({ type: 'CLEAR_DATA' }, (response) => {
     if (response && response.success) {
-      showStatus('All data cleared');
+      showStatus('視聴履歴を削除しました');
+      loadStats();
+      allHistoryData = [];
+      renderHistory();
+    } else {
+      showStatus('削除に失敗しました: ' + ((response && response.error) || 'unknown'), true);
+    }
+  });
+});
+
+// Clear: 高評価データだけ削除 (liked store + sync meta) — u1ps §7.4
+clearLikedBtn.addEventListener('click', () => {
+  if (!confirm('高評価データ（liked）を全て削除します。\n\n高評価はYouTubeから再同期できます。続けますか？')) return;
+  chrome.runtime.sendMessage({ type: 'CLEAR_LIKED_ALL' }, (response) => {
+    if (response && response.success) {
+      showStatus('高評価データを削除しました');
+      loadStats();
+    } else {
+      showStatus('削除に失敗しました: ' + ((response && response.error) || 'unknown'), true);
+    }
+  });
+});
+
+// Clear: 全データを初期化 (both stores + meta, auto-backup first) — u1ps §7.4
+clearAllBtn.addEventListener('click', () => {
+  if (!confirm('全データ（視聴履歴＋高評価）を初期化します。\n\n実行前に自動でバックアップを1件ダウンロードし、その後すべて削除します。続けますか？')) return;
+  if (!confirm('本当に初期化しますか？（この操作は元に戻せません）')) return;
+  // Disable all destructive buttons during the backup->delete window so a second
+  // click can't launch a concurrent reset — u1ps (Codex B1 VERIFY).
+  const clearBtns = [clearWatchedBtn, clearLikedBtn, clearAllBtn];
+  clearBtns.forEach((b) => { b.disabled = true; });
+  showStatus('バックアップ中...');
+  chrome.runtime.sendMessage({ type: 'CLEAR_ALL' }, (response) => {
+    clearBtns.forEach((b) => { b.disabled = false; });
+    if (response && response.success) {
+      const b = response.backup;
+      const backedUp = b && b.success
+        ? `（バックアップ ${b.counts ? b.counts.watchedVideos : b.count} 件保存済）`
+        : (b && b.reason === 'no_data' ? '（データなし）' : '');
+      showStatus(`全データを初期化しました ${backedUp}`);
       loadStats();
       allHistoryData = [];
       renderHistory();
       settingsPanel.style.display = 'none';
+    } else if (response && response.reason === 'backup_failed') {
+      // Data-safety gate: nothing was deleted because the backup failed.
+      showStatus('バックアップに失敗したため中止しました（データは削除していません）', true);
     } else {
-      showStatus('Clear failed', true);
+      showStatus('初期化に失敗しました: ' + ((response && response.error) || 'unknown'), true);
     }
   });
 });
@@ -538,8 +679,12 @@ syncFileInput.addEventListener('change', (e) => {
       chrome.runtime.sendMessage({ type: 'MERGE_IMPORT', data: parsed }, (response) => {
         if (response && response.success) {
           const liked = response.liked && typeof response.liked.imported === 'number' ? `, ${response.liked.imported} liked` : '';
-          syncStatus.textContent = `Done: +${response.added} new, ${response.skipped} existing${liked}`;
-          syncStatus.style.color = 'var(--success)';
+          const droppedN = response.dropped ? ((response.dropped.watched || 0) + (response.dropped.liked || 0)) : 0;
+          const structural = !!(response.dropped && response.dropped.likedStructural);
+          const droppedNote = droppedN ? `, ${droppedN}件スキップ` : (structural ? '（高評価データの形式が不正）' : '');
+          syncStatus.textContent = `Done: +${response.added} new, ${response.skipped} existing${liked}${droppedNote}`;
+          // Warn color when records were dropped so the skip is not mistaken for a clean merge — u1ps 2gkw.
+          syncStatus.style.color = (droppedN > 0 || structural) ? 'var(--warning)' : 'var(--success)';
           loadStats();
           if (historyPanel.style.display !== 'none') loadHistory();
         } else {

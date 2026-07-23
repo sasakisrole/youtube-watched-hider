@@ -9,12 +9,15 @@
 
   // DESIGN_enrich_credits.md test-case hooks:
   // Case 1: createRuleCandidate() returns source="rule", sim=null, selected=true.
-  // Case 2: bestMatch()+candidateFromSong() marks sim >= 0.95 as selected=true and auto row.
+  // Case 2: candidateFromSong() requires both sim >= 0.95 and source-provided auto eligibility.
+  //         MusicBrainz only grants that eligibility to identity-checked strict matches.
   // Case 3: 0.85 <= sim < 0.95 stays selected=false; renderCandidateRow() creates a youtu.be link.
   // Case 4: candidateFromSong() returns null when sim < 0.85.
-  // Case 6: isUnassignedCreditRecord() is the extraction gate and skips rows with any existing role.
+  // Case 6: needsCreditEnrichment() is the extraction gate — role-unit now, so a row with
+  //         SOME roles filled (composer set, arranger blank) is still enriched (was: all-or-nothing).
   // Case 7: renderTabs() only sees channels present in candidatesByChannel, so zero-hit channels are hidden.
-  // Case 8: generateCandidates() continues immediately after a rule match and never calls uta-net for that channel.
+  // Case 8: generateCandidates() no longer short-circuits after a rule match — remaining missing roles
+  //         still flow to MusicBrainz per video (HANDOFF §3.2/§3.3, role-unit waterfall).
 
   function unwrapWatchedRecords(data) {
     if (Array.isArray(data)) return data;
@@ -31,8 +34,66 @@
     return !!(record && record.creditsRaw && isBlank(record.composer) && isBlank(record.lyricist) && isBlank(record.arranger));
   }
 
+  const CREDIT_ROLES = ['composer', 'lyricist', 'arranger'];
+
+  // Role-unit gap detection (HANDOFF §3.1 / DESIGN B-1). Replaces the old
+  // whole-video gate: a record with composer filled but arranger blank is now
+  // "missing arranger" instead of "already assigned / skip".
+  function getMissingCreditRoles(record) {
+    return CREDIT_ROLES.filter((role) => isBlank(record && record[role]));
+  }
+
+  // Enrichment eligibility. requireRawHint keeps the conservative music-signal
+  // gate (only records whose description carried credit-like text) so switching
+  // to role-unit judgement does not suddenly target every non-music video.
+  function needsCreditEnrichment(record, { requireRawHint = true } = {}) {
+    if (!record) return false;
+    if (getMissingCreditRoles(record).length === 0) return false;
+    if (!requireRawHint) return true;
+    return !isBlank(record.creditsRaw);
+  }
+
+  // Which of the still-missing roles does this candidate actually fill? Drives
+  // (a) whether a candidate is worth adding and (b) which roles to drop from the
+  // remaining set so the next source only chases what is still blank.
+  function coveredNeededRoles(candidate, missing) {
+    const has = missing instanceof Set ? (r) => missing.has(r) : (r) => (missing || []).includes(r);
+    return CREDIT_ROLES.filter((role) => has(role) && candidate && !isBlank(candidate[role]));
+  }
+
+  // Blank every role a candidate was NOT accepted for, so a source picked only
+  // for (say) the lyricist cannot smuggle its composer value into display,
+  // export, or the force-write commit (DESIGN B-2 "fill missing roles only").
+  function limitCandidateToRoles(candidate, roles) {
+    const limited = Object.assign({}, candidate);
+    for (const role of CREDIT_ROLES) {
+      if (!roles.includes(role)) limited[role] = '';
+    }
+    return limited;
+  }
+
+  // Pure reference for the source waterfall (HANDOFF §3.2/§3.3, DESIGN B-3/B-6):
+  // consult sources in order, each fills only roles still missing, stop once
+  // nothing is missing. The live generateCandidates() mirrors this decision rule
+  // (including limitCandidateToRoles) but fetches lazily per source; this pure
+  // form is what the tests pin to.
+  function waterfallAccept(initialMissing, sourceCandidates) {
+    const missing = new Set(initialMissing);
+    const accepted = [];
+    for (const entry of sourceCandidates || []) {
+      if (!missing.size) break;
+      const candidate = entry && entry.candidate;
+      if (!candidate) continue;
+      const roles = coveredNeededRoles(candidate, missing);
+      if (!roles.length) continue;
+      accepted.push({ id: entry.id, candidate: limitCandidateToRoles(candidate, roles), roles });
+      roles.forEach((role) => missing.delete(role));
+    }
+    return { accepted, remaining: Array.from(missing) };
+  }
+
   function cleanArtistFromChannel(channel) {
-    return String(channel || '').replace(/\s*-\s*Topic\s*$/i, '').trim();
+    return window.CreditTarget.stripTopicChannelSuffix(channel);
   }
 
   function normalizeTitle(value) {
@@ -113,8 +174,13 @@
     };
   }
 
-  function candidateFromSong(record, song, sim, source, detail) {
+  function candidateFromSong(record, song, sim, source, detail, matchPolicy) {
     if (!song || sim < REVIEW_SIM_THRESHOLD) return null;
+    const policy = matchPolicy || {};
+    const isMusicBrainz = source === 'mb';
+    const autoEligible = isMusicBrainz
+      ? detail === 'strict' && policy.autoEligible === true && policy.requiresManualReview === false
+      : true;
     const candidate = {
       id: createCandidateId(record.videoId, source),
       videoId: record.videoId,
@@ -124,10 +190,16 @@
       lyricist: song.lyricist || '',
       arranger: song.arranger || '',
       source,
-      sourceDetail: detail || '',
+      sourceDetail: [detail, policy.manualReviewReason].filter(Boolean).join(' / '),
       matchedTitle: song.title || '',
       sim,
-      selected: sim >= AUTO_SIM_THRESHOLD,
+      autoEligible: autoEligible && sim >= AUTO_SIM_THRESHOLD,
+      requiresManualReview: isMusicBrainz ? !autoEligible : false,
+      recordingVersion: policy.recordingVersion || '',
+      mbRecordingVersion: policy.mbRecordingVersion || '',
+      versionMatch: policy.versionMatch !== false,
+      manualReviewReason: policy.manualReviewReason || '',
+      selected: autoEligible && sim >= AUTO_SIM_THRESHOLD,
     };
     return roleEntries(candidate).length ? candidate : null;
   }
@@ -180,7 +252,6 @@
       this.abortRequested = false;
       this.errors = [];
       this.fetchCache = {
-        utanet: new Map(),
         mb: new Map(),
       };
 
@@ -238,7 +309,6 @@
       this.activeChannel = '';
       this.renderedRows = 0;
       this.errors = [];
-      this.fetchCache.utanet.clear();
       this.fetchCache.mb.clear();
       this.updateProgress('待機中', 0);
       this.setMessage('候補生成を開始してください。');
@@ -287,7 +357,9 @@
     groupUnassigned(records) {
       const groups = new Map();
       for (const record of records) {
-        if (!isUnassignedCreditRecord(record)) continue;
+        // Role-unit gate: include records that still have ANY missing role
+        // (was: only fully-unassigned records). creditsRaw stays required.
+        if (!needsCreditEnrichment(record)) continue;
         const channel = record.channel || '(no channel)';
         if (!groups.has(channel)) groups.set(channel, []);
         groups.get(channel).push(record);
@@ -303,17 +375,6 @@
       if (list.some((existing) => existing.id === candidate.id)) return false;
       list.push(candidate);
       return true;
-    }
-
-    async fetchUtanet(channel) {
-      const artist = cleanArtistFromChannel(channel);
-      if (this.fetchCache.utanet.has(artist)) return this.fetchCache.utanet.get(artist);
-      const response = await sendRuntimeMessage({ type: 'enrichCreditsUtanet', artist });
-      if (!response || !response.success) {
-        throw new Error((response && (response.error || response.reason)) || 'uta-net fetch failed');
-      }
-      this.fetchCache.utanet.set(artist, response);
-      return response;
     }
 
     async fetchMb(channel, title) {
@@ -364,42 +425,55 @@
           this.updateProgress(progressLabel, i / entries.length);
           if (this.env.updateMaintenance) this.env.updateMaintenance('生成中…（中止）', true);
 
+          // Per-video remaining-role tracking. Each source below fills only the
+          // roles still missing and hands the rest to the next source, so a
+          // channel rule that only knows the composer no longer blocks
+          // MusicBrainz for a missing lyricist/arranger (HANDOFF §3.2/§3.3).
+          const states = videos.map((video) => ({ video, missing: new Set(getMissingCreditRoles(video)) }));
+          const stillMissing = () => states.filter((s) => s.missing.size && !this.abortRequested);
+          const applyCandidate = (state, candidate) => {
+            if (this.abortRequested || !candidate) return;
+            const roles = coveredNeededRoles(candidate, state.missing);
+            if (!roles.length) return;
+            // Add a role-limited copy so a candidate accepted for one role does
+            // not carry (and later force-overwrite) another role's value.
+            if (this.addCandidate(limitCandidateToRoles(candidate, roles))) {
+              roles.forEach((role) => state.missing.delete(role));
+            }
+          };
+
+          // Source 1: channel rule (no early `continue` — remaining roles flow on).
           const rule = ruleByChannel.get(channel);
           if (rule) {
-            for (const video of videos) this.addCandidate(createRuleCandidate(video, rule));
-            this.renderAll();
-            continue;
-          }
-
-          let addedForChannel = 0;
-          try {
-            const ut = await this.fetchUtanet(channel);
-            const selectedArtist = ut.selectedArtist ? `${ut.selectedArtist.name}:${ut.selectedArtist.id}` : '';
-            for (const video of videos) {
-              const match = bestMatch(video.title || '', ut.songs || []);
-              const candidate = match && candidateFromSong(video, match.song, match.sim, 'utanet', selectedArtist);
-              if (this.addCandidate(candidate)) addedForChannel++;
+            for (const state of states) {
+              if (!state.missing.size) continue;
+              applyCandidate(state, createRuleCandidate(state.video, rule));
             }
-          } catch (error) {
-            this.errors.push(`${channel}: uta-net ${error.message}`);
           }
 
-          if (addedForChannel === 0 && !this.abortRequested) {
-            for (const video of videos) {
-              if (this.abortRequested) break;
-              try {
-                const mb = await this.fetchMb(channel, video.title || '');
-                const m = mb && mb.candidate;
-                const candidate = m && candidateFromSong(video, {
-                  title: m.mbTitle || mb.title || video.title || '',
-                  composer: m.composer || '',
-                  lyricist: m.lyricist || '',
-                  arranger: m.arranger || '',
-                }, typeof m.sim === 'number' ? m.sim : similarity(video.title || '', m.mbTitle || ''), 'mb', m.stage || '');
-                this.addCandidate(candidate);
-              } catch (error) {
-                this.errors.push(`${channel}: MusicBrainz ${error.message}`);
-              }
+          // Source 3: MusicBrainz per still-missing video (no channel-level gate —
+          // one success elsewhere no longer starves the other videos, HANDOFF §3.3).
+          for (const state of stillMissing()) {
+            if (this.abortRequested) break;
+            try {
+              const mb = await this.fetchMb(channel, state.video.title || '');
+              const m = mb && mb.candidate;
+              const candidate = m && candidateFromSong(state.video, {
+                title: m.mbTitle || mb.title || state.video.title || '',
+                composer: m.composer || '',
+                lyricist: m.lyricist || '',
+                arranger: m.arranger || '',
+              }, typeof m.sim === 'number' ? m.sim : similarity(state.video.title || '', m.mbTitle || ''), 'mb', m.stage || '', {
+                autoEligible: m.autoEligible === true,
+                requiresManualReview: m.requiresManualReview !== false,
+                recordingVersion: m.recordingVersion || '',
+                mbRecordingVersion: m.mbRecordingVersion || '',
+                versionMatch: m.versionMatch === true,
+                manualReviewReason: m.manualReviewReason || '',
+              });
+              applyCandidate(state, candidate);
+            } catch (error) {
+              this.errors.push(`${channel}: MusicBrainz ${error.message}`);
             }
           }
           this.renderAll();
@@ -545,7 +619,7 @@
 
     renderCandidateRow(candidate) {
       const row = document.createElement('tr');
-      const auto = candidate.sim == null || candidate.sim >= AUTO_SIM_THRESHOLD;
+      const auto = candidate.sim == null || candidate.autoEligible === true;
       row.className = auto ? 'enrich-row-auto' : 'enrich-row-review';
 
       const selectCell = document.createElement('td');
@@ -592,7 +666,9 @@
       row.appendChild(roleCell);
 
       const sourceCell = document.createElement('td');
-      sourceCell.textContent = candidate.source;
+      sourceCell.textContent = candidate.sourceDetail
+        ? `${candidate.source} (${candidate.sourceDetail})`
+        : candidate.source;
       row.appendChild(sourceCell);
 
       const simCell = document.createElement('td');
@@ -661,7 +737,10 @@
         videoId: candidate.videoId,
         credits,
         creditsSource: sourceToCreditsSource(candidate.source),
-        force: true,
+        // force:false — honour the dialog's "only blank fields" promise and let
+        // db.js re-check emptiness at write time, closing the stale-snapshot gap
+        // where two same-video candidates could race on one blank role.
+        force: false,
       });
       if (!response || !response.success) {
         throw new Error((response && response.error) || 'UPDATE_CREDITS failed');
@@ -730,7 +809,14 @@
     sequenceRatio,
     similarity,
     bestMatch,
+    isBlank,
     isUnassignedCreditRecord,
+    CREDIT_ROLES,
+    getMissingCreditRoles,
+    needsCreditEnrichment,
+    coveredNeededRoles,
+    limitCandidateToRoles,
+    waterfallAccept,
     createRuleCandidate,
     candidateFromSong,
     sourceToCreditsSource,

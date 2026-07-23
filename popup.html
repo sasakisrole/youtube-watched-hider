@@ -113,7 +113,13 @@
       </div>
       <div id="syncStatus" class="sync-status"></div>
 
-      <button id="clearBtn" class="btn btn-danger">Clear All Data</button>
+      <div class="setting-item" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);">
+        <span class="setting-label">データ削除</span>
+      </div>
+      <div class="setting-desc">削除する範囲を選べます。「全データを初期化」は実行前に自動でバックアップを1件保存します。</div>
+      <button id="clearWatchedBtn" class="btn btn-danger">視聴履歴だけ削除</button>
+      <button id="clearLikedBtn" class="btn btn-danger">高評価データだけ削除</button>
+      <button id="clearAllBtn" class="btn btn-danger">全データを初期化（自動バックアップ後）</button>
 
       <div class="about-section">
         <button id="aboutBtn" class="btn-link about-link">About</button>
@@ -138,6 +144,18 @@
 
     <input type="file" id="fileInput" accept=".json" style="display:none">
     <input type="file" id="syncFileInput" accept=".json" style="display:none">
+
+    <!-- Import mode chooser (u1ps §7.3): shown after a file is picked, with a
+         dry-run diff, so the user explicitly chooses replace vs merge. -->
+    <div id="importModePanel" style="display:none; margin-top:8px; padding:8px; border:1px solid var(--border); border-radius:6px;">
+      <div style="font-weight:600; margin-bottom:4px;">インポート方法を選択</div>
+      <div id="importDiffSummary" style="white-space:pre-line; font-size:12px; margin-bottom:8px;"></div>
+      <button id="importReplaceBtn" class="btn btn-danger">置換（このバックアップ時点に戻す・自動バックアップ後）</button>
+      <button id="importSafeMergeBtn" class="btn">安全に統合（競合は現在のデータを優先）</button>
+      <button id="importBackupMergeBtn" class="btn">バックアップ優先で統合（競合は取込側で上書き）</button>
+      <button id="importCancelBtn" class="btn-link">キャンセル</button>
+    </div>
+
     <div id="status" class="status"></div>
   </div>
 

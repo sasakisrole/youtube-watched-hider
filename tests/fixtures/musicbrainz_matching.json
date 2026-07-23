@@ -1,0 +1,127 @@
+{
+  "shortArtistPairs": [
+    { "target": "xi", "candidate": "Xilent" },
+    { "target": "toe", "candidate": "Toe Fat" },
+    { "target": "Eve", "candidate": "Steve Aoki" },
+    { "target": "Mili", "candidate": "Miliyah" }
+  ],
+  "lookups": [
+    {
+      "id": "title-only-other-artist",
+      "artist": "Eve",
+      "title": "Home",
+      "strict": {
+        "recordings": [
+          { "id": "weak-home", "title": "Home", "score": 80, "artist-credit": [{ "name": "Other Artist", "artist": { "name": "Other Artist" } }] }
+        ]
+      },
+      "titleOnly": {
+        "recordings": [
+          { "id": "other-home", "title": "Home", "score": 100, "artist-credit": [{ "name": "Other Artist", "artist": { "name": "Other Artist" } }] }
+        ]
+      },
+      "recordings": {
+        "other-home": {
+          "relations": [
+            { "type": "composer", "artist": { "name": "Wrong Composer" } },
+            { "type": "arranger", "artist": { "name": "Wrong Arranger" } }
+          ]
+        }
+      }
+    },
+    {
+      "id": "strict-score-wrong-artist",
+      "artist": "Eve",
+      "title": "Dawn",
+      "strict": {
+        "recordings": [
+          { "id": "wrong-dawn", "title": "Dawn", "score": 100, "artist-credit": [{ "name": "Dawn Band", "artist": { "name": "Dawn Band" } }] }
+        ]
+      },
+      "titleOnly": { "recordings": [] },
+      "recordings": {
+        "wrong-dawn": {
+          "relations": [{ "type": "composer", "artist": { "name": "Wrong Dawn Composer" } }]
+        }
+      }
+    },
+    {
+      "id": "fuzzy-exact-artist",
+      "artist": "Eve",
+      "title": "Night Song",
+      "strict": { "recordings": [] },
+      "titleOnly": {
+        "recordings": [
+          { "id": "eve-night", "title": "Night Song", "score": 88, "artist-credit": [{ "name": "Eve", "artist": { "name": "Eve" } }] }
+        ]
+      },
+      "recordings": {
+        "eve-night": {
+          "relations": [{ "type": "composer", "artist": { "name": "Eve" } }]
+        }
+      }
+    },
+    {
+      "id": "remix-version-mismatch",
+      "artist": "Eve",
+      "title": "Signal - Remix",
+      "strict": {
+        "recordings": [
+          { "id": "signal-original", "title": "Signal", "score": 100, "artist-credit": [{ "name": "Eve", "artist": { "name": "Eve" } }] }
+        ]
+      },
+      "titleOnly": {
+        "recordings": [
+          { "id": "signal-original", "title": "Signal", "score": 100, "artist-credit": [{ "name": "Eve", "artist": { "name": "Eve" } }] }
+        ]
+      },
+      "recordings": {
+        "signal-original": {
+          "relations": [
+            { "type": "composer", "artist": { "name": "Work Composer" } },
+            { "type": "arranger", "artist": { "name": "Original Arranger" } }
+          ]
+        }
+      }
+    },
+    {
+      "id": "remix-version-match",
+      "artist": "Eve",
+      "title": "Signal - Remix",
+      "strict": {
+        "recordings": [
+          { "id": "signal-remix", "title": "Signal (Remix)", "score": 100, "artist-credit": [{ "name": "Eve", "artist": { "name": "Eve" } }] }
+        ]
+      },
+      "titleOnly": { "recordings": [] },
+      "recordings": {
+        "signal-remix": {
+          "relations": [
+            { "type": "composer", "artist": { "name": "Work Composer" } },
+            { "type": "arranger", "artist": { "name": "Remix Arranger" } }
+          ]
+        }
+      }
+    },
+    {
+      "id": "strict-exact-normal",
+      "artist": "Eve",
+      "title": "Last Dance",
+      "strict": {
+        "recordings": [
+          { "id": "eve-last-dance", "title": "Last Dance", "score": 100, "artist-credit": [{ "name": "Eve", "artist": { "name": "Eve" } }] }
+        ]
+      },
+      "titleOnly": { "recordings": [] },
+      "recordings": {
+        "eve-last-dance": {
+          "relations": [
+            { "type": "composer", "artist": { "name": "Eve" } },
+            { "type": "lyricist", "artist": { "name": "Eve" } },
+            { "type": "arranger", "artist": { "name": "Numa" } }
+          ]
+        }
+      }
+    }
+  ]
+}

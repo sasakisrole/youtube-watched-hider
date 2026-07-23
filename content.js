@@ -185,7 +185,17 @@ window._ytWatchedHider = (() => {
   function getCachedWatchedState(videoId) {
     if (!videoId) return false;
     if (watchedPositive.has(videoId)) return true;
-    if (cacheMode === 'error') return false;
+    // §8.3 (H1, reviewer-flagged bypass): a failed initial full-cache load
+    // (cacheMode='error') is a DB-confirmation failure, not evidence of "not
+    // watched" — returning false here used to let every lookup short-circuit
+    // to a confident negative BEFORE it ever reached lookupWatchedForIds'
+    // three-valued checkMultiple path, permanently hiding the tri-state fix
+    // for the single most common real-world DB-error trigger (cache load
+    // failure on startup). undefined falls through to the caller's batch path
+    // (cardMap / unchecked -> lookupWatchedForIds -> DBClient.checkMultiple),
+    // which can still recover per-id if the DB is actually reachable, and
+    // otherwise resolves to undefined (indeterminate) without negative-caching.
+    if (cacheMode === 'error') return undefined;
     if (cacheLoaded && cacheMode === 'full') {
       rememberNotWatched(videoId);
       return false;
@@ -240,7 +250,14 @@ window._ytWatchedHider = (() => {
               errorLogged = true;
               console.warn('[YT-Watched-Hider] DB_CHECK_MULTIPLE failed:', e);
             }
-            return false;
+            // §8.3 (H1): "confirmation failed" is NOT "not watched". Returning
+            // false here used to get cached and surfaced downstream as a
+            // confident negative, hiding a false "not watched" state instead of
+            // a real one. `undefined` is the three-valued "indeterminate"
+            // signal — callers must not fold it into the negative case, and we
+            // must not call rememberNotWatched(id) for it (no negative caching
+            // on error; the id gets re-queried on the next lookup instead).
+            return undefined;
           })
           .finally(() => {
             if (pendingLookup.get(id) === lookupPromise) pendingLookup.delete(id);
@@ -580,9 +597,27 @@ window._ytWatchedHider = (() => {
     return '';
   }
 
-  function getInitialPlayerResponseDurationSec() {
+  // Duration for the CURRENT video from ytInitialPlayerResponse. H1 sibling
+  // (PENDING id:8v48): identical staleness risk to getCurrentVideoCategory — a
+  // stale ytInitialPlayerResponse script from a prior SPA page can linger in
+  // document.scripts, so without a videoId check we could save the PREVIOUS
+  // video's length (silently polluting the duration distribution / length-based
+  // taste). When expectedVideoId is supplied we only trust a response that
+  // POSITIVELY matches it; an unattributable response (missing or different id)
+  // is treated as stale and skipped (caller then falls back to meta / <video>).
+  function getInitialPlayerResponseDurationSec(expectedVideoId) {
+    const accept = (playerResponse) => {
+      const durationSec = durationFromPlayerResponse(playerResponse);
+      if (durationSec == null) return null;
+      if (expectedVideoId
+          && videoIdFromPlayerResponse(playerResponse) !== expectedVideoId) {
+        return null;
+      }
+      return durationSec;
+    };
+
     try {
-      const direct = durationFromPlayerResponse(window.ytInitialPlayerResponse);
+      const direct = accept(window.ytInitialPlayerResponse);
       if (direct != null) return direct;
     } catch (_e) { /* isolated world usually cannot see page globals */ }
 
@@ -597,7 +632,7 @@ window._ytWatchedHider = (() => {
         if (!json) continue;
         try {
           const parsed = JSON.parse(json);
-          const durationSec = durationFromPlayerResponse(parsed);
+          const durationSec = accept(parsed);
           if (durationSec != null) return durationSec;
         } catch (_e) { /* try the next script */ }
       }
@@ -680,8 +715,13 @@ window._ytWatchedHider = (() => {
     return total > 0 ? total : null;
   }
 
-  function getCurrentVideoDurationSec() {
-    const fromPlayer = getInitialPlayerResponseDurationSec();
+  // expectedVideoId gates the ytInitialPlayerResponse path against SPA-stale
+  // scripts (see getInitialPlayerResponseDurationSec / H1 sibling id:8v48). The
+  // meta / <video> / seekbar fallbacks read the live DOM/player, so they stay
+  // unguarded — the caller only invokes this once watchMetadataMatches(videoId)
+  // is true, so the current-DOM sources already reflect the right video.
+  function getCurrentVideoDurationSec(expectedVideoId) {
+    const fromPlayer = getInitialPlayerResponseDurationSec(expectedVideoId);
     if (fromPlayer != null) return fromPlayer;
     const meta = document.querySelector('meta[itemprop="duration"]');
     const fromMeta = parseIso8601Duration(meta ? meta.content : '');
@@ -748,10 +788,15 @@ window._ytWatchedHider = (() => {
   }
 
   // Record current video as watched (source: 'self')
-  async function recordCurrentVideo() {
+  // §8.4 (H1): boundVideoId lets the caller pin the videoId captured when the
+  // <video> ended-listener was attached (playback start), instead of re-reading
+  // location.href at fire time. Without this, a fast SPA autoplay transition
+  // between "ended" firing and this function running could already have moved
+  // the URL to the NEXT video, silently recording the wrong one as watched.
+  async function recordCurrentVideo(boundVideoId) {
     if (!enabled && !recordWhileOff) return;
 
-    const videoId = getCurrentVideoId();
+    const videoId = boundVideoId || getCurrentVideoId();
     if (!videoId) return;
 
     try {
@@ -762,7 +807,9 @@ window._ytWatchedHider = (() => {
       const domAgrees = watchMetadataMatches(videoId);
       const title = domAgrees ? getWatchPageTitle() : '';
       const channel = domAgrees ? getWatchPageChannel() : '';
-      const durationSec = domAgrees ? getCurrentVideoDurationSec() : null;
+      // Pass videoId so a stale ytInitialPlayerResponse (SPA leftover) can't
+      // attach the previous video's duration (H1 sibling / id:8v48).
+      const durationSec = domAgrees ? getCurrentVideoDurationSec(videoId) : null;
       // category is only reliable on the watch page; seekbar-card paths omit it.
       // Pass videoId so a stale ytInitialPlayerResponse (SPA leftover) can't
       // attach the previous video's category (H1).
@@ -802,8 +849,15 @@ window._ytWatchedHider = (() => {
     videoRetryCount = 0;
 
     currentVideoElement = video;
+    // §8.4 (H1): bind the videoId NOW (at listener-attach / playback-start time),
+    // not when 'ended' fires. On a fast SPA autoplay transition, the URL can
+    // already point at the NEXT video by the time 'ended' fires for this one —
+    // reading getCurrentVideoId() inside the handler would then record the wrong
+    // video. The bound id is passed through so recordCurrentVideo always records
+    // the video this listener was actually attached to.
+    const boundVideoId = getCurrentVideoId();
     endedHandler = () => {
-      recordCurrentVideo();
+      recordCurrentVideo(boundVideoId);
     };
 
     video.addEventListener('ended', endedHandler);
@@ -928,19 +982,23 @@ window._ytWatchedHider = (() => {
         const results = await lookupWatchedForIds(videoIds);
         for (const [videoId, isWatched] of Object.entries(results)) {
           const matchingCards = cardMap.get(videoId) || [];
-          if (isWatched) {
+          if (isWatched === true) {
             rememberWatched(videoId);
             for (const card of matchingCards) {
               hideCard(card, videoId);
               hiddenByDb++;
             }
-          } else {
+          } else if (isWatched === false) {
             rememberNotWatched(videoId);
             // Mark as checked with the specific videoId so sidebar polling skips these
             for (const card of matchingCards) {
               card.dataset.watchedCheckedId = videoId;
             }
           }
+          // isWatched === undefined (§8.3 H1): DB lookup failed / indeterminate.
+          // Leave the card untouched — not hidden, not marked checked — so it
+          // is retried on the next processPage() pass instead of being cached
+          // as a false "not watched".
         }
       }
 
@@ -1097,6 +1155,51 @@ window._ytWatchedHider = (() => {
   // --- History page scraping ---
   const HISTORY_CARD_SELECTOR = 'yt-lockup-view-model, ytd-video-renderer';
 
+  // §8.5 (H1): per-card scrape state. The old boolean `historyScraped` flag
+  // marked a card "done" the instant it was first looked at — even before its
+  // video link/videoId had rendered or its progress bar had drawn. Once set,
+  // the card was skipped forever (and, in harvest mode with removeProcessed,
+  // removed from the DOM outright), so a card that only revealed its videoId
+  // or reached >=95% progress on a LATER render pass was never re-checked.
+  // `completed` is now only set once a videoId AND its watched-completion
+  // state are both positively confirmed; every other state is retried on the
+  // next scrapeHistoryPage() call instead of being written off after one look.
+  const HISTORY_STATE = {
+    UNKNOWN: 'unknown',     // no video link / videoId resolvable yet
+    PARTIAL: 'partial',     // videoId confirmed but progress < 95% (or bar not drawn yet)
+    COMPLETED: 'completed', // confirmed watched (>=95%) and registered/verified in DB
+    FAILED: 'failed',       // DB check/import failed this pass — retry next pass
+    // §8.5 (🟡1, reviewer): terminal "gave up" state. NEVER implies watched —
+    // it only stops further re-examination/removal bookkeeping once a card has
+    // been retried HISTORY_RETRY_LIMIT times without becoming COMPLETED. This
+    // is what re-bounds the DOM in harvest mode (see HISTORY_RETRY_LIMIT).
+    EXHAUSTED: 'exhausted',
+  };
+
+  // §8.5 (🟡1, reviewer): K = consecutive re-examine passes a card may stay
+  // UNKNOWN/PARTIAL/FAILED before being marked EXHAUSTED (and, in harvest mode,
+  // pruned from the DOM). Without this cap, removeProcessed only ever prunes
+  // COMPLETED cards, so a page with many genuinely <95%-watched entries (which
+  // are correctly PARTIAL forever — that fact never changes) would accumulate
+  // in the DOM without bound across a long harvest scroll, risking memory
+  // growth / tab slowdown. Picked from the middle of the reviewer-suggested
+  // 3-5 range: harvestTick re-scrapes on a ~1.3s cadence (900ms render-settle
+  // wait + a 400ms retry timer), so K=4 gives an UNKNOWN/PARTIAL card ~4
+  // passes (~4-5s) to resolve once its videoId/progress bar actually renders —
+  // comfortably more than the typical 1-2 passes that takes — while still
+  // capping worst-case DOM growth per still-unresolved card to a small,
+  // constant number of retries instead of "forever".
+  const HISTORY_RETRY_LIMIT = 4;
+
+  // Pure state-transition helper (no DOM/chrome deps) so it can be unit-tested
+  // directly: given the card's current historyRetries dataset value (a string,
+  // or undefined/NaN for a card seen for the first time this pass), returns the
+  // next retry count and whether this card has now exhausted its retries.
+  function computeHistoryRetryOutcome(currentRetriesRaw) {
+    const retries = (parseInt(currentRetriesRaw, 10) || 0) + 1;
+    return { retries, exhausted: retries >= HISTORY_RETRY_LIMIT };
+  }
+
   function getHistoryTitle(card) {
     const el = card.querySelector('h3, #video-title, yt-formatted-string#video-title');
     return el ? el.textContent.trim() : getTitleFromCard(card);
@@ -1183,67 +1286,137 @@ window._ytWatchedHider = (() => {
     const cards = document.querySelectorAll(HISTORY_CARD_SELECTOR);
     console.log(`[YT-Watched-Hider] History scrape: found ${cards.length} cards`);
 
-    const candidates = [];
-    const processedCards = [];
+    const candidates = []; // { card, videoId } — confirmed >=95%, awaiting DB check
+    let newlySeen = 0; // cards examined for the first time this pass (harvest stall detection)
+
     for (const card of cards) {
-      if (card.dataset.historyScraped === 'true') continue;
-      card.dataset.historyScraped = 'true';
-      processedCards.push(card);
+      const state = card.dataset.historyState;
+      // COMPLETED: resolved, nothing left to do. EXHAUSTED (§8.5 🟡1): gave up
+      // after HISTORY_RETRY_LIMIT retries — never implies watched, just stops
+      // re-examining a card that has had ample chances to resolve.
+      if (state === HISTORY_STATE.COMPLETED || state === HISTORY_STATE.EXHAUSTED) continue;
+
+      if (!state) newlySeen++;
 
       const link = getHistoryVideoLink(card);
-      if (!link) continue;
+      if (!link) {
+        // Link not rendered yet — leave UNKNOWN so a later pass re-checks it,
+        // instead of writing the card off permanently.
+        card.dataset.historyState = HISTORY_STATE.UNKNOWN;
+        continue;
+      }
 
       const videoId = getVideoIdFromHref(link.href);
-      if (!videoId) continue;
+      if (!videoId) {
+        card.dataset.historyState = HISTORY_STATE.UNKNOWN;
+        continue;
+      }
 
-      // Skip partially watched videos — only register >= 95% progress
-      if (!isHistoryCardCompleted(card)) continue;
+      // Skip partially watched videos — only register >= 95% progress. A false
+      // here can mean "genuinely watched <95%" OR "progress bar hasn't drawn
+      // yet"; either way we don't yet have grounds to call it completed, so it
+      // stays retriable rather than being written off after one look.
+      if (!isHistoryCardCompleted(card)) {
+        card.dataset.historyState = HISTORY_STATE.PARTIAL;
+        continue;
+      }
 
       candidates.push({ card, videoId });
     }
     console.log(`[YT-Watched-Hider] Candidates: ${candidates.length}`);
 
     let added = 0;
+    const completedThisPass = [];
     if (candidates.length > 0) {
       const videoIds = candidates.map(c => c.videoId);
-      const existing = await DBClient.checkMultiple(videoIds);
-
-      const newRecords = [];
-      for (const { card, videoId } of candidates) {
-        if (existing[videoId]) continue;
-
-        const title = getHistoryTitle(card);
-        const channel = getHistoryChannel(card);
-        const sectionDate = getHistorySectionDate(card) || Date.now();
-        newRecords.push({
-          videoId,
-          title,
-          channel: channel || '',
-          watchedAt: sectionDate,
-          firstWatchedAt: sectionDate,
-          playCount: 0,
-          source: 'history',
-        });
+      let existing = null;
+      try {
+        existing = await DBClient.checkMultiple(videoIds);
+      } catch (e) {
+        console.error('[YT-Watched-Hider] History checkMultiple failed:', e);
+        // Confirmation-unable — do not mark completed, retry these next pass.
+        for (const { card } of candidates) card.dataset.historyState = HISTORY_STATE.FAILED;
       }
 
-      if (newRecords.length > 0) {
-        try {
-          await DBClient.importData(newRecords);
-          for (const r of newRecords) rememberWatched(r.videoId);
-          showImportToast(newRecords.length);
-          added = newRecords.length;
-          console.log(`[YT-Watched-Hider] Imported ${added} new videos from history`);
-        } catch (e) {
-          console.error('[YT-Watched-Hider] History batch import failed:', e);
+      if (existing) {
+        const newEntries = []; // { card, videoId, record }
+        for (const { card, videoId } of candidates) {
+          if (existing[videoId]) {
+            card.dataset.historyState = HISTORY_STATE.COMPLETED;
+            completedThisPass.push(card);
+            continue;
+          }
+
+          const title = getHistoryTitle(card);
+          const channel = getHistoryChannel(card);
+          const sectionDate = getHistorySectionDate(card) || Date.now();
+          newEntries.push({
+            card,
+            videoId,
+            record: {
+              videoId,
+              title,
+              channel: channel || '',
+              watchedAt: sectionDate,
+              firstWatchedAt: sectionDate,
+              playCount: 0,
+              source: 'history',
+            },
+          });
+        }
+
+        if (newEntries.length > 0) {
+          try {
+            await DBClient.importData(newEntries.map((e) => e.record));
+            for (const { card, videoId } of newEntries) {
+              rememberWatched(videoId);
+              card.dataset.historyState = HISTORY_STATE.COMPLETED;
+              completedThisPass.push(card);
+            }
+            showImportToast(newEntries.length);
+            added = newEntries.length;
+            console.log(`[YT-Watched-Hider] Imported ${added} new videos from history`);
+          } catch (e) {
+            console.error('[YT-Watched-Hider] History batch import failed:', e);
+            // Import unconfirmed — leave retriable rather than assuming completed.
+            for (const { card } of newEntries) card.dataset.historyState = HISTORY_STATE.FAILED;
+          }
         }
       }
     }
 
-    if (removeProcessed) {
-      for (const card of processedCards) card.remove();
+    // §8.5 (🟡1, reviewer): bound the DOM by retiring cards that have been
+    // examined HISTORY_RETRY_LIMIT times without becoming COMPLETED. Only
+    // cards actually touched this pass (state set above, or left over as
+    // FAILED from a prior DB error) are counted — COMPLETED/EXHAUSTED cards
+    // were already skipped by the `continue` above and are untouched here.
+    const exhaustedThisPass = [];
+    for (const card of cards) {
+      const state = card.dataset.historyState;
+      if (state === HISTORY_STATE.COMPLETED || state === HISTORY_STATE.EXHAUSTED) continue;
+      if (!state) continue; // not examined at all this pass (defensive; shouldn't happen)
+
+      const outcome = computeHistoryRetryOutcome(card.dataset.historyRetries);
+      if (outcome.exhausted) {
+        card.dataset.historyState = HISTORY_STATE.EXHAUSTED;
+        delete card.dataset.historyRetries;
+        exhaustedThisPass.push(card);
+      } else {
+        card.dataset.historyRetries = String(outcome.retries);
+      }
     }
 
-    return { added, scanned: processedCards.length };
+    // Prune cards that reached a terminal state this pass: COMPLETED (resolved
+    // watched) or EXHAUSTED (gave up after HISTORY_RETRY_LIMIT retries, §8.5
+    // 🟡1 DOM-boundedness fix). Anything still UNKNOWN/PARTIAL/FAILED stays in
+    // the DOM so the next scrapeHistoryPage() call (mutation observer /
+    // harvest tick / SPA nav) can re-examine it.
+    if (removeProcessed) {
+      for (const card of completedThisPass) card.remove();
+      for (const card of exhaustedThisPass) card.remove();
+    }
+
+    return { added, scanned: newlySeen };
   }
 
   // ---- History Harvest ----
@@ -1559,14 +1732,18 @@ window._ytWatchedHider = (() => {
       const ids = unchecked.map(c => c.videoId);
       const results = await lookupWatchedForIds(ids);
       for (const { card, videoId } of unchecked) {
-        if (results[videoId]) {
+        const isWatched = results[videoId];
+        if (isWatched === true) {
           rememberWatched(videoId);
           hideCard(card, videoId);
-        } else {
+        } else if (isWatched === false) {
           rememberNotWatched(videoId);
           // Store the checked videoId so we can detect recycling
           card.dataset.watchedCheckedId = videoId;
         }
+        // isWatched === undefined (§8.3 H1): indeterminate (DB lookup failed) —
+        // leave untouched so it's retried on the next recommendation poll
+        // instead of being cached as a false "not watched".
       }
     } catch (e) {
       // DB error, will retry on next poll
@@ -2331,6 +2508,18 @@ window._ytWatchedHider = (() => {
     }
   }
 
+  // §8.2 (H1): bound every fetch proxied through this content script (they run
+  // in the YouTube tab so real cookies are attached — see FETCH_WATCH_HTML
+  // etc. below). background.js's own abort/port-disconnect signal is checked
+  // BEFORE it sends the message (see sendToYouTubeTab / fetchWatchHtmlQueued in
+  // background.js) but cannot reach into a fetch already in flight here, so a
+  // stalled request would otherwise never resolve and the caller's outer
+  // stop/queue logic would never get control back. A local per-fetch timeout
+  // is the only backstop for that. (Tab closure / navigating off youtube.com
+  // entirely already terminates this script's execution context, so those
+  // cases don't need explicit handling here.)
+  const PROXY_FETCH_TIMEOUT_MS = 25000;
+
   // Listen for messages from background script
   function onMessage(message, sender, sendResponse) {
     if (message.type === 'VIDEO_DETECTED') {
@@ -2417,9 +2606,11 @@ window._ytWatchedHider = (() => {
       // avoids the google.com/sorry bot-challenge that extension-origin
       // credentials:'omit' fetches trigger after a burst.
       (async () => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), PROXY_FETCH_TIMEOUT_MS);
         try {
           const url = `https://www.youtube.com/watch?v=${encodeURIComponent(message.videoId)}`;
-          const res = await fetch(url);
+          const res = await fetch(url, { signal: controller.signal });
           const finalUrl = res.url || '';
           if (/google\.com\/sorry/i.test(finalUrl)) {
             sendResponse({ success: false, reason: 'sorry-redirect', finalUrl });
@@ -2432,7 +2623,9 @@ window._ytWatchedHider = (() => {
           const html = await res.text();
           sendResponse({ success: true, html, finalUrl });
         } catch (e) {
-          sendResponse({ success: false, reason: 'fetch-error', error: e.message });
+          sendResponse({ success: false, reason: e.name === 'AbortError' ? 'timeout' : 'fetch-error', error: e.message });
+        } finally {
+          clearTimeout(timer);
         }
       })();
       return true;
@@ -2440,9 +2633,11 @@ window._ytWatchedHider = (() => {
 
     if (message.type === 'FETCH_PLAYLIST_HTML') {
       (async () => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), PROXY_FETCH_TIMEOUT_MS);
         try {
           const url = `https://www.youtube.com/playlist?list=${encodeURIComponent(message.listId || 'LL')}`;
-          const res = await fetch(url);
+          const res = await fetch(url, { signal: controller.signal });
           const finalUrl = res.url || '';
           if (/google\.com\/sorry/i.test(finalUrl)) {
             sendResponse({ success: false, reason: 'sorry-redirect', finalUrl });
@@ -2455,7 +2650,9 @@ window._ytWatchedHider = (() => {
           const html = await res.text();
           sendResponse({ success: true, html, finalUrl });
         } catch (e) {
-          sendResponse({ success: false, reason: 'fetch-error', error: e.message });
+          sendResponse({ success: false, reason: e.name === 'AbortError' ? 'timeout' : 'fetch-error', error: e.message });
+        } finally {
+          clearTimeout(timer);
         }
       })();
       return true;
@@ -2464,6 +2661,8 @@ window._ytWatchedHider = (() => {
     if (message.type === 'FETCH_INNERTUBE_BROWSE') {
       // Proxy POST to youtubei/v1/browse with full auth headers (LL is private).
       (async () => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), PROXY_FETCH_TIMEOUT_MS);
         try {
           const url = `https://www.youtube.com/youtubei/v1/browse?prettyPrint=false${message.apiKey ? '&key=' + encodeURIComponent(message.apiKey) : ''}`;
           const headers = {
@@ -2480,6 +2679,7 @@ window._ytWatchedHider = (() => {
             headers,
             credentials: 'include',
             body: JSON.stringify(message.body || {}),
+            signal: controller.signal,
           });
           if (!res.ok) {
             sendResponse({ success: false, reason: 'http-' + res.status });
@@ -2488,7 +2688,9 @@ window._ytWatchedHider = (() => {
           const data = await res.json();
           sendResponse({ success: true, data });
         } catch (e) {
-          sendResponse({ success: false, reason: 'fetch-error', error: e.message });
+          sendResponse({ success: false, reason: e.name === 'AbortError' ? 'timeout' : 'fetch-error', error: e.message });
+        } finally {
+          clearTimeout(timer);
         }
       })();
       return true;

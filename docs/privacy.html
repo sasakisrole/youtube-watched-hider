@@ -55,11 +55,12 @@
 <p>本拡張は Chrome 拡張の offscreen document 機能を使い、IndexedDB 操作と大容量 JSON バックアップ用 Blob URL の生成を拡張機能側の画面外ドキュメントで行います。これは YouTube タブを開いていない状態でも履歴ビューア・エクスポート・自動バックアップを動作させるための内部処理であり、外部送信を伴いません。</p>
 
 <h3>外部通信</h3>
-<p>本拡張は、機能実行に必要な範囲で YouTube 公式エンドポイントにのみ通信します。</p>
+<p>本拡張は、機能実行に必要な範囲で YouTube 公式エンドポイントおよび楽曲データベース MusicBrainz に通信します。</p>
 <ul>
   <li><code>https://www.youtube.com/oembed</code> — 動画タイトル / チャンネル名の補完取得</li>
   <li><code>https://www.youtube.com/watch?v=...</code> — 埋め込み禁止動画のメタデータ取得フォールバック、作曲/作詞/編曲クレジット、動画長（<code>lengthSeconds</code>）の補完</li>
   <li><code>https://www.youtube.com/playlist?list=LL</code> および <code>https://www.youtube.com/youtubei/v1/browse</code> — ユーザー操作時の高評価プレイリスト同期</li>
+  <li><code>https://musicbrainz.org/ws/2/...</code> — ユーザーが「Fix Credits」を実行したときのみ、作曲/作詞/編曲クレジット候補を補完するための照会。送信するのはアーティスト名・曲タイトル由来の検索文字列のみで、Cookie や YouTube 認証情報は送信せず、開発者サーバーを経由しません。</li>
 </ul>
 <p>YouTubeページ上で実行される content script から YouTube 自身へ同一オリジン通信する場合、ブラウザが YouTube の Cookie または認証ヘッダを付与することがあります。これらは YouTube 以外の外部サーバー、本拡張の開発者、第三者には送信・保存されません。</p>
 
@@ -75,7 +76,7 @@
 <h2>English</h2>
 <p>This extension ("YouTube Watched Hider") does <strong>not</strong> collect, transmit, or share personal data with the developer or any third party. Watch history, liked-video sync data, extension settings, backup status, and sync metadata are stored locally in the browser (<code>chrome.storage.local</code> / IndexedDB). Liked sync metadata does not store YouTube cookies or authorization headers.</p>
 <p>The extension uses Chrome's offscreen document feature for internal IndexedDB access and Blob URL generation for JSON export / backup. This does not transmit data externally.</p>
-<p>External requests are limited to YouTube endpoints such as <code>oembed</code>, public <code>watch</code> page HTML for metadata / credits / duration backfill, <code>playlist?list=LL</code>, and <code>youtubei/v1/browse</code>. When the extension proxies same-origin requests from a YouTube tab, the browser may attach YouTube cookies or an authorization header for YouTube only. These credentials are never sent to the developer or any third party and are not stored by the extension.</p>
+<p>External requests go to YouTube endpoints such as <code>oembed</code>, public <code>watch</code> page HTML for metadata / credits / duration backfill, <code>playlist?list=LL</code>, and <code>youtubei/v1/browse</code>, and to the MusicBrainz music database (<code>https://musicbrainz.org/ws/2/...</code>) — only when you run "Fix Credits" — to look up composer / lyricist / arranger candidates. Only search strings derived from the artist name and track title are sent to MusicBrainz; no cookies or YouTube credentials are sent, and requests do not pass through any developer server. When the extension proxies same-origin requests from a YouTube tab, the browser may attach YouTube cookies or an authorization header for YouTube only. These credentials are never sent to the developer or any third party and are not stored by the extension.</p>
 <p>Uninstalling the extension removes all stored data.</p>
 <p>Contact: <a href="https://github.com/sasakisrole/youtube-watched-hider/issues">https://github.com/sasakisrole/youtube-watched-hider/issues</a></p>
 

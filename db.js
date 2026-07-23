@@ -234,7 +234,8 @@ if (typeof WatchedDB === 'undefined') {
       });
     }
 
-    // Update credits (composer/lyricist/arranger). Force overwrites non-empty.
+    // Update credits (composer/lyricist/arranger). Role values are always
+    // blank-only; force is retained only for creditsRaw evidence refreshes.
     // source: 'topic' | 'general' — 抽出元を記録（集計で分離するため）
     async function updateCredits(videoId, credits, force = false, source = '') {
       const db = await openDB();
@@ -248,12 +249,14 @@ if (typeof WatchedDB === 'undefined') {
           if (!existing) return;
           for (const k of ['composer', 'lyricist', 'arranger', 'creditsRaw']) {
             const v = credits && credits[k];
-            if (v && (force || !existing[k])) {
+            const valid = k === 'creditsRaw' || globalThis.CreditTarget.isValidCreditValue(v);
+            const canWrite = k === 'creditsRaw' ? (force || !existing[k]) : !existing[k];
+            if (v && valid && canWrite) {
               existing[k] = v;
               didUpdate = true;
             }
           }
-          if (source && (force || !existing.creditsSource)) {
+          if (didUpdate && source && !existing.creditsSource) {
             existing.creditsSource = source;
           }
           // Always stamp "checked" so we can skip already-scanned videos next run.
@@ -439,65 +442,84 @@ if (typeof WatchedDB === 'undefined') {
     }
 
     function normalizeExportSource(source) {
-      return ['manual', 'auto', 'backup-now'].includes(source) ? source : 'manual';
+      // u1ps (Codex B1 VERIFY minor 3): 'pre-reset'/'pre-replace' are the
+      // mandatory safety backups taken before a destructive full-reset / replace
+      // import, so the export's own audit source records them accurately.
+      return ['manual', 'auto', 'backup-now', 'pre-reset', 'pre-replace'].includes(source) ? source : 'manual';
     }
 
-    function emptyLikedSyncMeta() {
-      return {
-        schemaVersion: 2,
-        lastAccountId: '',
-        accounts: {},
-      };
-    }
+    // u1ps §7.1 (Option A): normalize likedSyncMeta to the RUNTIME FLAT form and
+    // preserve it losslessly through export/import.
+    //
+    // The runtime writer (background.js syncLikedPlaylist) persists a flat object
+    // {accountId, ownerName, ..., identityConfidence, partial, ...} to
+    // chrome.storage.local, and every reader (the account-change guard at
+    // background.js meta.accountId, analyzer.js meta.ownerHandle||meta.ownerName)
+    // reads it flat. Prior export/import converted this to an accounts-map
+    // ({schemaVersion:2, lastAccountId, accounts:{}}) which DROPPED the
+    // identity-confidence / partial fields AND, on restore, left storage in
+    // accounts-map form so the flat readers silently broke (meta.accountId
+    // undefined => account-change / 誤同期防止 guard disabled after import).
+    //
+    // This normalizer accepts BOTH shapes so pre-u1ps accounts-map backups still
+    // import, but always OUTPUTS the flat runtime shape. Runtime-only fields
+    // absent from an old accounts-map backup fall back to defaults.
+    function sanitizeLikedSyncMetaFlat(meta) {
+      if (!meta || typeof meta !== 'object') return null;
 
-    function sanitizeLikedSyncMeta(meta, useEmptyFallback = false) {
-      if (!meta || typeof meta !== 'object') return useEmptyFallback ? emptyLikedSyncMeta() : null;
-      const rawAccounts = meta.accounts && typeof meta.accounts === 'object' ? meta.accounts : null;
-      const accounts = {};
-      if (rawAccounts) {
-        for (const [rawId, rawAccount] of Object.entries(rawAccounts)) {
-          if (!rawAccount || typeof rawAccount !== 'object') continue;
-          const accountId = typeof rawAccount.accountId === 'string' && rawAccount.accountId
-            ? rawAccount.accountId
-            : String(rawId || '');
-          if (!accountId) continue;
-          accounts[accountId] = {
-            accountId,
-            ownerName: typeof rawAccount.ownerName === 'string' ? rawAccount.ownerName : '',
-            ownerHandle: typeof rawAccount.ownerHandle === 'string' ? rawAccount.ownerHandle : '',
-            ownerChannelId: typeof rawAccount.ownerChannelId === 'string' ? rawAccount.ownerChannelId : '',
-            lastSyncedAt: typeof rawAccount.lastSyncedAt === 'number' ? rawAccount.lastSyncedAt : 0,
-            count: typeof rawAccount.count === 'number' ? rawAccount.count : 0,
-            accountSource: typeof rawAccount.accountSource === 'string' ? rawAccount.accountSource : '',
-          };
-        }
-      } else {
-        const accountId = typeof meta.accountId === 'string' && meta.accountId
-          ? meta.accountId
-          : (typeof meta.ownerChannelId === 'string' && meta.ownerChannelId
-            ? meta.ownerChannelId
-            : (typeof meta.ownerHandle === 'string' && meta.ownerHandle ? meta.ownerHandle : ''));
-        if (accountId) {
-          accounts[accountId] = {
-            accountId,
-            ownerName: typeof meta.ownerName === 'string' ? meta.ownerName : '',
-            ownerHandle: typeof meta.ownerHandle === 'string' ? meta.ownerHandle : '',
-            ownerChannelId: typeof meta.ownerChannelId === 'string' ? meta.ownerChannelId : '',
-            lastSyncedAt: typeof meta.lastSyncedAt === 'number' ? meta.lastSyncedAt : 0,
-            count: typeof meta.count === 'number' ? meta.count : 0,
-            accountSource: typeof meta.accountSource === 'string' ? meta.accountSource : '',
-          };
-        }
+      // Legacy accounts-map backup: derive the flat record from the last-used
+      // account (or the first present). Runtime-only fields (identityConfidence,
+      // partial, hasMore, degraded, droppedLoose, lastError, unknownConfirmedAt)
+      // were never stored in that shape, so they take defaults.
+      let src = meta;
+      if (meta.accounts && typeof meta.accounts === 'object') {
+        const rawAccounts = meta.accounts;
+        const keys = Object.keys(rawAccounts);
+        if (keys.length === 0) return null;
+        const pickId = typeof meta.lastAccountId === 'string' && rawAccounts[meta.lastAccountId]
+          ? meta.lastAccountId
+          : keys[0];
+        const acc = rawAccounts[pickId];
+        if (!acc || typeof acc !== 'object') return null;
+        src = {
+          accountId: typeof acc.accountId === 'string' && acc.accountId ? acc.accountId : String(pickId || ''),
+          ownerName: acc.ownerName,
+          ownerHandle: acc.ownerHandle,
+          ownerChannelId: acc.ownerChannelId,
+          lastSyncedAt: acc.lastSyncedAt,
+          count: acc.count,
+        };
       }
 
-      const lastAccountId = typeof meta.lastAccountId === 'string' && meta.lastAccountId
-        ? meta.lastAccountId
-        : Object.keys(accounts)[0] || '';
+      const str = (v) => (typeof v === 'string' ? v : '');
+      const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+      const numOrNull = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+      const bool = (v) => v === true;
+
+      const accountId = typeof src.accountId === 'string' && src.accountId
+        ? src.accountId
+        : (typeof src.ownerChannelId === 'string' && src.ownerChannelId
+          ? src.ownerChannelId
+          : (typeof src.ownerHandle === 'string' && src.ownerHandle ? src.ownerHandle : ''));
+      // No usable identity at all => treat as no meta (matches runtime null).
+      if (!accountId && !str(src.ownerName) && !str(src.ownerHandle) && !str(src.ownerChannelId)) {
+        return null;
+      }
 
       return {
-        schemaVersion: 2,
-        lastAccountId,
-        accounts,
+        accountId,
+        ownerName: str(src.ownerName),
+        ownerHandle: str(src.ownerHandle),
+        ownerChannelId: str(src.ownerChannelId),
+        identityConfidence: str(src.identityConfidence),
+        unknownConfirmedAt: numOrNull(src.unknownConfirmedAt),
+        lastSyncedAt: num(src.lastSyncedAt),
+        count: num(src.count),
+        partial: bool(src.partial),
+        hasMore: bool(src.hasMore),
+        degraded: bool(src.degraded),
+        droppedLoose: num(src.droppedLoose),
+        lastError: typeof src.lastError === 'string' ? src.lastError : null,
       };
     }
 
@@ -542,7 +564,7 @@ if (typeof WatchedDB === 'undefined') {
         },
         watchedVideos,
         likedVideos,
-        likedSyncMeta: sanitizeLikedSyncMeta(options.likedSyncMeta, true),
+        likedSyncMeta: sanitizeLikedSyncMetaFlat(options.likedSyncMeta),
       };
     }
 
@@ -572,10 +594,6 @@ if (typeof WatchedDB === 'undefined') {
       return true;
     }
 
-    function validateWatchedRecords(records) {
-      return Array.isArray(records) && records.every(isValidRecord);
-    }
-
     function isValidLikedRecord(record) {
       if (!record || typeof record !== 'object' || typeof record.videoId !== 'string' || record.videoId.length === 0) return false;
       const stringFields = ['title', 'channel', 'accountId'];
@@ -589,33 +607,86 @@ if (typeof WatchedDB === 'undefined') {
       return true;
     }
 
-    function validateLikedRecords(records) {
-      return Array.isArray(records) && records.every(isValidLikedRecord);
+    // Split records into valid/dropped without throwing, so a backup with a
+    // few corrupt entries can still restore the rest (M3: tolerant import).
+    function partitionValidRecords(records, isValid) {
+      const valid = [];
+      let dropped = 0;
+      for (const r of records) {
+        if (isValid(r)) valid.push(r);
+        else dropped++;
+      }
+      return { valid, dropped };
     }
 
     function parseImportData(data) {
-      const watchedVideos = unwrapWatchedRecords(data);
-      if (!validateWatchedRecords(watchedVideos)) {
-        throw new Error('Invalid import format: watched records must be an array of valid records');
+      const watchedRaw = unwrapWatchedRecords(data);
+      // Structural failure (not an array / unrecognized envelope) is
+      // unrecoverable and still throws. Per-record corruption is tolerated
+      // below so a mostly-good backup restores its valid records (M3).
+      if (!Array.isArray(watchedRaw)) {
+        throw new Error('Invalid import format: unrecognized structure (expected an array or a versioned envelope)');
       }
+      const w = partitionValidRecords(watchedRaw, isValidRecord);
 
       let likedVideos = [];
+      let droppedLiked = 0;
+      let likedStructuralError = false;
       let likedSyncMeta = null;
       if (data && typeof data === 'object' && data.schemaVersion === 2) {
-        if (data.likedVideos != null) {
-          if (!validateLikedRecords(data.likedVideos)) {
-            throw new Error('Invalid import format: likedVideos must be an array of valid records');
-          }
-          likedVideos = data.likedVideos;
+        if (Array.isArray(data.likedVideos)) {
+          const l = partitionValidRecords(data.likedVideos, isValidLikedRecord);
+          likedVideos = l.valid;
+          droppedLiked = l.dropped;
+        } else if (data.likedVideos != null) {
+          // u1ps (Codex B1 VERIFY minor 2): a present-but-non-array likedVideos
+          // is skipped (liked data is re-syncable) rather than aborting the whole
+          // restore, but flag it so the UI can warn instead of dropping silently.
+          likedStructuralError = true;
         }
-        likedSyncMeta = data.likedSyncMeta != null ? sanitizeLikedSyncMeta(data.likedSyncMeta) : null;
+        likedSyncMeta = sanitizeLikedSyncMetaFlat(data.likedSyncMeta);
       }
 
       return {
         schemaVersion: data && typeof data === 'object' && data.schemaVersion === 2 ? 2 : 1,
-        watchedVideos,
+        watchedVideos: w.valid,
         likedVideos,
         likedSyncMeta,
+        droppedWatched: w.dropped,
+        droppedLiked,
+        likedStructuralError,
+      };
+    }
+
+    // u1ps §7.3: pure, read-only dry-run diff between a parsed import backup and
+    // the current DB ids. Powers the "追加 / 更新 / 削除予定 / 無効" preview shown
+    // before the user picks an import mode.
+    //   add         = ids in backup but not currently present (new records)
+    //   overlap     = ids in both (updated/merged/overwritten per mode)
+    //   currentOnly = ids present now but absent from backup — REMOVED only by 置換
+    //   invalid     = records dropped while parsing the backup
+    function diffImport(parsed, currentWatchedIds, currentLikedIds) {
+      function counts(backupRecords, currentIds) {
+        const cur = new Set(Array.isArray(currentIds) ? currentIds : []);
+        const bk = new Set((Array.isArray(backupRecords) ? backupRecords : [])
+          .map((r) => r && r.videoId)
+          .filter((v) => typeof v === 'string' && v));
+        let add = 0;
+        let overlap = 0;
+        for (const id of bk) { if (cur.has(id)) overlap++; else add++; }
+        let currentOnly = 0;
+        for (const id of cur) { if (!bk.has(id)) currentOnly++; }
+        return { backup: bk.size, current: cur.size, add, overlap, currentOnly };
+      }
+      const p = parsed || {};
+      return {
+        watched: counts(p.watchedVideos, currentWatchedIds),
+        liked: counts(p.likedVideos, currentLikedIds),
+        invalid: {
+          watched: p.droppedWatched || 0,
+          liked: p.droppedLiked || 0,
+          likedStructural: !!p.likedStructuralError,
+        },
       };
     }
 
@@ -645,8 +716,10 @@ if (typeof WatchedDB === 'undefined') {
     }
 
     async function importData(records) {
-      if (!validateWatchedRecords(records)) {
-        throw new Error('Invalid import records');
+      // Tolerant (M3): only a non-array is unrecoverable; individual invalid
+      // records are dropped so the rest still import.
+      if (!Array.isArray(records)) {
+        throw new Error('Invalid import records: expected an array');
       }
       const db = await openDB();
       const normalized = records.filter(isValidRecord).map(normalizeRecord);
@@ -658,6 +731,7 @@ if (typeof WatchedDB === 'undefined') {
         }
         tx.oncomplete = () => resolve(normalized.length);
         tx.onerror = (event) => reject(event.target.error);
+        tx.onabort = (event) => reject(event.target.error);
       });
     }
 
@@ -666,9 +740,13 @@ if (typeof WatchedDB === 'undefined') {
       return new Promise((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, 'readwrite');
         const store = tx.objectStore(STORE_NAME);
-        const request = store.clear();
-        request.onsuccess = () => resolve();
-        request.onerror = (event) => reject(event.target.error);
+        store.clear();
+        // Resolve on tx.oncomplete (M2): request.onsuccess fires before the
+        // transaction commits, so callers that immediately re-count/export
+        // could observe pre-commit state, or treat a later abort as success.
+        tx.oncomplete = () => resolve();
+        tx.onerror = (event) => reject(event.target.error);
+        tx.onabort = (event) => reject(event.target.error);
       });
     }
 
@@ -734,11 +812,15 @@ if (typeof WatchedDB === 'undefined') {
     // Merge import: only add new records, keep existing ones intact
     // Returns { added, skipped, total }
     async function mergeImport(records) {
-      if (!validateWatchedRecords(records)) {
-        throw new Error('Invalid import records');
+      // Tolerant (M3): drop individual invalid records instead of rejecting the
+      // whole merge; only a non-array is unrecoverable.
+      if (!Array.isArray(records)) {
+        throw new Error('Invalid import records: expected an array');
       }
       const db = await openDB();
-      const valid = records.filter(isValidRecord).map(normalizeRecord);
+      const validRaw = records.filter(isValidRecord);
+      const dropped = records.length - validRaw.length;
+      const valid = validRaw.map(normalizeRecord);
       return new Promise((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, 'readwrite');
         const store = tx.objectStore(STORE_NAME);
@@ -746,7 +828,10 @@ if (typeof WatchedDB === 'undefined') {
         let skipped = 0;
         let pending = valid.length;
 
-        if (pending === 0) return resolve({ added: 0, skipped: 0, total: 0 });
+        // pending === 0 (empty / all-invalid) intentionally falls through: an
+        // empty readwrite tx still fires tx.oncomplete, which resolves with the
+        // consistent shape { added, skipped, total, dropped } (M2 commit-gating
+        // + M3 dropped count on every path).
 
         for (const record of valid) {
           const getReq = store.get(record.videoId);
@@ -823,8 +908,9 @@ if (typeof WatchedDB === 'undefined') {
           };
         }
 
-        tx.oncomplete = () => resolve({ added, skipped, total: valid.length });
+        tx.oncomplete = () => resolve({ added, skipped, total: valid.length, dropped });
         tx.onerror = (event) => reject(event.target.error);
+        tx.onabort = (event) => reject(event.target.error);
       });
     }
 
@@ -884,10 +970,9 @@ if (typeof WatchedDB === 'undefined') {
 
     async function importLikedData(records) {
       const db = await openDB();
-      if (!validateLikedRecords(records || [])) {
-        throw new Error('Invalid liked import records');
-      }
-      const normalized = (records || []).map(normalizeLikedRecord);
+      // Tolerant (M3): drop invalid liked records instead of rejecting all.
+      const list = Array.isArray(records) ? records : [];
+      const normalized = list.filter(isValidLikedRecord).map(normalizeLikedRecord);
       return new Promise((resolve, reject) => {
         const tx = db.transaction(LIKED_STORE, 'readwrite');
         const store = tx.objectStore(LIKED_STORE);
@@ -896,6 +981,41 @@ if (typeof WatchedDB === 'undefined') {
         }
         tx.oncomplete = () => resolve(normalized.length);
         tx.onerror = (event) => reject(event.target.error);
+        tx.onabort = (event) => reject(event.target.error);
+      });
+    }
+
+    // u1ps §7.3 (Codex B2 VERIFY blocker 1): current-priority liked merge for the
+    // "安全に統合" mode. Only ADD liked ids not already present; existing liked
+    // records are kept untouched (current wins), unlike importLikedData's put
+    // (backup wins). Returns { added, skipped, total }.
+    async function mergeLikedData(records) {
+      const list = Array.isArray(records) ? records : [];
+      // Dedupe by videoId (Codex B2 minor 2): duplicate new ids in the backup
+      // would otherwise each observe "absent" and over-count `added`.
+      const seen = new Set();
+      const normalized = [];
+      for (const rec of list.filter(isValidLikedRecord).map(normalizeLikedRecord)) {
+        if (seen.has(rec.videoId)) continue;
+        seen.add(rec.videoId);
+        normalized.push(rec);
+      }
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(LIKED_STORE, 'readwrite');
+        const store = tx.objectStore(LIKED_STORE);
+        let added = 0;
+        let skipped = 0;
+        // Empty list still fires tx.oncomplete and resolves with the consistent shape.
+        for (const record of normalized) {
+          const getReq = store.get(record.videoId);
+          getReq.onsuccess = () => {
+            if (getReq.result) { skipped++; } else { store.put(record); added++; }
+          };
+        }
+        tx.oncomplete = () => resolve({ added, skipped, total: normalized.length });
+        tx.onerror = (event) => reject(event.target.error);
+        tx.onabort = (event) => reject(event.target.error);
       });
     }
 
@@ -905,20 +1025,77 @@ if (typeof WatchedDB === 'undefined') {
         const tx = db.transaction(LIKED_STORE, 'readwrite');
         const store = tx.objectStore(LIKED_STORE);
         if (!accountId) {
-          const req = store.clear();
-          req.onsuccess = () => resolve();
-          req.onerror = (e) => reject(e.target.error);
-          return;
+          store.clear();
+        } else {
+          const idx = store.index('accountId');
+          const range = IDBKeyRange.only(accountId);
+          const req = idx.openCursor(range);
+          req.onsuccess = (e) => {
+            const c = e.target.result;
+            if (c) { c.delete(); c.continue(); }
+          };
         }
-        const idx = store.index('accountId');
-        const range = IDBKeyRange.only(accountId);
-        const req = idx.openCursor(range);
-        req.onsuccess = (e) => {
-          const c = e.target.result;
-          if (c) { c.delete(); c.continue(); }
-        };
+        // Resolve on tx.oncomplete (M2): unify both branches on transaction
+        // commit so the clear-all path no longer resolves before commit.
         tx.oncomplete = () => resolve();
         tx.onerror = (e) => reject(e.target.error);
+        tx.onabort = (e) => reject(e.target.error);
+      });
+    }
+
+    // u1ps §7.4 (Codex B1 VERIFY, freeze-free reset): delete a SPECIFIC set of
+    // record ids from both watched + liked stores in one transaction. The
+    // "全データを初期化" flow passes the exact ids captured in the pre-reset backup
+    // snapshot, so any record written AFTER the snapshot is not in these lists and
+    // survives — it is never deleted-without-backup, and no lock/freeze is needed
+    // to avoid the backup->clear race. Empty lists => no-op. likedSyncMeta lives
+    // in chrome.storage.local (not IndexedDB) and is cleared by the caller.
+    async function deleteManyRecords(watchedIds, likedIds) {
+      const wIds = Array.isArray(watchedIds) ? watchedIds : [];
+      const lIds = Array.isArray(likedIds) ? likedIds : [];
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction([STORE_NAME, LIKED_STORE], 'readwrite');
+        const wStore = tx.objectStore(STORE_NAME);
+        const lStore = tx.objectStore(LIKED_STORE);
+        for (const id of wIds) wStore.delete(id);
+        for (const id of lIds) lStore.delete(id);
+        // Resolve on commit (M2 pattern): request.onsuccess fires pre-commit.
+        tx.oncomplete = () => resolve({ watched: wIds.length, liked: lIds.length });
+        tx.onerror = (event) => reject(event.target.error);
+        tx.onabort = (event) => reject(event.target.error);
+      });
+    }
+
+    // u1ps §7.3 (Codex B2 VERIFY blocker 3): ATOMIC replace. Deletes the given
+    // snapshot-only ids AND puts the new records across BOTH stores in a SINGLE
+    // transaction, so a mid-way failure aborts the whole thing (no half-replaced
+    // DB left as "deleted but not re-imported"). The caller computes
+    // delWatchedIds/delLikedIds = (pre-replace snapshot ids \ new ids), so records
+    // written after the snapshot (a new videoId not in the snapshot list) are not
+    // deleted and survive. NOTE: this survival guarantee is for NEW post-snapshot
+    // ids only — a snapshot id that was re-updated after the snapshot is either
+    // deleted (absent from backup) or overwritten by the backup version.
+    async function replaceRecords(delWatchedIds, delLikedIds, newWatchedRecords, newLikedRecords) {
+      const dW = Array.isArray(delWatchedIds) ? delWatchedIds : [];
+      const dL = Array.isArray(delLikedIds) ? delLikedIds : [];
+      const nW = (Array.isArray(newWatchedRecords) ? newWatchedRecords : []).filter(isValidRecord).map(normalizeRecord);
+      const nL = (Array.isArray(newLikedRecords) ? newLikedRecords : []).filter(isValidLikedRecord).map(normalizeLikedRecord);
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction([STORE_NAME, LIKED_STORE], 'readwrite');
+        const wStore = tx.objectStore(STORE_NAME);
+        const lStore = tx.objectStore(LIKED_STORE);
+        for (const id of dW) wStore.delete(id);
+        for (const id of dL) lStore.delete(id);
+        for (const r of nW) wStore.put(r);
+        for (const r of nL) lStore.put(r);
+        tx.oncomplete = () => resolve({
+          deletedWatched: dW.length, deletedLiked: dL.length,
+          importedWatched: nW.length, importedLiked: nL.length,
+        });
+        tx.onerror = (event) => reject(event.target.error);
+        tx.onabort = (event) => reject(event.target.error);
       });
     }
 
@@ -932,7 +1109,7 @@ if (typeof WatchedDB === 'undefined') {
       return { total: all.length, accounts: [...accounts.entries()] };
     }
 
-    return { openDB, addWatched, updateDuration, markDurationFailed, markDurationLive, updateTitle, updateTitleAndChannel, updateCredits, markCreditsChecked, markCreditsFailed, cleanAllCredits, isWatched, checkMultiple, getStats, getAllIds, getWatchedIdsPage, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport, unwrapWatchedRecords, parseImportData,
-      upsertLiked, getAllLiked, importLikedData, clearLikedByAccount, getLikedStats };
+    return { openDB, addWatched, updateDuration, markDurationFailed, markDurationLive, updateTitle, updateTitleAndChannel, updateCredits, markCreditsChecked, markCreditsFailed, cleanAllCredits, isWatched, checkMultiple, getStats, getAllIds, getWatchedIdsPage, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport, unwrapWatchedRecords, parseImportData, diffImport,
+      upsertLiked, getAllLiked, importLikedData, mergeLikedData, clearLikedByAccount, deleteManyRecords, replaceRecords, getLikedStats };
   })();
 }
