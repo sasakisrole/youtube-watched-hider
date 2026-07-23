@@ -35,6 +35,13 @@
   }
 
   const CREDIT_ROLES = ['composer', 'lyricist', 'arranger'];
+  const CREDIT_ROLE_LABELS = Object.freeze({ composer: '作曲', lyricist: '作詞', arranger: '編曲' });
+  const CREDIT_ROLE_SEARCH_LABELS = Object.freeze({ composer: '作曲者', lyricist: '作詞者', arranger: '編曲者' });
+  const CREDIT_SOURCE_LABELS = Object.freeze({
+    topic: 'Topic 概要欄', general: '一般動画の概要欄',
+    'enrich:rule': '固定ルール', 'enrich:mb': 'MusicBrainz', manual: '手動入力',
+    '': '由来なし',
+  });
 
   // Role-unit gap detection (HANDOFF §3.1 / DESIGN B-1). Replaces the old
   // whole-video gate: a record with composer filled but arranger blank is now
@@ -59,6 +66,55 @@
   function coveredNeededRoles(candidate, missing) {
     const has = missing instanceof Set ? (r) => missing.has(r) : (r) => (missing || []).includes(r);
     return CREDIT_ROLES.filter((role) => has(role) && candidate && !isBlank(candidate[role]));
+  }
+
+  function sharedMissingCreditRoles(record) {
+    const api = window.CreditTarget;
+    return api && typeof api.getMissingCreditRoles === 'function'
+      ? api.getMissingCreditRoles(record)
+      : getMissingCreditRoles(record);
+  }
+
+  function buildManualSearchQuery(record, role) {
+    const api = window.CreditTarget;
+    const title = String(record && record.title || '').trim();
+    const channel = String(record && record.channel || '').trim();
+    const artist = api && typeof api.stripTopicChannelSuffix === 'function'
+      ? api.stripTopicChannelSuffix(channel)
+      : channel.replace(/\s*-\s*(?:topic|トピック)\s*$/iu, '').trim();
+    return [title, artist, CREDIT_ROLE_SEARCH_LABELS[role] || ''].filter(Boolean).join(' ');
+  }
+
+  function manualRecordMatchesSearch(record, search) {
+    const needle = String(search || '').normalize('NFKC').trim().toLocaleLowerCase();
+    if (!needle) return true;
+    return ['title', 'channel', 'videoId'].some((field) => String(record && record[field] || '')
+      .normalize('NFKC').toLocaleLowerCase().includes(needle));
+  }
+
+  function getManualReviewRows(records, search = '') {
+    return (Array.isArray(records) ? records : []).filter((record) => {
+      if (!record || sharedMissingCreditRoles(record).length === 0) return false;
+      const hasContext = !isBlank(record.creditsRaw)
+        || CREDIT_ROLES.some((role) => !isBlank(record[role]));
+      return hasContext && manualRecordMatchesSearch(record, search);
+    });
+  }
+
+  function validateManualCreditInput(value, options = {}) {
+    const allowBlank = options.allowBlank === true;
+    const text = typeof value === 'string' ? value.trim() : '';
+    if (!text) return allowBlank
+      ? { valid: true, reason: '', hint: '' }
+      : { valid: false, reason: '名前が空です。', hint: '作曲者・作詞者・編曲者の名前を入力してください。' };
+    if (Array.from(text).length > 60) return { valid: false, reason: '名前が長すぎます。', hint: '60文字以内の名前に短くしてください。' };
+    if (/(?:https?:)?\/\/|(?:^|\s)www\.|(?:[a-z0-9-]+\.)+(?:com|net|org|jp|co|io|tv|me)(?:\/|$)/iu.test(text)) return { valid: false, reason: 'URLやドメインは保存できません。', hint: 'リンクではなく人物・グループ名だけを入力してください。' };
+    if (/^@[\p{L}\p{N}_.-]+$/u.test(text)) return { valid: false, reason: 'ハンドル名だけでは保存できません。', hint: '@を除いた正式な名前を入力してください。' };
+    if (/copyright\s+control|all\s+rights\s+reserved/iu.test(text)) return { valid: false, reason: '権利管理用の仮名は保存できません。', hint: 'クレジットに記載された実名を確認してください。' };
+    if (/(?:作詞(?:家|者)?|作曲(?:家|者)?|編曲(?:家|者)?|lyrics?(?:\s+by)?|compos(?:ed\s+by|er)|arrang(?:ed\s+by|er))\s*[:：]?/iu.test(text)) return { valid: false, reason: '役割ラベルを含む値は保存できません。', hint: '「作曲:」などを除き、名前だけを入力してください。' };
+    const api = window.CreditTarget;
+    if (!api || typeof api.isValidCreditValue !== 'function' || !api.isValidCreditValue(value)) return { valid: false, reason: 'この値は保存できません。', hint: '記号や制御文字を除き、名前だけを入力してください。' };
+    return { valid: true, reason: '', hint: '' };
   }
 
   // Blank every role a candidate was NOT accepted for, so a source picked only
@@ -222,6 +278,25 @@
     el.hidden = hidden;
   }
 
+  function appendInlineIcon(button, paths) {
+    if (!button || typeof document.createElementNS !== 'function') return;
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'icon');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '2');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('aria-hidden', 'true');
+    for (const d of paths) {
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', d);
+      svg.appendChild(path);
+    }
+    button.appendChild(svg);
+  }
+
   class EnrichCreditsController {
     constructor(env) {
       this.env = env || {};
@@ -240,6 +315,17 @@
       this.emptyEl = document.getElementById('enrichEmpty');
       this.tableWrap = document.getElementById('enrichTableWrap');
       this.totalEl = document.getElementById('enrichTotal');
+      this.subtitleEl = document.getElementById('enrichSubtitle');
+      this.autoViewTab = document.getElementById('enrichAutoViewTab');
+      this.manualViewTab = document.getElementById('enrichManualViewTab');
+      this.autoView = document.getElementById('enrichAutoView');
+      this.manualView = document.getElementById('enrichManualView');
+      this.manualSearchEl = document.getElementById('enrichManualSearch');
+      this.manualListEl = document.getElementById('enrichManualList');
+      this.manualEmptyEl = document.getElementById('enrichManualEmpty');
+      this.manualCountEl = document.getElementById('enrichManualCount');
+      this.manualStatusEl = document.getElementById('enrichManualStatus');
+
 
       this.rules = null;
       this.candidatesByChannel = new Map();
@@ -255,6 +341,14 @@
         mb: new Map(),
       };
 
+      this.activeView = 'auto';
+      this.manualSearch = '';
+      this.manualMessages = new Map();
+      this.manualUndoActions = new Map();
+      this.manualEditing = new Set();
+      this.manualPinnedVideoIds = new Set();
+      this.manualBusy = new Set();
+      this.previousFocus = null;
       this.bind();
       this.renderAll();
     }
@@ -267,6 +361,19 @@
       this.abortBtn && this.abortBtn.addEventListener('click', () => this.abort());
       this.commitBtn && this.commitBtn.addEventListener('click', () => this.commitSelected());
       this.downloadBtn && this.downloadBtn.addEventListener('click', () => this.downloadPlan());
+      this.autoViewTab && this.autoViewTab.addEventListener('click', () => this.switchView('auto'));
+      this.manualViewTab && this.manualViewTab.addEventListener('click', () => this.switchView('manual'));
+      for (const tab of [this.autoViewTab, this.manualViewTab].filter(Boolean)) {
+        tab.addEventListener('keydown', (event) => {
+          if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+          event.preventDefault();
+          this.switchView(this.activeView === 'auto' ? 'manual' : 'auto', true);
+        });
+      }
+      this.manualSearchEl && this.manualSearchEl.addEventListener('input', () => {
+        this.manualSearch = this.manualSearchEl.value || '';
+        this.renderManualView();
+      });
       this.tableWrap && this.tableWrap.addEventListener('scroll', () => {
         if (this.tableWrap.scrollTop + this.tableWrap.clientHeight >= this.tableWrap.scrollHeight - 80) {
           this.renderMoreRows();
@@ -284,10 +391,12 @@
 
     open() {
       if (!this.modal) return;
+      this.previousFocus = document.activeElement || null;
       this.modal.hidden = false;
       this.modal.setAttribute('aria-hidden', 'false');
       document.body.classList.add('enrich-modal-open');
-      this.renderAll();
+      if (this.activeView === 'manual') this.renderManualView();
+      else this.renderAll();
     }
 
     close() {
@@ -295,6 +404,8 @@
       this.modal.hidden = true;
       this.modal.setAttribute('aria-hidden', 'true');
       document.body.classList.remove('enrich-modal-open');
+      if (this.previousFocus && typeof this.previousFocus.focus === 'function') this.previousFocus.focus();
+      this.previousFocus = null;
     }
 
     abort() {
@@ -302,6 +413,31 @@
       this.abortRequested = true;
       this.setMessage('中止要求を受け付けました。現在の取得が終わり次第停止します。');
       this.updateButtons();
+    }
+
+    switchView(view, focusTab = false) {
+      if (view !== 'auto' && view !== 'manual') return;
+      this.activeView = view;
+      const manual = view === 'manual';
+      setHidden(this.autoView, manual);
+      setHidden(this.manualView, !manual);
+      if (this.autoViewTab) {
+        this.autoViewTab.classList.toggle('active', !manual);
+        this.autoViewTab.setAttribute('aria-selected', manual ? 'false' : 'true');
+        this.autoViewTab.tabIndex = manual ? -1 : 0;
+      }
+      if (this.manualViewTab) {
+        this.manualViewTab.classList.toggle('active', manual);
+        this.manualViewTab.setAttribute('aria-selected', manual ? 'true' : 'false');
+        this.manualViewTab.tabIndex = manual ? 0 : -1;
+      }
+      if (this.subtitleEl) this.subtitleEl.textContent = manual
+        ? '不足している作曲・作詞・編曲を確認し、役割ごとに保存します。'
+        : '未割当 creditsRaw を固定ルール、MusicBrainz の順に照合します。';
+      if (manual) this.renderManualView();
+      else this.renderAll();
+      const focusTarget = manual ? this.manualViewTab : this.autoViewTab;
+      if (focusTab && focusTarget && typeof focusTarget.focus === 'function') focusTarget.focus();
     }
 
     resetSession() {
@@ -325,6 +461,372 @@
       this.messageEl.textContent = text || '';
       this.messageEl.classList.toggle('error', tone === 'error');
       this.messageEl.classList.toggle('success', tone === 'success');
+    }
+
+    manualRoleKey(record, role) {
+      return `${record && record.videoId || ''}:${role}`;
+    }
+
+    effectiveManualSource(record, role) {
+      const api = window.CreditTarget;
+      return api && typeof api.effectiveRoleSource === 'function'
+        ? api.effectiveRoleSource(record, role)
+        : String(record && record.creditsSource || '');
+    }
+
+    getManualDisplayRows() {
+      const records = this.getRecords();
+      const rows = getManualReviewRows(records, this.manualSearch);
+      const seen = new Set(rows.map((record) => record.videoId));
+      for (const record of records) {
+        if (!record || seen.has(record.videoId) || !this.manualPinnedVideoIds.has(record.videoId)) continue;
+        if (!manualRecordMatchesSearch(record, this.manualSearch)) continue;
+        rows.push(record);
+        seen.add(record.videoId);
+      }
+      return rows;
+    }
+
+    setManualRoleMessage(record, role, text, tone) {
+      this.manualMessages.set(this.manualRoleKey(record, role), { text: text || '', tone: tone || '' });
+    }
+
+    applyManualState(record, role, post, restoreRoleSource, hasRestoreRoleSource) {
+      if (!record || !post) return;
+      record[role] = post.value;
+      const sources = record.creditRoleSources && typeof record.creditRoleSources === 'object'
+        && !Array.isArray(record.creditRoleSources) ? { ...record.creditRoleSources } : {};
+      if (hasRestoreRoleSource) {
+        if (restoreRoleSource === null) delete sources[role];
+        else sources[role] = restoreRoleSource;
+      } else if (isBlank(post.value)) {
+        delete sources[role];
+      } else if (post.source === 'manual') {
+        sources[role] = 'manual';
+      }
+      if (Object.keys(sources).length) record.creditRoleSources = sources;
+      else delete record.creditRoleSources;
+    }
+
+    async reloadManualData() {
+      if (typeof this.env.reloadData === 'function') await Promise.resolve(this.env.reloadData());
+    }
+
+    async sendManualMutation(payload) {
+      const message = { type: 'DB_RPC', op: 'SET_MANUAL_CREDIT_ROLE', ...payload };
+      return typeof this.env.sendDbRpc === 'function'
+        ? this.env.sendDbRpc(message)
+        : sendRuntimeMessage(message);
+    }
+
+    async performManualMutation(record, role, value, options = {}) {
+      const key = this.manualRoleKey(record, role);
+      if (this.manualBusy.has(key)) return { error: 'busy' };
+      const allowBlank = options.allowBlank === true;
+      const validation = validateManualCreditInput(value, { allowBlank });
+      if (!validation.valid) {
+        this.setManualRoleMessage(record, role, `${validation.reason} ${validation.hint}`.trim(), 'error');
+        this.renderManualView();
+        return { error: 'invalid_value' };
+      }
+
+      const expected = options.expected || {
+        value: record && record[role],
+        source: this.effectiveManualSource(record, role),
+      };
+      const payload = {
+        videoId: record.videoId,
+        role,
+        value,
+        expectedCurrent: expected.value,
+        expectedSource: expected.source,
+      };
+      const hasRestoreRoleSource = Object.prototype.hasOwnProperty.call(options, 'restoreRoleSource');
+      if (hasRestoreRoleSource) payload.restoreRoleSource = options.restoreRoleSource;
+
+      this.manualBusy.add(key);
+      this.setManualRoleMessage(record, role, '保存しています。', '');
+      this.renderManualView();
+      try {
+        const response = await this.sendManualMutation(payload);
+        if (!response || response.success !== true) {
+          const detail = response && response.error ? response.error : 'DB通信に失敗しました。';
+          this.setManualRoleMessage(record, role, `保存できませんでした: ${detail}`, 'error');
+          return { error: 'transport' };
+        }
+
+        const result = response.result || {};
+        if (result.updated === true) {
+          this.applyManualState(record, role, result.post, options.restoreRoleSource, hasRestoreRoleSource);
+          this.manualPinnedVideoIds.add(record.videoId);
+          if (options.isUndo) this.manualUndoActions.delete(key);
+          else this.manualUndoActions.set(key, { previous: result.previous, post: result.post });
+          this.manualEditing.delete(key);
+          this.setManualRoleMessage(record, role, options.isUndo ? '元に戻しました。' : '保存しました。', 'success');
+          await this.reloadManualData();
+          return result;
+        }
+
+        if (result.conflict === true) {
+          if (result.current) {
+            record[role] = result.current.value;
+            const sources = record.creditRoleSources && typeof record.creditRoleSources === 'object'
+              && !Array.isArray(record.creditRoleSources) ? { ...record.creditRoleSources } : {};
+            if (result.current.source) sources[role] = result.current.source;
+            else delete sources[role];
+            record.creditRoleSources = sources;
+          }
+          this.setManualRoleMessage(record, role, '他の更新が反映されました。最新値を確認して再試行してください。', 'error');
+          await this.reloadManualData();
+          return result;
+        }
+
+        const errorLabels = {
+          invalid_value: '入力値を保存できません。名前だけを入力してください。',
+          not_manual: '自動取得された値はこの画面から変更できません。',
+          bad_role: '対象の役割が不正です。',
+          not_found: '動画が見つかりません。データを再読み込みしてください。',
+        };
+        this.setManualRoleMessage(record, role,
+          errorLabels[result.error] || '更新されませんでした。最新値を確認して再試行してください。', 'error');
+        return result;
+      } catch (error) {
+        this.setManualRoleMessage(record, role, `保存できませんでした: ${error.message}`, 'error');
+        return { error: 'transport' };
+      } finally {
+        this.manualBusy.delete(key);
+        this.renderManualView();
+      }
+    }
+
+    async undoManualMutation(record, role) {
+      const action = this.manualUndoActions.get(this.manualRoleKey(record, role));
+      if (!action) return { error: 'no_undo' };
+      return this.performManualMutation(record, role, action.previous.value, {
+        allowBlank: true,
+        isUndo: true,
+        expected: action.post,
+        restoreRoleSource: action.previous.sourcePresent ? action.previous.source : null,
+      });
+    }
+
+    async copyManualSearchQuery(record, role) {
+      const query = buildManualSearchQuery(record, role);
+      try {
+        if (typeof navigator === 'undefined' || !navigator.clipboard
+          || typeof navigator.clipboard.writeText !== 'function') throw new Error('clipboard unavailable');
+        await navigator.clipboard.writeText(query);
+        this.setManualRoleMessage(record, role, '検索語をコピーしました。', 'success');
+      } catch (_error) {
+        this.setManualRoleMessage(record, role, '検索語をコピーできませんでした。ブラウザの権限を確認してください。', 'error');
+      }
+      this.renderManualView();
+      return query;
+    }
+
+    createManualButton(label, action, iconPaths, className = '') {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `sort-btn manual-action-btn ${className}`.trim();
+      button.dataset.manualAction = action;
+      appendInlineIcon(button, iconPaths);
+      const text = document.createElement('span');
+      text.textContent = label;
+      button.appendChild(text);
+      return button;
+    }
+
+    renderManualView() {
+      if (!this.manualListEl) return;
+      const rows = this.getManualDisplayRows();
+      this.manualListEl.textContent = '';
+      const fragment = document.createDocumentFragment();
+      let missingCount = 0;
+      for (const record of rows) {
+        missingCount += sharedMissingCreditRoles(record).length;
+        fragment.appendChild(this.renderManualVideoCard(record));
+      }
+      this.manualListEl.appendChild(fragment);
+      setHidden(this.manualEmptyEl, rows.length > 0);
+      if (this.manualCountEl) this.manualCountEl.textContent = `対象 ${rows.length}件 / 不足 ${missingCount}役割`;
+      if (this.manualStatusEl) this.manualStatusEl.textContent = rows.length
+        ? '検索語のコピーはクリップボードだけを使用します。'
+        : '条件に一致する手動確認対象はありません。';
+    }
+
+    renderManualVideoCard(record) {
+      const card = document.createElement('article');
+      card.className = 'manual-video-card';
+      card.dataset.videoId = record.videoId;
+
+      const header = document.createElement('header');
+      header.className = 'manual-video-header';
+      const titleWrap = document.createElement('div');
+      const title = document.createElement('a');
+      title.className = 'manual-video-title';
+      title.href = `https://youtu.be/${encodeURIComponent(record.videoId)}`;
+      title.target = '_blank';
+      title.rel = 'noopener';
+      title.textContent = record.title || record.videoId;
+      titleWrap.appendChild(title);
+      const channel = document.createElement('span');
+      channel.className = 'manual-video-channel';
+      channel.textContent = record.channel || 'チャンネル名なし';
+      titleWrap.appendChild(channel);
+      header.appendChild(titleWrap);
+      const videoId = document.createElement('code');
+      videoId.className = 'manual-video-id';
+      videoId.textContent = record.videoId;
+      header.appendChild(videoId);
+      card.appendChild(header);
+
+      const current = document.createElement('div');
+      current.className = 'manual-current-grid';
+      for (const role of CREDIT_ROLES) current.appendChild(this.renderManualCurrentRole(record, role));
+      card.appendChild(current);
+
+      const missing = sharedMissingCreditRoles(record);
+      if (missing.length) {
+        const heading = document.createElement('h3');
+        heading.className = 'manual-missing-heading';
+        heading.textContent = '不足している役割';
+        card.appendChild(heading);
+        const list = document.createElement('div');
+        list.className = 'manual-missing-list';
+        for (const role of missing) list.appendChild(this.renderManualInputForm(record, role, '', false));
+        card.appendChild(list);
+      }
+      return card;
+    }
+
+    renderManualCurrentRole(record, role) {
+      const key = this.manualRoleKey(record, role);
+      const source = this.effectiveManualSource(record, role);
+      const item = document.createElement('section');
+      item.className = 'manual-current-role';
+      item.dataset.role = role;
+
+      const label = document.createElement('strong');
+      label.textContent = CREDIT_ROLE_LABELS[role];
+      item.appendChild(label);
+      const value = document.createElement('span');
+      value.className = 'manual-current-value';
+      value.textContent = isBlank(record[role]) ? '未入力' : record[role];
+      item.appendChild(value);
+      const sourceEl = document.createElement('span');
+      sourceEl.className = 'manual-source-label';
+      sourceEl.textContent = CREDIT_SOURCE_LABELS[source] || source || CREDIT_SOURCE_LABELS[''];
+      item.appendChild(sourceEl);
+
+      const actions = document.createElement('div');
+      actions.className = 'manual-current-actions';
+      if (source === 'manual') {
+        const edit = this.createManualButton('修正', 'edit', ['M12 20h9', 'M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z']);
+        edit.setAttribute('aria-label', `${CREDIT_ROLE_LABELS[role]}を修正`);
+        edit.addEventListener('click', () => {
+          this.manualEditing.add(key);
+          this.renderManualView();
+        });
+        actions.appendChild(edit);
+        const cancel = this.createManualButton('手動入力を取り消す', 'cancel', ['M3 6h18', 'M8 6V4h8v2', 'M19 6l-1 14H6L5 6'], 'manual-danger-btn');
+        cancel.setAttribute('aria-label', `${CREDIT_ROLE_LABELS[role]}の手動入力を取り消す`);
+        cancel.disabled = this.manualBusy.has(key);
+        cancel.addEventListener('click', () => this.performManualMutation(record, role, '', { allowBlank: true }));
+        actions.appendChild(cancel);
+      }
+      if (this.manualUndoActions.has(key)) {
+        const undo = this.createManualButton('元に戻す', 'undo', ['M9 14 4 9l5-5', 'M4 9h9a7 7 0 0 1 7 7v1']);
+        undo.setAttribute('aria-label', `${CREDIT_ROLE_LABELS[role]}の直前の操作を元に戻す`);
+        undo.disabled = this.manualBusy.has(key);
+        undo.addEventListener('click', () => this.undoManualMutation(record, role));
+        actions.appendChild(undo);
+      }
+      item.appendChild(actions);
+
+      const message = this.manualMessages.get(key);
+      if (message && message.text) {
+        const status = document.createElement('p');
+        status.className = `manual-role-message ${message.tone || ''}`.trim();
+        status.dataset.roleStatus = role;
+        status.setAttribute('role', 'status');
+        status.setAttribute('aria-live', 'polite');
+        status.textContent = message.text;
+        item.appendChild(status);
+      }
+      if (this.manualEditing.has(key) && source === 'manual') {
+        item.appendChild(this.renderManualInputForm(record, role, record[role] || '', true));
+      }
+      return item;
+    }
+
+    renderManualInputForm(record, role, initialValue, editing) {
+      const key = this.manualRoleKey(record, role);
+      const form = document.createElement('div');
+      form.className = editing ? 'manual-role-form manual-edit-form' : 'manual-role-form';
+      form.dataset.role = role;
+      form.dataset.formMode = editing ? 'edit' : 'missing';
+
+      const roleLabel = document.createElement('strong');
+      roleLabel.className = 'manual-role-label';
+      roleLabel.textContent = CREDIT_ROLE_LABELS[role];
+      form.appendChild(roleLabel);
+
+      const copy = this.createManualButton('検索語をコピー', 'copy', ['M8 8h11v11H8z', 'M5 16H4V5h11v1']);
+      copy.setAttribute('aria-label', `${CREDIT_ROLE_SEARCH_LABELS[role]}の検索語をコピー`);
+      copy.addEventListener('click', () => this.copyManualSearchQuery(record, role));
+      form.appendChild(copy);
+
+      const inputId = `manual-${String(record.videoId).replace(/[^a-zA-Z0-9_-]/g, '-')}-${role}-${editing ? 'edit' : 'missing'}`;
+      const inputWrap = document.createElement('div');
+      inputWrap.className = 'manual-input-wrap';
+      const label = document.createElement('label');
+      label.setAttribute('for', inputId);
+      label.textContent = `${CREDIT_ROLE_LABELS[role]}の名前`;
+      inputWrap.appendChild(label);
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.id = inputId;
+      input.value = initialValue || '';
+      input.maxLength = 120;
+      input.autocomplete = 'off';
+      input.dataset.manualRoleInput = role;
+      input.setAttribute('aria-describedby', `${inputId}-validation`);
+      inputWrap.appendChild(input);
+      const validationEl = document.createElement('p');
+      validationEl.id = `${inputId}-validation`;
+      validationEl.className = 'manual-validation';
+      inputWrap.appendChild(validationEl);
+      form.appendChild(inputWrap);
+
+      const save = this.createManualButton(editing ? '修正を保存' : 'この役割を保存', editing ? 'save-edit' : 'save', ['M5 4h12l2 2v14H5z', 'M8 4v6h8V4', 'M8 17h8']);
+      save.setAttribute('aria-label', `${CREDIT_ROLE_LABELS[role]}の入力値を保存`);
+      form.appendChild(save);
+
+      const updateValidation = () => {
+        const validation = validateManualCreditInput(input.value);
+        input.setAttribute('aria-invalid', validation.valid ? 'false' : 'true');
+        validationEl.classList.toggle('error', !validation.valid);
+        validationEl.textContent = validation.valid ? '保存できる形式です。' : `${validation.reason} ${validation.hint}`;
+        save.disabled = !validation.valid || this.manualBusy.has(key);
+        return validation;
+      };
+      input.addEventListener('input', updateValidation);
+      save.addEventListener('click', () => {
+        if (!updateValidation().valid) return;
+        return this.performManualMutation(record, role, input.value, { allowBlank: false });
+      });
+
+      if (editing) {
+        const close = this.createManualButton('編集を閉じる', 'close-edit', ['M18 6 6 18', 'm6 6 12 12']);
+        close.setAttribute('aria-label', `${CREDIT_ROLE_LABELS[role]}の編集欄を閉じる`);
+        close.addEventListener('click', () => {
+          this.manualEditing.delete(key);
+          this.renderManualView();
+        });
+        form.appendChild(close);
+      }
+      updateValidation();
+      return form;
     }
 
     updateProgress(text, ratio) {
@@ -813,6 +1315,13 @@
     isUnassignedCreditRecord,
     CREDIT_ROLES,
     getMissingCreditRoles,
+    CREDIT_ROLE_LABELS,
+    CREDIT_ROLE_SEARCH_LABELS,
+    CREDIT_SOURCE_LABELS,
+    buildManualSearchQuery,
+    getManualReviewRows,
+    validateManualCreditInput,
+    manualRecordMatchesSearch,
     needsCreditEnrichment,
     coveredNeededRoles,
     limitCandidateToRoles,
