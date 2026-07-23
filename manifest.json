@@ -23,7 +23,12 @@
         "*://*.youtube.com/*"
       ],
       "js": [
-        "content.js"
+        "content.js",
+        "official_search_filter_core.js",
+        "official_search_filter.js"
+      ],
+      "css": [
+        "official_search_filter.css"
       ],
       "run_at": "document_idle"
     }
