@@ -22,6 +22,8 @@
 
   const PANEL_ID = 'ywh-osf-panel';
   const HIDDEN_CLASS = 'ywh-osf-hidden';
+  const STORAGE_KEY = 'officialSearchFilter';
+  const SETTINGS_SCHEMA_VERSION = 1;
   const CARD_SELECTOR =
     'ytd-video-renderer, yt-lockup-view-model';
   const CHANNEL_SELECTOR = [
@@ -52,12 +54,138 @@
 
   const state = {
     mode: MODE.ALL,
+    settings: createDefaultSettings(),
+    persistedMode: MODE.ALL,
+    loadPromise: null,
+    storageChangeGeneration: 0,
+    saveQueue: Promise.resolve(),
     observer: null,
     scanTimer: null,
     disposed: false,
     counts: createEmptyCounts(),
     visibleCount: 0,
   };
+
+  function createDefaultSettings() {
+    return {
+      schemaVersion: SETTINGS_SCHEMA_VERSION,
+      activeProfileId: null,
+      globalMode: MODE.ALL,
+      profiles: {},
+      queryBindings: {},
+    };
+  }
+
+  function isPlainObject(value) {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      return false;
+    }
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype === null) return true;
+    const constructor = Object.prototype.hasOwnProperty.call(
+      prototype,
+      'constructor'
+    )
+      ? prototype.constructor
+      : null;
+    return (
+      typeof constructor === 'function' &&
+      constructor.name === 'Object'
+    );
+  }
+
+  function isValidMode(mode) {
+    return mode === MODE.ALL || mode === MODE.OFFICIAL || mode === MODE.DISCOVERY;
+  }
+
+  function sanitizeSettings(value) {
+    if (!isPlainObject(value) || value.schemaVersion !== SETTINGS_SCHEMA_VERSION) {
+      return createDefaultSettings();
+    }
+    return {
+      schemaVersion: SETTINGS_SCHEMA_VERSION,
+      activeProfileId:
+        value.activeProfileId === null || typeof value.activeProfileId === 'string'
+          ? value.activeProfileId
+          : null,
+      globalMode: isValidMode(value.globalMode) ? value.globalMode : MODE.ALL,
+      profiles: isPlainObject(value.profiles) ? { ...value.profiles } : {},
+      queryBindings: isPlainObject(value.queryBindings)
+        ? { ...value.queryBindings }
+        : {},
+    };
+  }
+
+  function hasStorageLocal() {
+    return Boolean(
+      globalThis.chrome?.storage?.local &&
+      typeof globalThis.chrome.storage.local.get === 'function' &&
+      typeof globalThis.chrome.storage.local.set === 'function'
+    );
+  }
+
+  function getRuntimeLastError() {
+    try {
+      return globalThis.chrome?.runtime?.lastError || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function storageLocalGet() {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        const lastError = getRuntimeLastError();
+        if (lastError) reject(new Error(lastError.message || 'Storage read failed'));
+        else resolve(result || {});
+      };
+      try {
+        const pending = globalThis.chrome.storage.local.get(STORAGE_KEY, finish);
+        if (pending?.then) {
+          pending.then(finish, (error) => {
+            if (settled) return;
+            settled = true;
+            reject(error);
+          });
+        }
+      } catch (error) {
+        settled = true;
+        reject(error);
+      }
+    });
+  }
+
+  function storageLocalSet(settings) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        const lastError = getRuntimeLastError();
+        if (lastError) reject(new Error(lastError.message || 'Storage write failed'));
+        else resolve();
+      };
+      try {
+        const pending = globalThis.chrome.storage.local.set(
+          { [STORAGE_KEY]: settings },
+          finish
+        );
+        if (pending?.then) {
+          pending.then(finish, (error) => {
+            if (settled) return;
+            settled = true;
+            reject(error);
+          });
+        }
+      } catch (error) {
+        settled = true;
+        reject(error);
+      }
+    });
+  }
 
   function createEmptyCounts() {
     return {
@@ -243,6 +371,82 @@
     renderPanelState();
   }
 
+  function applySettings(settings) {
+    state.settings = settings;
+    state.persistedMode = settings.globalMode;
+    state.mode = settings.globalMode;
+    initializePage();
+  }
+
+  async function loadSettings() {
+    const changeGeneration = state.storageChangeGeneration;
+    let settings = createDefaultSettings();
+    if (hasStorageLocal()) {
+      try {
+        const stored = await storageLocalGet();
+        settings = sanitizeSettings(stored[STORAGE_KEY]);
+      } catch {
+        settings = createDefaultSettings();
+      }
+    }
+    if (
+      !state.disposed &&
+      changeGeneration === state.storageChangeGeneration
+    ) {
+      applySettings(settings);
+    }
+  }
+
+  async function saveMode(mode) {
+    if (state.disposed || !isValidMode(mode)) return;
+    if (!hasStorageLocal()) {
+      state.settings = sanitizeSettings({ ...state.settings, globalMode: mode });
+      state.persistedMode = mode;
+      state.mode = mode;
+      scanSearchResults();
+      return;
+    }
+
+    const settings = sanitizeSettings({ ...state.settings, globalMode: mode });
+    try {
+      await storageLocalSet(settings);
+      if (state.disposed) return;
+      state.settings = settings;
+      state.persistedMode = mode;
+      state.mode = mode;
+    } catch {
+      if (state.disposed) return;
+      state.mode = state.persistedMode;
+    }
+    scanSearchResults();
+  }
+
+  function requestModeChange(mode) {
+    if (!hasStorageLocal()) {
+      void saveMode(mode);
+      return;
+    }
+    const saveAfterLoad = async () => {
+      await state.loadPromise;
+      return saveMode(mode);
+    };
+    state.saveQueue = state.saveQueue.then(
+      saveAfterLoad,
+      saveAfterLoad
+    );
+  }
+
+  function onStorageChanged(changes, areaName) {
+    if (
+      state.disposed ||
+      areaName !== 'local' ||
+      !changes ||
+      !Object.prototype.hasOwnProperty.call(changes, STORAGE_KEY)
+    ) return;
+    state.storageChangeGeneration += 1;
+    applySettings(sanitizeSettings(changes[STORAGE_KEY]?.newValue));
+  }
+
   function scheduleScan(delayMs = 50) {
     clearTimeout(state.scanTimer);
     state.scanTimer = setTimeout(() => {
@@ -317,8 +521,7 @@
     button.setAttribute('aria-pressed', String(state.mode === mode));
     button.textContent = label;
     button.addEventListener('click', () => {
-      state.mode = mode;
-      scanSearchResults();
+      requestModeChange(mode);
     });
     return button;
   }
@@ -350,13 +553,13 @@
       panel,
       'p',
       'ywh-osf-panel__note',
-      'この検索ページのみの一時設定です。'
+      '表示モードは検索ページ間で保存されます。'
     );
 
     const modes = document.createElement('div');
     modes.className = 'ywh-osf-panel__modes';
     modes.setAttribute('role', 'group');
-    modes.setAttribute('aria-label', '一時表示モード');
+    modes.setAttribute('aria-label', '表示モード');
     modes.appendChild(
       createModeButton(
         MODE.OFFICIAL,
@@ -442,6 +645,7 @@
       'yt-navigate-finish',
       onNavigateFinish
     );
+    globalThis.chrome?.storage?.onChanged?.removeListener?.(onStorageChanged);
     cleanupSearchPage();
 
     if (globalThis._ywhOfficialSearchFilter === controller) {
@@ -453,6 +657,7 @@
   globalThis._ywhOfficialSearchFilter = controller;
 
   initializePage();
+  state.loadPromise = loadSettings();
 
   if (typeof MutationObserver === 'function' && document.body) {
     state.observer = new MutationObserver(onMutation);
@@ -469,4 +674,5 @@
     'yt-navigate-finish',
     onNavigateFinish
   );
+  globalThis.chrome?.storage?.onChanged?.addListener?.(onStorageChanged);
 })();
