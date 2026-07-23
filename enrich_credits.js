@@ -60,6 +60,20 @@
     return !isBlank(record.creditsRaw);
   }
 
+  function getEnrichmentPreCount(records) {
+    const targets = (Array.isArray(records) ? records : []).filter((record) => needsCreditEnrichment(record));
+    return {
+      videoCount: targets.length,
+      channelCount: new Set(targets.map((record) => record.channel || '(no channel)')).size,
+    };
+  }
+
+  function buildEnrichmentConfirmText(preCount) {
+    const videoCount = Number(preCount && preCount.videoCount) || 0;
+    const channelCount = Number(preCount && preCount.channelCount) || 0;
+    return `${videoCount}動画 / ${channelCount}チャンネルを固定ルールとMusicBrainzで照合します。`;
+  }
+
   // Which of the still-missing roles does this candidate actually fill? Drives
   // (a) whether a candidate is worth adding and (b) which roles to drop from the
   // remaining set so the next source only chases what is still blank.
@@ -336,6 +350,8 @@
       this.generating = false;
       this.committing = false;
       this.abortRequested = false;
+      this.confirmingGeneration = false;
+      this.cancelGenerationConfirmation = null;
       this.errors = [];
       this.fetchCache = {
         mb: new Map(),
@@ -401,6 +417,7 @@
 
     close() {
       if (!this.modal || this.committing) return;
+      if (this.cancelGenerationConfirmation) this.cancelGenerationConfirmation();
       this.modal.hidden = true;
       this.modal.setAttribute('aria-hidden', 'true');
       document.body.classList.remove('enrich-modal-open');
@@ -837,7 +854,7 @@
     updateButtons() {
       const hasCandidates = this.getAllCandidates().length > 0;
       const selected = this.getSelectedCandidates().length;
-      if (this.generateBtn) this.generateBtn.disabled = this.generating || this.committing;
+      if (this.generateBtn) this.generateBtn.disabled = this.generating || this.committing || this.confirmingGeneration;
       if (this.abortBtn) this.abortBtn.disabled = !this.generating || this.abortRequested;
       if (this.commitBtn) this.commitBtn.disabled = this.generating || this.committing || selected === 0;
       if (this.downloadBtn) this.downloadBtn.disabled = this.generating || this.committing || selected === 0;
@@ -846,6 +863,80 @@
       if (!hasCandidates && !this.generating && this.commitBtn) this.commitBtn.disabled = true;
     }
 
+    confirmGeneration(preCount) {
+      const host = this.autoView || this.modal;
+      if (!host || typeof document.createElement !== 'function') return Promise.resolve(false);
+
+      const panel = document.createElement('div');
+      panel.className = 'enrich-message enrich-precount-confirm';
+      panel.setAttribute('role', 'alertdialog');
+      panel.setAttribute('aria-labelledby', 'enrichPreCountTitle');
+      panel.setAttribute('aria-describedby', 'enrichPreCountDescription');
+      panel.style.padding = '16px 18px';
+      panel.style.background = 'var(--surface)';
+
+      const title = document.createElement('strong');
+      title.id = 'enrichPreCountTitle';
+      title.textContent = '候補生成の確認';
+      panel.appendChild(title);
+
+      const description = document.createElement('p');
+      description.id = 'enrichPreCountDescription';
+      description.textContent = buildEnrichmentConfirmText(preCount);
+      description.style.margin = '8px 0 12px';
+      panel.appendChild(description);
+
+      const actions = document.createElement('div');
+      actions.style.display = 'flex';
+      actions.style.gap = '8px';
+      actions.style.flexWrap = 'wrap';
+
+      const start = document.createElement('button');
+      start.type = 'button';
+      start.className = 'sort-btn enrich-primary';
+      start.dataset.enrichPrecountAction = 'start';
+      start.setAttribute('aria-label', '候補生成を開始');
+      start.textContent = '開始';
+      start.style.minHeight = '44px';
+      start.style.minWidth = '88px';
+
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.className = 'sort-btn';
+      cancel.dataset.enrichPrecountAction = 'cancel';
+      cancel.setAttribute('aria-label', '候補生成をキャンセル');
+      cancel.textContent = 'キャンセル';
+      cancel.style.minHeight = '44px';
+      cancel.style.minWidth = '88px';
+
+      actions.appendChild(start);
+      actions.appendChild(cancel);
+      panel.appendChild(actions);
+      host.appendChild(panel);
+
+      const previousFocus = document.activeElement;
+      return new Promise((resolve) => {
+        let settled = false;
+        const finish = (confirmed) => {
+          if (settled) return;
+          settled = true;
+          if (typeof panel.remove === 'function') panel.remove();
+          this.cancelGenerationConfirmation = null;
+          if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus();
+          resolve(confirmed);
+        };
+        this.cancelGenerationConfirmation = () => finish(false);
+        start.addEventListener('click', () => finish(true));
+        cancel.addEventListener('click', () => finish(false));
+        panel.addEventListener('keydown', (event) => {
+          if (event.key !== 'Escape') return;
+          event.preventDefault();
+          if (typeof event.stopPropagation === 'function') event.stopPropagation();
+          finish(false);
+        });
+        if (typeof start.focus === 'function') start.focus();
+      });
+    }
     async loadRules() {
       if (this.rules) return this.rules;
       const url = chrome.runtime.getURL('composer_rules.json');
@@ -892,7 +983,7 @@
     }
 
     async generateCandidates() {
-      if (this.generating || this.committing) return;
+      if (this.generating || this.committing || this.confirmingGeneration) return;
       const records = this.getRecords();
       const groups = this.groupUnassigned(records);
       if (!groups.size) {
@@ -900,6 +991,18 @@
         this.setMessage('未割当 creditsRaw の対象行がありません。', 'success');
         return;
       }
+
+      const preCount = getEnrichmentPreCount(records);
+      this.confirmingGeneration = true;
+      this.updateButtons();
+      let confirmed = false;
+      try {
+        confirmed = await this.confirmGeneration(preCount);
+      } finally {
+        this.confirmingGeneration = false;
+        this.updateButtons();
+      }
+      if (!confirmed) return;
 
       const beginOk = !this.env.beginMaintenance || this.env.beginMaintenance('生成中…（中止）', true);
       if (!beginOk) {
@@ -1323,6 +1426,8 @@
     validateManualCreditInput,
     manualRecordMatchesSearch,
     needsCreditEnrichment,
+    getEnrichmentPreCount,
+    buildEnrichmentConfirmText,
     coveredNeededRoles,
     limitCandidateToRoles,
     waterfallAccept,

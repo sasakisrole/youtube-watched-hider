@@ -35,6 +35,11 @@ class El {
     if (child.tagName === '#FRAGMENT') { [...child.children].forEach((c) => this.appendChild(c)); return child; }
     child.parentNode = this; this.children.push(child); return child;
   }
+  remove() {
+    if (!this.parentNode) return;
+    this.parentNode.children = this.parentNode.children.filter((child) => child !== this);
+    this.parentNode = null;
+  }
   setAttribute(k, v) { this.attributes[k] = String(v); if (k === 'id') this.id = String(v); if (k === 'class') this.className = String(v); }
   getAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attributes, k) ? this.attributes[k] : null; }
   addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
@@ -87,6 +92,15 @@ function base(videoId, extra = {}) {
     composer: '', lyricist: '', arranger: '', creditsSource: 'general', ...extra };
 }
 
+function preCountRecords() {
+  return [
+    base('pre-1', { channel: 'Shared Artist - Topic' }),
+    base('pre-2', { channel: 'Shared Artist - Topic', composer: 'Known Composer' }),
+    base('pre-3', { channel: 'Other Artist', lyricist: 'Known Lyricist' }),
+    base('pre-complete', { channel: 'Excluded Artist', composer: 'A', lyricist: 'B', arranger: 'C' }),
+    base('pre-no-raw', { channel: 'Excluded Artist', creditsRaw: '' }),
+  ];
+}
 function load(records = [], rpc, options = {}) {
   const dom = buildDoc(); const counters = {
     messages: 0, fetches: 0, clipboard: [], reloads: 0, rpc: [],
@@ -102,7 +116,10 @@ function load(records = [], rpc, options = {}) {
     create: () => { counters.tabs++; throw new Error('chrome.tabs.create must not be called'); },
     update: () => { counters.tabs++; throw new Error('chrome.tabs.update must not be called'); },
   } };
-  const fetchStub = async () => { counters.fetches++; return { ok: false }; };
+  const fetchStub = async (...args) => {
+    counters.fetches++;
+    return options.fetch ? options.fetch(...args) : { ok: false };
+  };
   const win = { CreditTarget: CT,
     open: () => { counters.opens++; throw new Error('window.open must not be called'); } };
   const confirmStub = (message) => {
@@ -129,6 +146,10 @@ async function testPure() {
   check('query empty channel', H.buildManualSearchQuery({ title: 'Solo', channel: '' }, 'composer') === 'Solo 作曲者');
   check('fixed role/source maps', Object.isFrozen(H.CREDIT_ROLE_LABELS) && Object.isFrozen(H.CREDIT_SOURCE_LABELS)
     && H.CREDIT_SOURCE_LABELS.manual === '手動入力');
+  const preCount = H.getEnrichmentPreCount(preCountRecords());
+  check('pre-count uses enrichment gate and distinct target channels', preCount.videoCount === 3 && preCount.channelCount === 2);
+  check('pre-count confirmation text includes both computed counts', H.buildEnrichmentConfirmText(preCount)
+    === '3動画 / 2チャンネルを固定ルールとMusicBrainzで照合します。');
   const rows = [base('partial', { composer: 'Known', creditsRaw: '' }), base('raw'), base('empty', { creditsRaw: '' }),
     base('complete', { composer: 'A', lyricist: 'B', arranger: 'C' }), base('lookup', { title: 'Needle', channel: 'Special' })];
   check('rows include context+missing only', H.getManualReviewRows(rows).map((r) => r.videoId).join(',') === 'partial,raw,lookup');
@@ -201,6 +222,61 @@ async function testCopy() {
   check('copy never opens a window or chrome tab', ui.counters.opens === 0 && ui.counters.tabs === 0);
 }
 
+async function testGenerationPreCount() {
+  console.log('generation pre-count');
+  const records = preCountRecords();
+  const cancelled = load(records);
+  cancelled.controller.switchView('auto');
+  const originalCandidates = cancelled.controller.candidatesByChannel;
+  originalCandidates.set('kept-state', []);
+  cancelled.controller.activeChannel = 'kept-state';
+  cancelled.controller.renderedRows = 4;
+  cancelled.controller.errors = ['kept-error'];
+
+  const cancelPromise = cancelled.controller.generateCandidates();
+  const panel = find(cancelled.controller.autoView, (e) => e.classList.contains('enrich-precount-confirm'));
+  const cancelButton = find(panel, (e) => e.dataset.enrichPrecountAction === 'cancel');
+  const startButton = find(panel, (e) => e.dataset.enrichPrecountAction === 'start');
+  check('pre-count prompt shows counts with accessible start and cancel controls', !!panel
+    && panel.getAttribute('role') === 'alertdialog' && panel.textContent.includes('3動画 / 2チャンネル')
+    && startButton.tagName === 'BUTTON' && startButton.textContent === '開始' && startButton.style.minHeight === '44px'
+    && cancelButton.tagName === 'BUTTON' && cancelButton.textContent === 'キャンセル' && cancelButton.style.minHeight === '44px');
+  await cancelButton.trigger('click');
+  await cancelPromise;
+  check('pre-count cancel has zero fetch, MusicBrainz, or DB-write side effects', cancelled.counters.fetches === 0
+    && cancelled.counters.runtime.filter((message) => message.type === 'enrichCreditsMb').length === 0
+    && cancelled.counters.runtime.filter((message) => message.op === 'UPDATE_CREDITS').length === 0
+    && cancelled.counters.rpc.length === 0);
+  check('pre-count cancel restores unchanged candidate-generation state', cancelled.controller.candidatesByChannel === originalCandidates
+    && originalCandidates.has('kept-state') && cancelled.controller.activeChannel === 'kept-state'
+    && cancelled.controller.renderedRows === 4 && cancelled.controller.errors.join(',') === 'kept-error'
+    && cancelled.controller.generating === false && cancelled.controller.confirmingGeneration === false
+    && !find(cancelled.controller.autoView, (e) => e.classList.contains('enrich-precount-confirm')));
+
+  const started = load(records, undefined, {
+    fetch: async () => ({ ok: true, json: async () => ({ rules: [] }) }),
+    runtime: (message) => message.type === 'enrichCreditsMb'
+      ? { success: true, candidate: null }
+      : { success: false },
+  });
+  started.controller.switchView('auto');
+  const startPromise = started.controller.generateCandidates();
+  const startPanel = find(started.controller.autoView, (e) => e.classList.contains('enrich-precount-confirm'));
+  await find(startPanel, (e) => e.dataset.enrichPrecountAction === 'start').trigger('click');
+  await startPromise;
+  const mbMessages = started.counters.runtime.filter((message) => message.type === 'enrichCreditsMb');
+  check('pre-count start reaches existing rules and MusicBrainz generation flow', started.counters.fetches === 1
+    && mbMessages.length === 3 && started.controller.generating === false);
+
+  const manual = load(records, undefined, {
+    fetch: async () => { throw new Error('manual view must not fetch'); },
+    runtime: () => { throw new Error('manual view must not message MusicBrainz'); },
+  });
+  manual.controller.open();
+  manual.controller.switchView('manual');
+  check('opening manual-confirm view never starts MusicBrainz', manual.counters.fetches === 0
+    && manual.counters.runtime.filter((message) => message.type === 'enrichCreditsMb').length === 0);
+}
 async function testAutoCommitGuards() {
   console.log('auto commit guards');
   const candidate = (videoId) => ({
@@ -280,7 +356,8 @@ async function testA11y() {
 }
 
 async function main() {
-  await testPure(); await testRowsValidation(); await testResults(); await testCopy(); await testAutoCommitGuards();
+  await testPure(); await testRowsValidation(); await testResults(); await testCopy(); await testGenerationPreCount();
+  await testAutoCommitGuards();
   await testActions(); await testA11y();
   console.log(`\n${pass} passed, ${fail} failed`); if (fail) process.exit(1);
 }
