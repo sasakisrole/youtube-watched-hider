@@ -20,9 +20,42 @@ Thumbs.db
 *.zip
 *.log
 node_modules/
+dist/
 
 # レコメンド出力（個人用・公開リポには含めない）
 recommend_output/
 
 # 旧アイコンのローカルバックアップ（公開リポには含めない）
 icons/_old_redcircle/
+
+# --- 2026-07-23 recovery hardening (branch recovery/youtube-v1.42.14-uncommitted) ---
+# Claude Code が生成するセッション状態（プロジェクト成果物ではない）
+.claude/state/
+
+# 実データ・PII を含む監査/引継ぎ文書の退避先（コミットしない・ローカル保全のみ）
+private-audit/
+
+# OS/エディタ/一時ファイル
+Desktop.ini
+*.swp
+*.swo
+*.tmp
+*~
+
+# Python キャッシュ
+__pycache__/
+*.py[cod]
+
+# ローカルバックアップ・パッチ残骸
+*.bak
+*.backup
+*.orig
+*.rej
+
+# 拡張の個人エクスポート・実データ由来の監査出力
+yt-watched-*.json
+yt-watched-backup-*.json
+credit_changes_*_audit.csv
+credit_data_anomalies*.csv
+description_parser_audit.*
+backup_diff_metrics.json
