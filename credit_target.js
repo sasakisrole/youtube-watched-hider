@@ -23,6 +23,7 @@
   'use strict';
 
   var CREDIT_ROLES = ['composer', 'lyricist', 'arranger'];
+  var CREDIT_ROLE_SOURCES = ['topic', 'general', 'enrich:rule', 'enrich:mb', 'manual'];
 
   // 30 days — matches DESIGN B-9 RETRY.YOUTUBE_NOT_FOUND.
   var CREDIT_RECHECK_MS = 30 * 24 * 60 * 60 * 1000;
@@ -33,6 +34,19 @@
 
   function creditIsBlank(value) {
     return value == null || String(value).trim() === '';
+  }
+
+  function getMissingCreditRoles(record) {
+    return CREDIT_ROLES.filter(function (role) {
+      return creditIsBlank(record && record[role]);
+    });
+  }
+
+  function effectiveRoleSource(record, role) {
+    var roleSources = record && record.creditRoleSources;
+    var roleSource = roleSources && !Array.isArray(roleSources) ? roleSources[role] : undefined;
+    if (typeof roleSource === 'string' && CREDIT_ROLE_SOURCES.indexOf(roleSource) !== -1) return roleSource;
+    return record && typeof record.creditsSource === 'string' ? record.creditsSource : '';
   }
 
   function normalizeSharedText(value) {
@@ -82,9 +96,7 @@
 
   // True when at least one credit role is still blank (role-unit §3.1).
   function hasMissingCreditRole(record) {
-    return CREDIT_ROLES.some(function (role) {
-      return creditIsBlank(record && record[role]);
-    });
+    return getMissingCreditRoles(record).length > 0;
   }
 
   // True when this video was credit-checked within the cool-down window and so
@@ -111,6 +123,8 @@
     CREDIT_ROLES: CREDIT_ROLES,
     CREDIT_RECHECK_MS: CREDIT_RECHECK_MS,
     creditIsBlank: creditIsBlank,
+    getMissingCreditRoles: getMissingCreditRoles,
+    effectiveRoleSource: effectiveRoleSource,
     isValidCreditValue: isValidCreditValue,
     isTopicChannelName: isTopicChannelName,
     stripTopicChannelSuffix: stripTopicChannelSuffix,

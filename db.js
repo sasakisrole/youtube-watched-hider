@@ -6,6 +6,8 @@ if (typeof WatchedDB === 'undefined') {
     const DB_VERSION = 5;
     const STORE_NAME = 'watchedVideos';
     const LIKED_STORE = 'likedVideos';
+    const CREDIT_ROLES = ['composer', 'lyricist', 'arranger'];
+    const CREDIT_ROLE_SOURCES = new Set(['topic', 'general', 'enrich:rule', 'enrich:mb', 'manual']);
 
     let dbInstance = null;
 
@@ -247,14 +249,21 @@ if (typeof WatchedDB === 'undefined') {
         getReq.onsuccess = () => {
           const existing = getReq.result;
           if (!existing) return;
-          for (const k of ['composer', 'lyricist', 'arranger', 'creditsRaw']) {
+          const writtenRoles = [];
+          for (const k of [...CREDIT_ROLES, 'creditsRaw']) {
             const v = credits && credits[k];
             const valid = k === 'creditsRaw' || globalThis.CreditTarget.isValidCreditValue(v);
             const canWrite = k === 'creditsRaw' ? (force || !existing[k]) : !existing[k];
             if (v && valid && canWrite) {
               existing[k] = v;
+              if (k !== 'creditsRaw') writtenRoles.push(k);
               didUpdate = true;
             }
+          }
+          if (writtenRoles.length && CREDIT_ROLE_SOURCES.has(source)) {
+            const roleSources = sanitizeCreditRoleSources(existing.creditRoleSources);
+            for (const role of writtenRoles) roleSources[role] = source;
+            existing.creditRoleSources = roleSources;
           }
           if (didUpdate && source && !existing.creditsSource) {
             existing.creditsSource = source;
@@ -269,6 +278,88 @@ if (typeof WatchedDB === 'undefined') {
         };
         tx.oncomplete = () => resolve(didUpdate);
         tx.onerror = (event) => reject(event.target.error);
+      });
+    }
+
+    function normalizeCasBlank(value) {
+      return value == null || (typeof value === 'string' && value.trim() === '') ? '' : value;
+    }
+
+    async function setManualCreditRole(args = {}) {
+      const { videoId, role, value, expectedCurrent, expectedSource, restoreRoleSource } = args;
+      const hasRestoreRoleSource = Object.prototype.hasOwnProperty.call(args, 'restoreRoleSource');
+      if (!CREDIT_ROLES.includes(role)) return { error: 'bad_role' };
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const getReq = store.get(videoId);
+        let result = { error: 'not_found' };
+
+        getReq.onsuccess = () => {
+          const existing = getReq.result;
+          if (!existing) return;
+
+          const currentValue = existing[role];
+          const currentSource = globalThis.CreditTarget.effectiveRoleSource(existing, role);
+          if (normalizeCasBlank(expectedCurrent) !== normalizeCasBlank(currentValue)
+            || normalizeCasBlank(expectedSource) !== normalizeCasBlank(currentSource)) {
+            result = { conflict: true, current: { value: currentValue, source: currentSource } };
+            return;
+          }
+
+          const nextIsBlank = normalizeCasBlank(value) === '';
+          const currentIsBlank = globalThis.CreditTarget.creditIsBlank(currentValue);
+          if (hasRestoreRoleSource && restoreRoleSource !== null && !CREDIT_ROLE_SOURCES.has(restoreRoleSource)) {
+            result = { error: 'invalid_value' };
+            return;
+          }
+          if (!nextIsBlank && !globalThis.CreditTarget.isValidCreditValue(value)) {
+            result = { error: 'invalid_value' };
+            return;
+          }
+          if ((!currentIsBlank || nextIsBlank) && currentSource !== 'manual') {
+            result = { error: 'not_manual' };
+            return;
+          }
+          // Undoing a cancel is the sole restore whose just-written state is
+          // blank/non-manual (the cancel removed its manual key). It may only
+          // restore a nonblank manual value; every other restore requires manual.
+          if (hasRestoreRoleSource && currentSource !== 'manual'
+            && !(currentIsBlank && !nextIsBlank && restoreRoleSource === 'manual')) {
+            result = { error: 'not_manual' };
+            return;
+          }
+
+          const priorSources = existing.creditRoleSources;
+          const sourcePresent = !!(priorSources && !Array.isArray(priorSources)
+            && Object.prototype.hasOwnProperty.call(priorSources, role));
+          const previous = { value: currentValue, source: currentSource, sourcePresent };
+          const roleSources = sanitizeCreditRoleSources(priorSources);
+
+          existing[role] = nextIsBlank ? '' : value;
+          if (hasRestoreRoleSource) {
+            if (restoreRoleSource === null) delete roleSources[role];
+            else roleSources[role] = restoreRoleSource;
+          } else if (nextIsBlank) {
+            delete roleSources[role];
+          } else {
+            roleSources[role] = 'manual';
+          }
+          if (Object.keys(roleSources).length) existing.creditRoleSources = roleSources;
+          else delete existing.creditRoleSources;
+
+          const post = {
+            value: existing[role],
+            source: globalThis.CreditTarget.effectiveRoleSource(existing, role),
+          };
+          store.put(existing);
+          result = { updated: true, previous, post };
+        };
+
+        tx.oncomplete = () => resolve(result);
+        tx.onerror = (event) => reject(event.target.error);
+        tx.onabort = (event) => reject(event.target.error);
       });
     }
 
@@ -594,6 +685,18 @@ if (typeof WatchedDB === 'undefined') {
       return true;
     }
 
+    function sanitizeCreditRoleSources(value) {
+      const sanitized = {};
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return sanitized;
+      for (const role of CREDIT_ROLES) {
+        const source = value[role];
+        if (typeof source === 'string' && CREDIT_ROLE_SOURCES.has(source)) {
+          sanitized[role] = source;
+        }
+      }
+      return sanitized;
+    }
+
     function isValidLikedRecord(record) {
       if (!record || typeof record !== 'object' || typeof record.videoId !== 'string' || record.videoId.length === 0) return false;
       const stringFields = ['title', 'channel', 'accountId'];
@@ -707,6 +810,7 @@ if (typeof WatchedDB === 'undefined') {
         arranger: typeof record.arranger === 'string' ? record.arranger : '',
         creditsCheckedAt: typeof record.creditsCheckedAt === 'number' && record.creditsCheckedAt > 0 ? record.creditsCheckedAt : 0,
         creditsSource: typeof record.creditsSource === 'string' ? record.creditsSource : '',
+        creditRoleSources: sanitizeCreditRoleSources(record.creditRoleSources),
         creditsRaw: typeof record.creditsRaw === 'string' ? record.creditsRaw : '',
         creditsFetchFailReason: typeof record.creditsFetchFailReason === 'string' ? record.creditsFetchFailReason : '',
         creditsFetchAttemptedAt: typeof record.creditsFetchAttemptedAt === 'number' && record.creditsFetchAttemptedAt > 0 ? record.creditsFetchAttemptedAt : 0,
@@ -873,11 +977,24 @@ if (typeof WatchedDB === 'undefined') {
                 existing.durationFetchFailed = record.durationFetchFailed;
                 updated = true;
               }
-              for (const field of ['composer', 'lyricist', 'arranger', 'creditsRaw']) {
-                if (record[field] && !existing[field]) {
-                  existing[field] = record[field];
+              for (const role of CREDIT_ROLES) {
+                const currentSource = globalThis.CreditTarget.effectiveRoleSource(existing, role);
+                if (!globalThis.CreditTarget.creditIsBlank(record[role])
+                  && globalThis.CreditTarget.creditIsBlank(existing[role])
+                  && currentSource !== 'manual') {
+                  existing[role] = record[role];
+                  const roleSources = sanitizeCreditRoleSources(existing.creditRoleSources);
+                  const incomingSource = globalThis.CreditTarget.effectiveRoleSource(record, role);
+                  if (CREDIT_ROLE_SOURCES.has(incomingSource)) roleSources[role] = incomingSource;
+                  else delete roleSources[role];
+                  if (Object.keys(roleSources).length) existing.creditRoleSources = roleSources;
+                  else delete existing.creditRoleSources;
                   updated = true;
                 }
+              }
+              if (record.creditsRaw && !existing.creditsRaw) {
+                existing.creditsRaw = record.creditsRaw;
+                updated = true;
               }
               if (record.creditsCheckedAt > (existing.creditsCheckedAt || 0)) {
                 existing.creditsCheckedAt = record.creditsCheckedAt;
@@ -1109,7 +1226,7 @@ if (typeof WatchedDB === 'undefined') {
       return { total: all.length, accounts: [...accounts.entries()] };
     }
 
-    return { openDB, addWatched, updateDuration, markDurationFailed, markDurationLive, updateTitle, updateTitleAndChannel, updateCredits, markCreditsChecked, markCreditsFailed, cleanAllCredits, isWatched, checkMultiple, getStats, getAllIds, getWatchedIdsPage, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport, unwrapWatchedRecords, parseImportData, diffImport,
+    return { openDB, addWatched, updateDuration, markDurationFailed, markDurationLive, updateTitle, updateTitleAndChannel, updateCredits, setManualCreditRole, markCreditsChecked, markCreditsFailed, cleanAllCredits, isWatched, checkMultiple, getStats, getAllIds, getWatchedIdsPage, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport, unwrapWatchedRecords, parseImportData, diffImport,
       upsertLiked, getAllLiked, importLikedData, mergeLikedData, clearLikedByAccount, deleteManyRecords, replaceRecords, getLikedStats };
   })();
 }
