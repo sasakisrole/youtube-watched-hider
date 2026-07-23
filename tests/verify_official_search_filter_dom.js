@@ -377,18 +377,18 @@ async function main() {
     allButton.getAttribute('aria-pressed') === 'true' &&
     cards.every((card) => !card.classList.contains('ywh-osf-hidden')));
   check('default counts cover every core category and visible total',
-    countValue(panel, core.CATEGORY.OFFICIAL) === 2 &&
+    countValue(panel, core.CATEGORY.OFFICIAL) === 0 &&
     countValue(panel, core.CATEGORY.CREDIT_RELATED) === 0 &&
-    countValue(panel, core.CATEGORY.OTHER_TOPIC) === 1 &&
-    countValue(panel, core.CATEGORY.OTHER) === 1 &&
+    countValue(panel, core.CATEGORY.OTHER_TOPIC) === 2 &&
+    countValue(panel, core.CATEGORY.OTHER) === 2 &&
     countValue(panel, core.CATEGORY.PENDING) === 1 &&
     panel.querySelector('[data-count-visible]').textContent === '5' &&
     panel.querySelector('[data-count-total]').textContent === '5');
 
   officialButton.click();
   const expectedCategories = [
-    core.CATEGORY.OFFICIAL,
-    core.CATEGORY.OFFICIAL,
+    core.CATEGORY.OTHER,
+    core.CATEGORY.OTHER_TOPIC,
     core.CATEGORY.OTHER_TOPIC,
     core.CATEGORY.OTHER,
     core.CATEGORY.PENDING,
@@ -397,7 +397,7 @@ async function main() {
     cards.every((card, index) =>
       card.classList.contains('ywh-osf-hidden') ===
       !core.shouldShowCategory(expectedCategories[index], core.MODE.OFFICIAL)
-    ) && panel.querySelector('[data-count-visible]').textContent === '3');
+    ) && panel.querySelector('[data-count-visible]').textContent === '1');
   check('classification changes no inline display or watched dataset',
     cards.every((card, index) =>
       JSON.stringify(card.style) === initialSnapshot[index].style &&
@@ -440,7 +440,7 @@ async function main() {
   setLocation(runtime.location, '/results', '?search_query=Artist+-+Topic');
   runtime.document.dispatch('yt-navigate-finish');
   panel = runtime.document.getElementById('ywh-osf-panel');
-  check('SPA round-trip restores exactly one panel and retains temporary mode',
+  check('SPA round-trip restores exactly one panel and retains selected mode',
     runtime.document.querySelectorAll('#ywh-osf-panel').length === 1 &&
     panel.querySelector('[data-mode="official"]').getAttribute('aria-pressed') === 'true' &&
     cards[2].classList.contains('ywh-osf-hidden'));
@@ -463,7 +463,7 @@ async function main() {
   await delay(80);
   check('infinite-scroll card is classified by the existing observer',
     added.classList.contains('ywh-osf-hidden') &&
-    countValue(panel, core.CATEGORY.OTHER) === 2 &&
+    countValue(panel, core.CATEGORY.OTHER) === 3 &&
     panel.querySelector('[data-count-total]').textContent === '6');
 
   added.children[1].setAttribute('href', '/@artist-archive');
@@ -474,10 +474,10 @@ async function main() {
     attributeName: 'href',
   }]);
   await delay(80);
-  check('a reused card is reclassified after its channel identity changes',
-    !added.classList.contains('ywh-osf-hidden') &&
-    countValue(panel, core.CATEGORY.OFFICIAL) === 3 &&
-    countValue(panel, core.CATEGORY.OTHER) === 1);
+  check('a same-name reused card is not auto-confirmed without registration',
+    added.classList.contains('ywh-osf-hidden') &&
+    countValue(panel, core.CATEGORY.OFFICIAL) === 0 &&
+    countValue(panel, core.CATEGORY.OTHER) === 3);
   check('re-render leaves one panel, one observer, and every card node in place',
     runtime.document.querySelectorAll('#ywh-osf-panel').length === 1 &&
     MutationObserverStub.instances.filter((observer) => observer.active).length === 1 &&
@@ -492,7 +492,7 @@ async function main() {
     cards[3].style.display === 'none' && cards[3].dataset.watchedHidden === 'true');
 
   console.log('a11y / manifest');
-  const controls = panel.querySelectorAll('button');
+  const controls = panel.querySelectorAll('[data-mode]');
   check('controls are labelled native buttons and keyboard reachable',
     controls.length === 2 && controls.every((button) =>
       button.tagName === 'BUTTON' && button.type === 'button' &&
