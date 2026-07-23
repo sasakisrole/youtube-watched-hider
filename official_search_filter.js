@@ -77,6 +77,7 @@
       schemaVersion: SETTINGS_SCHEMA_VERSION,
       activeProfileId: null,
       globalMode: MODE.ALL,
+      hideOtherGlobal: false,
       profiles: {},
       queryBindings: {},
     };
@@ -206,6 +207,10 @@
       globalMode: isValidMode(value.globalMode)
         ? value.globalMode
         : MODE.ALL,
+      hideOtherGlobal:
+        typeof value.hideOtherGlobal === 'boolean'
+          ? value.hideOtherGlobal
+          : false,
       profiles,
       queryBindings: sanitizeQueryBindings(
         value.queryBindings,
@@ -391,7 +396,11 @@
     const queryChanged = normalizedQuery !== state.currentNormalizedQuery;
     const profile = resolveProfileForQuery(state.settings, query);
     const nextProfileId = profile?.id || null;
-    const nextMode = profile?.mode || MODE.ALL;
+    const nextMode = profile?.mode || (
+      state.settings.hideOtherGlobal
+        ? MODE.DISCOVERY
+        : MODE.ALL
+    );
     const profileChanged = nextProfileId !== state.effectiveProfileId;
     const modeChanged = nextMode !== state.mode;
     if (queryChanged || profileChanged || modeChanged) {
@@ -433,6 +442,7 @@
     const total = panel.querySelector?.('[data-count-total]');
     const effective = panel.querySelector?.('[data-effective-profile]');
     const unboundHint = panel.querySelector?.('[data-unbound-hint]');
+    const globalHideButton = panel.querySelector?.('[data-global-hide]');
     const temporaryRevealButton = panel.querySelector?.(
       '[data-temporary-reveal]'
     );
@@ -451,10 +461,18 @@
       const profile = getEffectiveProfile();
       effective.textContent = profile
         ? `適用中: ${profile.displayName || profile.id} / ${state.mode}`
-        : '未登録の検索語: すべて表示';
+        : state.settings.hideOtherGlobal
+          ? '未登録の検索語: その他チャンネルを非表示'
+          : '未登録の検索語: すべて表示';
     }
     if (unboundHint) {
       unboundHint.hidden = hasEffectiveProfile;
+    }
+    if (globalHideButton) {
+      globalHideButton.setAttribute(
+        'aria-checked',
+        String(state.settings.hideOtherGlobal)
+      );
     }
 
     for (const button of panel.querySelectorAll?.('[data-mode]') || []) {
@@ -470,7 +488,7 @@
       );
     }
     if (temporaryRevealButton) {
-      const disabled = !hasEffectiveProfile || state.mode === MODE.ALL;
+      const disabled = state.mode === MODE.ALL;
       temporaryRevealButton.disabled = disabled;
       temporaryRevealButton.setAttribute(
         'aria-disabled',
@@ -600,6 +618,16 @@
       saveAfterLoad,
       saveAfterLoad
     );
+  }
+
+  function requestGlobalHideChange(enabled) {
+    if (typeof enabled !== 'boolean') return;
+    requestSettingsChange((settings) => {
+      settings.hideOtherGlobal = enabled;
+      return true;
+    }, enabled
+      ? 'その他チャンネルを非表示にしました。'
+      : 'その他チャンネルを表示します。');
   }
 
   function setManagementStatus(
@@ -1463,6 +1491,30 @@
       'p',
       'ywh-osf-panel__note',
       '表示モードは検索語に対応するプロフィールから解決されます。'
+    );
+    const globalHideButton = document.createElement('button');
+    globalHideButton.type = 'button';
+    globalHideButton.className = 'ywh-osf-global-hide';
+    globalHideButton.dataset.globalHide = '';
+    globalHideButton.setAttribute('role', 'switch');
+    globalHideButton.setAttribute('aria-checked', 'false');
+    globalHideButton.setAttribute(
+      'aria-label',
+      'その他チャンネルを隠す。公式とTopicは表示'
+    );
+    globalHideButton.textContent =
+      'その他チャンネルを隠す（公式・Topicは表示）';
+    globalHideButton.addEventListener('click', () => {
+      requestGlobalHideChange(
+        globalHideButton.getAttribute('aria-checked') !== 'true'
+      );
+    });
+    panel.appendChild(globalHideButton);
+    appendText(
+      panel,
+      'p',
+      'ywh-osf-global-hide__note',
+      'Topicはチャンネル名から自動判定します。'
     );
     const effective = appendText(
       panel,

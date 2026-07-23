@@ -105,6 +105,7 @@ function validSettings(globalMode = 'all', activeProfileId = null) {
     schemaVersion: 1,
     activeProfileId,
     globalMode,
+    hideOtherGlobal: false,
     profiles: {},
     queryBindings: {},
   };
