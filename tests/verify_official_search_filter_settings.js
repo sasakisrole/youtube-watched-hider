@@ -4,13 +4,6 @@ const fs = require('fs');
 const path = require('path');
 
 const STORAGE_KEY = 'officialSearchFilter';
-const DEFAULT_SETTINGS = {
-  schemaVersion: 1,
-  activeProfileId: null,
-  globalMode: 'all',
-  profiles: {},
-  queryBindings: {},
-};
 const DOM_TEST_PATH = path.join(__dirname, 'verify_official_search_filter_dom.js');
 const helperSource = fs.readFileSync(DOM_TEST_PATH, 'utf8')
   .split('async function main() {')[0];
@@ -117,6 +110,22 @@ function validSettings(globalMode = 'all', activeProfileId = null) {
   };
 }
 
+function boundSettings(mode = 'all') {
+  return {
+    ...validSettings('all', 'artist'),
+    profiles: {
+      artist: {
+        id: 'artist',
+        displayName: 'Artist',
+        aliases: [],
+        channels: [],
+        mode,
+      },
+    },
+    queryBindings: { 'artist - topic': 'artist' },
+  };
+}
+
 function makeRuntime(storage) {
   const runtime = loadRuntime();
   runtime.context.chrome = storage.chrome;
@@ -185,22 +194,30 @@ async function main() {
 
   console.log('save and reload');
   {
-    const storage = createStorageStub(undefined);
+    const boundFixture = boundSettings('all');
+    boundFixture.somethingUnknown = 'x';
+    const storage = createStorageStub(boundFixture);
     const first = makeRuntime(storage);
     await settle();
     panel(first).querySelector('[data-mode="official"]').click();
     await settle();
-    check('successful save writes globalMode official', storage.store[STORAGE_KEY]?.globalMode === 'official');
-    check('successful global save keeps an unbound query fail-open all',
-      pressed(first, 'all') && allVisible(first));
+    check('successful save writes the resolved per-profile mode only',
+      storage.store[STORAGE_KEY]?.profiles.artist.mode === 'official' &&
+      storage.store[STORAGE_KEY]?.globalMode === 'all');
+    check('successful per-profile save updates the bound query mode',
+      pressed(first, 'official'));
+    check('bound save preserves known settings and drops unknown top-level keys',
+      JSON.stringify(storage.store[STORAGE_KEY]) ===
+        JSON.stringify(boundSettings('official')) &&
+      !Object.hasOwn(storage.store[STORAGE_KEY], 'somethingUnknown'));
     first.context._ywhOfficialSearchFilter.cleanup();
 
     const reloaded = makeRuntime(storage);
     await settle();
-    check('new runtime re-resolves an unbound query to all',
-      pressed(reloaded, 'all'));
-    check('reloaded unbound query keeps every existing card visible',
-      allVisible(reloaded));
+    check('new runtime restores the bound profile mode',
+      pressed(reloaded, 'official'));
+    check('reloaded bound query reapplies its saved filter',
+      !allVisible(reloaded));
     reloaded.context._ywhOfficialSearchFilter.cleanup();
   }
 
@@ -219,18 +236,21 @@ async function main() {
     check('invalid mode and field types sanitize fail-open', pressed(runtime, 'all') && allVisible(runtime));
     panel(runtime).querySelector('[data-mode="official"]').click();
     await settle();
-    check('save round-trips sanitized empty structures and drops unknown keys',
-      JSON.stringify(storage.store[STORAGE_KEY]) === JSON.stringify({ ...DEFAULT_SETTINGS, globalMode: 'official' }));
+    check('disabled unbound click leaves corrupt stored data untouched',
+      storage.store[STORAGE_KEY].futureTopLevel === true &&
+      storage.store[STORAGE_KEY].globalMode === 'mystery');
     runtime.context._ywhOfficialSearchFilter.cleanup();
   }
   {
     const storage = createStorageStub({ ...validSettings('all', 'profile-a'), ignored: 'drop-me' });
     const runtime = makeRuntime(storage);
     await settle();
+    const storedBeforeClick = clone(storage.store[STORAGE_KEY]);
     panel(runtime).querySelector('[data-mode="official"]').click();
     await settle();
-    check('string activeProfileId survives known-shape round-trip',
-      JSON.stringify(storage.store[STORAGE_KEY]) === JSON.stringify(validSettings('official', 'profile-a')));
+    check('unbound click does not overwrite a stored global or active profile field',
+      JSON.stringify(storage.store[STORAGE_KEY]) ===
+        JSON.stringify(storedBeforeClick));
     runtime.context._ywhOfficialSearchFilter.cleanup();
   }
   {
@@ -239,7 +259,7 @@ async function main() {
     await settle();
     check('stored global discovery remains valid but unbound query resolves all',
       pressed(runtime, 'all') &&
-      panel(runtime).querySelectorAll('[data-mode]').length === 2);
+      panel(runtime).querySelectorAll('[data-mode]').length === 3);
     check('unbound query does not apply the stored global discovery filter',
       allVisible(runtime));
     runtime.context._ywhOfficialSearchFilter.cleanup();
@@ -265,24 +285,26 @@ async function main() {
 
   console.log('save failures');
   {
-    const storage = createStorageStub(validSettings('all'), { writeLastError: true });
+    const storage = createStorageStub(boundSettings('all'), { writeLastError: true });
     const runtime = makeRuntime(storage);
     await settle();
     panel(runtime).querySelector('[data-mode="official"]').click();
     await settle();
     check('lastError save failure does not show success', pressed(runtime, 'all') && !pressed(runtime, 'official'));
     check('lastError save failure keeps cards in persisted mode', allVisible(runtime));
-    check('lastError save failure leaves stored value unchanged', storage.store[STORAGE_KEY].globalMode === 'all');
+    check('lastError save failure leaves stored value unchanged',
+      storage.store[STORAGE_KEY].profiles.artist.mode === 'all');
     runtime.context._ywhOfficialSearchFilter.cleanup();
   }
   {
-    const storage = createStorageStub(validSettings('all'), { rejectWrite: true });
+    const storage = createStorageStub(boundSettings('all'), { rejectWrite: true });
     const runtime = makeRuntime(storage);
     await settle();
     panel(runtime).querySelector('[data-mode="official"]').click();
     await settle();
     check('rejected save also retains the persisted UI and data',
-      pressed(runtime, 'all') && allVisible(runtime) && storage.store[STORAGE_KEY].globalMode === 'all');
+      pressed(runtime, 'all') && allVisible(runtime) &&
+      storage.store[STORAGE_KEY].profiles.artist.mode === 'all');
     runtime.context._ywhOfficialSearchFilter.cleanup();
   }
 

@@ -56,7 +56,7 @@
 
 .ywh-osf-panel__modes {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin-top: 12px;
 }
@@ -79,6 +79,11 @@
   border-color: var(--ywh-osf-active);
   background: var(--ywh-osf-active);
   color: var(--ywh-osf-active-text);
+}
+
+.ywh-osf-mode-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .ywh-osf-mode-button:focus-visible {
@@ -114,10 +119,28 @@
 }
 
 .ywh-osf-panel__effective,
-.ywh-osf-binding-query {
+.ywh-osf-binding-query,
+.ywh-osf-panel__hint {
   margin: 8px 0 0;
   color: var(--ywh-osf-muted);
   overflow-wrap: anywhere;
+}
+
+.ywh-osf-temporary-reveal {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.ywh-osf-temporary-reveal[aria-pressed='true'] {
+  border-color: var(--ywh-osf-active);
+  background: var(--ywh-osf-active);
+  color: var(--ywh-osf-active-text);
+}
+
+.ywh-osf-temporary-reveal__status {
+  margin: 8px 0 0;
+  color: var(--ywh-osf-active);
+  font-weight: 700;
 }
 
 .ywh-osf-management {

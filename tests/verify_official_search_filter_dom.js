@@ -483,7 +483,7 @@ async function main() {
   console.log('a11y / manifest');
   const controls = panel.querySelectorAll('[data-mode]');
   check('controls are labelled native buttons and keyboard reachable',
-    controls.length === 2 && controls.every((button) =>
+    controls.length === 3 && controls.every((button) =>
       button.tagName === 'BUTTON' && button.type === 'button' &&
       button.tabIndex >= 0 && Boolean(button.getAttribute('aria-label'))
     ));

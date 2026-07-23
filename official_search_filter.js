@@ -41,7 +41,7 @@
   const countLabels = Object.freeze({
     [CATEGORY.OFFICIAL]: '登録済み公式ソース',
     [CATEGORY.CREDIT_RELATED]: 'クレジット関連',
-    [CATEGORY.OTHER_TOPIC]: '他のTopic',
+    [CATEGORY.OTHER_TOPIC]: '未登録Topic',
     [CATEGORY.OTHER]: 'その他',
     [CATEGORY.PENDING]: '判定待ち',
   });
@@ -69,6 +69,7 @@
     pendingChannel: null,
     effectiveProfileId: null,
     currentNormalizedQuery: '',
+    temporaryRevealActive: false,
   };
 
   function createDefaultSettings() {
@@ -389,9 +390,16 @@
     const normalizedQuery = normalizeText(query);
     const queryChanged = normalizedQuery !== state.currentNormalizedQuery;
     const profile = resolveProfileForQuery(state.settings, query);
+    const nextProfileId = profile?.id || null;
+    const nextMode = profile?.mode || MODE.ALL;
+    const profileChanged = nextProfileId !== state.effectiveProfileId;
+    const modeChanged = nextMode !== state.mode;
+    if (queryChanged || profileChanged || modeChanged) {
+      state.temporaryRevealActive = false;
+    }
     state.currentNormalizedQuery = normalizedQuery;
-    state.effectiveProfileId = profile?.id || null;
-    state.mode = profile?.mode || MODE.ALL;
+    state.effectiveProfileId = nextProfileId;
+    state.mode = nextMode;
     if (queryChanged) renderManagementState();
     return profile;
   }
@@ -424,6 +432,14 @@
     const visible = panel.querySelector?.('[data-count-visible]');
     const total = panel.querySelector?.('[data-count-total]');
     const effective = panel.querySelector?.('[data-effective-profile]');
+    const unboundHint = panel.querySelector?.('[data-unbound-hint]');
+    const temporaryRevealButton = panel.querySelector?.(
+      '[data-temporary-reveal]'
+    );
+    const temporaryRevealStatus = panel.querySelector?.(
+      '[data-temporary-reveal-status]'
+    );
+    const hasEffectiveProfile = Boolean(getEffectiveProfile());
     if (visible) visible.textContent = String(state.visibleCount);
     if (total) {
       total.textContent = String(
@@ -437,12 +453,48 @@
         ? `適用中: ${profile.displayName || profile.id} / ${state.mode}`
         : '未登録の検索語: すべて表示';
     }
+    if (unboundHint) {
+      unboundHint.hidden = hasEffectiveProfile;
+    }
 
     for (const button of panel.querySelectorAll?.('[data-mode]') || []) {
+      const requiresProfile =
+        button.dataset.mode === MODE.OFFICIAL ||
+        button.dataset.mode === MODE.DISCOVERY;
+      const disabled = requiresProfile && !hasEffectiveProfile;
+      button.disabled = disabled;
+      button.setAttribute('aria-disabled', String(disabled));
       button.setAttribute(
         'aria-pressed',
         String(button.dataset.mode === state.mode)
       );
+    }
+    if (temporaryRevealButton) {
+      const disabled = !hasEffectiveProfile || state.mode === MODE.ALL;
+      temporaryRevealButton.disabled = disabled;
+      temporaryRevealButton.setAttribute(
+        'aria-disabled',
+        String(disabled)
+      );
+      temporaryRevealButton.setAttribute(
+        'aria-pressed',
+        String(state.temporaryRevealActive)
+      );
+      temporaryRevealButton.textContent = state.temporaryRevealActive
+        ? '一時表示を解除'
+        : '一時的にすべて表示';
+      temporaryRevealButton.setAttribute(
+        'aria-label',
+        state.temporaryRevealActive
+          ? '一時的な全件表示を解除'
+          : 'フィルターで隠した動画を一時的にすべて表示'
+      );
+    }
+    if (temporaryRevealStatus) {
+      temporaryRevealStatus.hidden = !state.temporaryRevealActive;
+      temporaryRevealStatus.textContent = state.temporaryRevealActive
+        ? '一時表示: 有効'
+        : '';
     }
   }
 
@@ -464,7 +516,11 @@
 
       counts[category] = (counts[category] || 0) + 1;
       if (shouldShow) visibleCount += 1;
-      card.classList.toggle(HIDDEN_CLASS, !shouldShow);
+      if (state.temporaryRevealActive) {
+        card.classList.remove(HIDDEN_CLASS);
+      } else {
+        card.classList.toggle(HIDDEN_CLASS, !shouldShow);
+      }
     }
 
     state.counts = counts;
@@ -503,8 +559,8 @@
 
     const settings = sanitizeSettings(state.settings);
     const profile = resolveProfileForQuery(settings, query);
-    if (profile) profile.mode = mode;
-    else settings.globalMode = mode;
+    if (!profile) return;
+    profile.mode = mode;
 
     if (!hasStorageLocal()) {
       applySettings(settings);
@@ -524,6 +580,14 @@
 
   function requestModeChange(mode) {
     const query = getCurrentSearchQuery();
+    if (
+      !isValidMode(mode) ||
+      !resolveProfileForQuery(state.settings, query)
+    ) {
+      return;
+    }
+    state.temporaryRevealActive = false;
+    scanSearchResults();
     if (!hasStorageLocal()) {
       void saveMode(mode, query);
       return;
@@ -626,6 +690,8 @@
   }
 
   function requestProfileSelection(profileId) {
+    state.temporaryRevealActive = false;
+    scanSearchResults();
     requestSettingsChange((settings) => {
       if (!settings.profiles[profileId]) return false;
       settings.activeProfileId = profileId;
@@ -679,6 +745,8 @@
       setManagementStatus('有効な表示モードを選択してください。', true);
       return;
     }
+    state.temporaryRevealActive = false;
+    scanSearchResults();
     requestSettingsChange((settings) => {
       const profile = settings.profiles[profileId];
       if (!profile) return false;
@@ -819,6 +887,7 @@
     clearHiddenClasses();
     state.counts = createEmptyCounts();
     state.visibleCount = 0;
+    state.temporaryRevealActive = false;
   }
 
   function createSvgIcon() {
@@ -865,9 +934,26 @@
     button.setAttribute('aria-pressed', String(state.mode === mode));
     button.textContent = label;
     button.addEventListener('click', () => {
+      if (
+        button.disabled ||
+        button.getAttribute('aria-disabled') === 'true'
+      ) {
+        return;
+      }
       requestModeChange(mode);
     });
     return button;
+  }
+
+  function toggleTemporaryReveal(button) {
+    if (
+      button.disabled ||
+      button.getAttribute('aria-disabled') === 'true'
+    ) {
+      return;
+    }
+    state.temporaryRevealActive = !state.temporaryRevealActive;
+    scanSearchResults();
   }
 
   function createLabeledControl(
@@ -1131,8 +1217,8 @@
     profileModeSelect.dataset.profileMode = '';
     for (const [mode, label] of [
       [MODE.ALL, 'すべて表示'],
-      [MODE.OFFICIAL, '公式のみ'],
-      [MODE.DISCOVERY, '発見モード'],
+      [MODE.OFFICIAL, '公式優先'],
+      [MODE.DISCOVERY, '発掘'],
     ]) {
       const option = document.createElement('option');
       option.value = mode;
@@ -1370,6 +1456,12 @@
       panel,
       'p',
       'ywh-osf-panel__note',
+      '判定できない動画は安全のため表示します'
+    );
+    appendText(
+      panel,
+      'p',
+      'ywh-osf-panel__note',
       '表示モードは検索語に対応するプロフィールから解決されます。'
     );
     const effective = appendText(
@@ -1380,6 +1472,14 @@
     );
     effective.dataset.effectiveProfile = '';
     effective.setAttribute('aria-live', 'polite');
+    const unboundHint = appendText(
+      panel,
+      'p',
+      'ywh-osf-panel__hint',
+      'この検索語をプロフィールへ紐付けると利用できます'
+    );
+    unboundHint.dataset.unboundHint = '';
+    unboundHint.setAttribute('role', 'status');
 
     const modes = document.createElement('div');
     modes.className = 'ywh-osf-panel__modes';
@@ -1388,8 +1488,15 @@
     modes.appendChild(
       createModeButton(
         MODE.OFFICIAL,
-        '公式のみ',
-        '公式投稿元のみ表示'
+        '公式優先',
+        '公式優先で表示'
+      )
+    );
+    modes.appendChild(
+      createModeButton(
+        MODE.DISCOVERY,
+        '発掘',
+        '未登録Topicを含めて発掘'
       )
     );
     modes.appendChild(
@@ -1400,6 +1507,28 @@
       )
     );
     panel.appendChild(modes);
+
+    const temporaryRevealButton = createManagementButton(
+      '一時的にすべて表示',
+      'フィルターで隠した動画を一時的にすべて表示',
+      'ywh-osf-action-button ywh-osf-temporary-reveal'
+    );
+    temporaryRevealButton.dataset.temporaryReveal = '';
+    temporaryRevealButton.setAttribute('aria-pressed', 'false');
+    temporaryRevealButton.addEventListener('click', () => {
+      toggleTemporaryReveal(temporaryRevealButton);
+    });
+    panel.appendChild(temporaryRevealButton);
+    const temporaryRevealStatus = appendText(
+      panel,
+      'p',
+      'ywh-osf-temporary-reveal__status',
+      ''
+    );
+    temporaryRevealStatus.dataset.temporaryRevealStatus = '';
+    temporaryRevealStatus.setAttribute('role', 'status');
+    temporaryRevealStatus.setAttribute('aria-live', 'polite');
+    temporaryRevealStatus.hidden = true;
 
     const summary = document.createElement('p');
     summary.className = 'ywh-osf-panel__summary';
