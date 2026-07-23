@@ -7,7 +7,8 @@
     !core ||
     typeof core.classifyChannel !== 'function' ||
     typeof core.shouldShowCategory !== 'function' ||
-    typeof core.normalizeChannelPath !== 'function'
+    typeof core.normalizeChannelPath !== 'function' ||
+    typeof core.normalizeText !== 'function'
   ) {
     return;
   }
@@ -17,6 +18,7 @@
     MODE,
     classifyChannel,
     normalizeChannelPath,
+    normalizeText,
     shouldShowCategory,
   } = core;
 
@@ -65,6 +67,8 @@
     counts: createEmptyCounts(),
     visibleCount: 0,
     pendingChannel: null,
+    effectiveProfileId: null,
+    currentNormalizedQuery: '',
   };
 
   function createDefaultSettings() {
@@ -151,9 +155,36 @@
         displayName: String(profileValue.displayName ?? '').trim(),
         aliases,
         channels,
+        mode: isValidMode(profileValue.mode)
+          ? profileValue.mode
+          : MODE.ALL,
       };
     }
     return profiles;
+  }
+
+  function sanitizeQueryBindings(value, profiles) {
+    if (!isPlainObject(value)) return {};
+
+    const bindings = {};
+    const conflicts = new Set();
+    for (const [query, profileIdValue] of Object.entries(value)) {
+      const normalizedQuery = normalizeText(query);
+      const profileId = String(profileIdValue ?? '').trim();
+      if (!normalizedQuery || !profiles[profileId]) continue;
+      if (
+        Object.prototype.hasOwnProperty.call(bindings, normalizedQuery) &&
+        bindings[normalizedQuery] !== profileId
+      ) {
+        delete bindings[normalizedQuery];
+        conflicts.add(normalizedQuery);
+        continue;
+      }
+      if (!conflicts.has(normalizedQuery)) {
+        bindings[normalizedQuery] = profileId;
+      }
+    }
+    return bindings;
   }
 
   function sanitizeSettings(value) {
@@ -163,6 +194,7 @@
     ) {
       return createDefaultSettings();
     }
+    const profiles = sanitizeProfiles(value.profiles);
     return {
       schemaVersion: SETTINGS_SCHEMA_VERSION,
       activeProfileId:
@@ -173,10 +205,11 @@
       globalMode: isValidMode(value.globalMode)
         ? value.globalMode
         : MODE.ALL,
-      profiles: sanitizeProfiles(value.profiles),
-      queryBindings: isPlainObject(value.queryBindings)
-        ? { ...value.queryBindings }
-        : {},
+      profiles,
+      queryBindings: sanitizeQueryBindings(
+        value.queryBindings,
+        profiles
+      ),
     };
   }
 
@@ -326,8 +359,52 @@
     return null;
   }
 
+  function getCurrentSearchQuery() {
+    try {
+      return new URL(location.href).searchParams.get('search_query') || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function resolveProfileForQuery(settings, query) {
+    const normalizedQuery = normalizeText(query);
+    if (!normalizedQuery) return null;
+
+    const boundProfileId = settings.queryBindings[normalizedQuery];
+    if (boundProfileId) {
+      return settings.profiles[boundProfileId] || null;
+    }
+
+    const matches = Object.values(settings.profiles).filter((profile) =>
+      [profile.displayName, ...profile.aliases].some(
+        (alias) => normalizeText(alias) === normalizedQuery
+      )
+    );
+    return matches.length === 1 ? matches[0] : null;
+  }
+
+  function resolveEffectiveState() {
+    const query = getCurrentSearchQuery();
+    const normalizedQuery = normalizeText(query);
+    const queryChanged = normalizedQuery !== state.currentNormalizedQuery;
+    const profile = resolveProfileForQuery(state.settings, query);
+    state.currentNormalizedQuery = normalizedQuery;
+    state.effectiveProfileId = profile?.id || null;
+    state.mode = profile?.mode || MODE.ALL;
+    if (queryChanged) renderManagementState();
+    return profile;
+  }
+
   function getActiveProfile() {
     const id = state.settings.activeProfileId;
+    return typeof id === 'string'
+      ? state.settings.profiles[id] || null
+      : null;
+  }
+
+  function getEffectiveProfile() {
+    const id = state.effectiveProfileId;
     return typeof id === 'string'
       ? state.settings.profiles[id] || null
       : null;
@@ -346,12 +423,19 @@
 
     const visible = panel.querySelector?.('[data-count-visible]');
     const total = panel.querySelector?.('[data-count-total]');
+    const effective = panel.querySelector?.('[data-effective-profile]');
     if (visible) visible.textContent = String(state.visibleCount);
     if (total) {
       total.textContent = String(
         Object.values(state.counts)
           .reduce((sum, count) => sum + count, 0)
       );
+    }
+    if (effective) {
+      const profile = getEffectiveProfile();
+      effective.textContent = profile
+        ? `適用中: ${profile.displayName || profile.id} / ${state.mode}`
+        : '未登録の検索語: すべて表示';
     }
 
     for (const button of panel.querySelectorAll?.('[data-mode]') || []) {
@@ -365,8 +449,8 @@
   function scanSearchResults() {
     if (state.disposed || !isSearchPage()) return;
 
+    const profile = resolveEffectiveState();
     const cards = getSearchVideoCards();
-    const profile = getActiveProfile();
     const counts = createEmptyCounts();
     let visibleCount = 0;
 
@@ -391,7 +475,6 @@
   function applySettings(settings) {
     state.settings = settings;
     state.persistedMode = settings.globalMode;
-    state.mode = settings.globalMode;
     initializePage();
     renderManagementState();
   }
@@ -415,38 +498,39 @@
     }
   }
 
-  async function saveMode(mode) {
+  async function saveMode(mode, query) {
     if (state.disposed || !isValidMode(mode)) return;
+
+    const settings = sanitizeSettings(state.settings);
+    const profile = resolveProfileForQuery(settings, query);
+    if (profile) profile.mode = mode;
+    else settings.globalMode = mode;
+
     if (!hasStorageLocal()) {
-      state.settings = sanitizeSettings({ ...state.settings, globalMode: mode });
-      state.persistedMode = mode;
-      state.mode = mode;
-      scanSearchResults();
+      applySettings(settings);
       return;
     }
 
-    const settings = sanitizeSettings({ ...state.settings, globalMode: mode });
     try {
       await storageLocalSet(settings);
       if (state.disposed) return;
-      state.settings = settings;
-      state.persistedMode = mode;
-      state.mode = mode;
+      applySettings(settings);
     } catch {
       if (state.disposed) return;
-      state.mode = state.persistedMode;
+      initializePage();
+      renderManagementState();
     }
-    scanSearchResults();
   }
 
   function requestModeChange(mode) {
+    const query = getCurrentSearchQuery();
     if (!hasStorageLocal()) {
-      void saveMode(mode);
+      void saveMode(mode, query);
       return;
     }
     const saveAfterLoad = async () => {
       await state.loadPromise;
-      return saveMode(mode);
+      return saveMode(mode, query);
     };
     state.saveQueue = state.saveQueue.then(
       saveAfterLoad,
@@ -563,6 +647,7 @@
         displayName: name,
         aliases: [],
         channels: [],
+        mode: MODE.ALL,
       };
       settings.activeProfileId = id;
       return true;
@@ -587,6 +672,49 @@
     }, 'プロフィール名を変更しました。', () => {
       input.value = name;
     });
+  }
+
+  function requestProfileModeChange(profileId, mode) {
+    if (!isValidMode(mode)) {
+      setManagementStatus('有効な表示モードを選択してください。', true);
+      return;
+    }
+    requestSettingsChange((settings) => {
+      const profile = settings.profiles[profileId];
+      if (!profile) return false;
+      profile.mode = mode;
+      return true;
+    }, 'プロフィールの表示モードを変更しました。');
+  }
+
+  function requestQueryBinding(profileId) {
+    const normalizedQuery = normalizeText(getCurrentSearchQuery());
+    if (!normalizedQuery) {
+      setManagementStatus('検索語が空のため関連付けできません。', true);
+      return;
+    }
+    requestSettingsChange((settings) => {
+      if (!settings.profiles[profileId]) return false;
+      settings.queryBindings[normalizedQuery] = profileId;
+      return true;
+    }, '現在の検索語をプロフィールに関連付けました。');
+  }
+
+  function requestQueryBindingRemove() {
+    const normalizedQuery = normalizeText(getCurrentSearchQuery());
+    requestSettingsChange((settings) => {
+      if (
+        !normalizedQuery ||
+        !Object.prototype.hasOwnProperty.call(
+          settings.queryBindings,
+          normalizedQuery
+        )
+      ) {
+        return false;
+      }
+      delete settings.queryBindings[normalizedQuery];
+      return true;
+    }, '現在の検索語の関連付けを解除しました。');
   }
 
   function requestProfileDelete() {
@@ -852,6 +980,13 @@
     const renameInput = panel.querySelector?.('[data-profile-rename-input]');
     const renameButton = panel.querySelector?.('[data-profile-rename]');
     const deleteButton = panel.querySelector?.('[data-profile-delete]');
+    const profileModeSelect = panel.querySelector?.('[data-profile-mode]');
+    const bindingQuery = panel.querySelector?.('[data-binding-query]');
+    const bindingProfileSelect = panel.querySelector?.(
+      '[data-binding-profile-select]'
+    );
+    const bindingSaveButton = panel.querySelector?.('[data-binding-save]');
+    const bindingRemoveButton = panel.querySelector?.('[data-binding-remove]');
     const channelList = panel.querySelector?.('[data-channel-list]');
     const channelInputs = [
       panel.querySelector?.('[data-channel-id-input]'),
@@ -862,6 +997,8 @@
     const confirmButton = panel.querySelector?.('[data-channel-confirm]');
     const profiles = Object.values(state.settings.profiles);
     const activeProfile = getActiveProfile();
+    const normalizedQuery = normalizeText(getCurrentSearchQuery());
+    const boundProfileId = state.settings.queryBindings[normalizedQuery] || '';
 
     if (profileSelect) {
       profileSelect.textContent = '';
@@ -885,6 +1022,35 @@
     if (renameInput) {
       renameInput.value = activeProfile?.displayName || '';
       renameInput.disabled = !activeProfile;
+    }
+    if (profileModeSelect) {
+      profileModeSelect.value = activeProfile?.mode || MODE.ALL;
+      profileModeSelect.disabled = !activeProfile;
+    }
+    if (bindingQuery) {
+      bindingQuery.textContent = normalizedQuery
+        ? `現在の正規化検索語: ${normalizedQuery}`
+        : '現在の検索語は空です。';
+    }
+    if (bindingProfileSelect) {
+      bindingProfileSelect.textContent = '';
+      for (const profile of profiles) {
+        const option = document.createElement('option');
+        option.value = profile.id;
+        option.textContent = profile.displayName || profile.id;
+        bindingProfileSelect.appendChild(option);
+      }
+      bindingProfileSelect.value =
+        boundProfileId || activeProfile?.id || profiles[0]?.id || '';
+      bindingProfileSelect.disabled =
+        !normalizedQuery || profiles.length === 0;
+    }
+    if (bindingSaveButton) {
+      bindingSaveButton.disabled =
+        !normalizedQuery || profiles.length === 0;
+    }
+    if (bindingRemoveButton) {
+      bindingRemoveButton.disabled = !boundProfileId;
     }
     if (renameButton) renameButton.disabled = !activeProfile;
     if (deleteButton) deleteButton.disabled = !activeProfile;
@@ -961,6 +1127,31 @@
       requestProfileSelection(profileSelect.value);
     });
 
+    const profileModeSelect = document.createElement('select');
+    profileModeSelect.dataset.profileMode = '';
+    for (const [mode, label] of [
+      [MODE.ALL, 'すべて表示'],
+      [MODE.OFFICIAL, '公式のみ'],
+      [MODE.DISCOVERY, '発見モード'],
+    ]) {
+      const option = document.createElement('option');
+      option.value = mode;
+      option.textContent = label;
+      profileModeSelect.appendChild(option);
+    }
+    createLabeledControl(
+      section,
+      'プロフィールの表示モード',
+      profileModeSelect,
+      'プロフィールの表示モードを選択'
+    );
+    profileModeSelect.addEventListener('change', () => {
+      const profileId = state.settings.activeProfileId;
+      if (profileId) {
+        requestProfileModeChange(profileId, profileModeSelect.value);
+      }
+    });
+
     const createRow = document.createElement('div');
     createRow.className = 'ywh-osf-form-row';
     const createInput = document.createElement('input');
@@ -1013,6 +1204,51 @@
     deleteButton.addEventListener('click', requestProfileDelete);
     renameRow.appendChild(deleteButton);
     section.appendChild(renameRow);
+
+    appendText(
+      section,
+      'h4',
+      'ywh-osf-management__subtitle',
+      '検索語とプロフィールの関連付け'
+    );
+    const bindingQuery = appendText(
+      section,
+      'p',
+      'ywh-osf-binding-query',
+      ''
+    );
+    bindingQuery.dataset.bindingQuery = '';
+    const bindingRow = document.createElement('div');
+    bindingRow.className = 'ywh-osf-form-row';
+    const bindingProfileSelect = document.createElement('select');
+    bindingProfileSelect.dataset.bindingProfileSelect = '';
+    createLabeledControl(
+      bindingRow,
+      '関連付けるプロフィール',
+      bindingProfileSelect,
+      '現在の検索語に関連付けるプロフィール'
+    );
+    const bindingSaveButton = createManagementButton(
+      '関連付け',
+      '現在の検索語を選択したプロフィールに関連付け'
+    );
+    bindingSaveButton.dataset.bindingSave = '';
+    bindingSaveButton.addEventListener('click', () => {
+      requestQueryBinding(bindingProfileSelect.value);
+    });
+    bindingRow.appendChild(bindingSaveButton);
+    const bindingRemoveButton = createManagementButton(
+      '関連付けを解除',
+      '現在の検索語のプロフィール関連付けを解除',
+      'ywh-osf-action-button ywh-osf-action-button--danger'
+    );
+    bindingRemoveButton.dataset.bindingRemove = '';
+    bindingRemoveButton.addEventListener(
+      'click',
+      requestQueryBindingRemove
+    );
+    bindingRow.appendChild(bindingRemoveButton);
+    section.appendChild(bindingRow);
 
     appendText(
       section,
@@ -1134,8 +1370,16 @@
       panel,
       'p',
       'ywh-osf-panel__note',
-      '表示モードは検索ページ間で保存されます。'
+      '表示モードは検索語に対応するプロフィールから解決されます。'
     );
+    const effective = appendText(
+      panel,
+      'p',
+      'ywh-osf-panel__effective',
+      '未登録の検索語: すべて表示'
+    );
+    effective.dataset.effectiveProfile = '';
+    effective.setAttribute('aria-live', 'polite');
 
     const modes = document.createElement('div');
     modes.className = 'ywh-osf-panel__modes';

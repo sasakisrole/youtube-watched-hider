@@ -191,13 +191,16 @@ async function main() {
     panel(first).querySelector('[data-mode="official"]').click();
     await settle();
     check('successful save writes globalMode official', storage.store[STORAGE_KEY]?.globalMode === 'official');
-    check('successful save applies official mode', pressed(first, 'official') && first.cards.other.classList.contains('ywh-osf-hidden'));
+    check('successful global save keeps an unbound query fail-open all',
+      pressed(first, 'all') && allVisible(first));
     first.context._ywhOfficialSearchFilter.cleanup();
 
     const reloaded = makeRuntime(storage);
     await settle();
-    check('new runtime reloads the saved mode', pressed(reloaded, 'official'));
-    check('reloaded mode re-evaluates existing cards', reloaded.cards.other.classList.contains('ywh-osf-hidden'));
+    check('new runtime re-resolves an unbound query to all',
+      pressed(reloaded, 'all'));
+    check('reloaded unbound query keeps every existing card visible',
+      allVisible(reloaded));
     reloaded.context._ywhOfficialSearchFilter.cleanup();
   }
 
@@ -234,10 +237,11 @@ async function main() {
     const storage = createStorageStub(validSettings('discovery'));
     const runtime = makeRuntime(storage);
     await settle();
-    check('discovery is accepted without adding a PR3a discovery button',
-      !pressed(runtime, 'all') && !pressed(runtime, 'official') && panel(runtime).querySelectorAll('[data-mode]').length === 2);
-    check('discovery uses the core display matrix',
-      !runtime.cards.otherTopic.classList.contains('ywh-osf-hidden') && runtime.cards.other.classList.contains('ywh-osf-hidden'));
+    check('stored global discovery remains valid but unbound query resolves all',
+      pressed(runtime, 'all') &&
+      panel(runtime).querySelectorAll('[data-mode]').length === 2);
+    check('unbound query does not apply the stored global discovery filter',
+      allVisible(runtime));
     runtime.context._ywhOfficialSearchFilter.cleanup();
   }
 
@@ -247,8 +251,10 @@ async function main() {
     const runtime = makeRuntime(storage);
     await settle();
     storage.externalUpdate(validSettings('official'));
-    check('external local change updates the existing panel mode', pressed(runtime, 'official'));
-    check('external local change re-evaluates existing cards', runtime.cards.other.classList.contains('ywh-osf-hidden'));
+    check('external global-mode change leaves unbound panel fail-open all',
+      pressed(runtime, 'all'));
+    check('external global-mode change leaves unbound cards visible',
+      allVisible(runtime));
     check('external change creates no duplicate panel or observer',
       runtime.document.querySelectorAll('#ywh-osf-panel').length === 1 &&
       MutationObserverStub.instances.filter((observer) => observer.active).length === 1);

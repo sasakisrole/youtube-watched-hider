@@ -72,6 +72,7 @@ function profileSettings({
         displayName: 'Artist',
         aliases: [],
         channels,
+        mode,
       },
     },
     queryBindings,
@@ -127,6 +128,7 @@ async function main() {
           displayName: 'Artist Profile',
           aliases: [],
           channels: [],
+          mode: 'all',
         }));
 
     createInput.value = 'Artist Profile';
@@ -285,7 +287,10 @@ async function main() {
 
   console.log('classification re-evaluation');
   {
-    const storage = createStorageStub(profileSettings({ mode: 'official' }));
+    const storage = createStorageStub(profileSettings({
+      mode: 'official',
+      queryBindings: { 'artist - topic': 'artist' },
+    }));
     const runtime = makeRuntime(storage);
     await settle();
     check('unregistered current card is hidden in official mode',
@@ -303,6 +308,7 @@ async function main() {
   console.log('live channelId-only classification');
   {
     const storage = createStorageStub(profileSettings({
+      queryBindings: { 'artist - topic': 'artist' },
       channels: [{
         channelId: 'UC_LIVE',
         canonicalPath: '/@does-not-match',

@@ -113,6 +113,13 @@
   font-weight: 700;
 }
 
+.ywh-osf-panel__effective,
+.ywh-osf-binding-query {
+  margin: 8px 0 0;
+  color: var(--ywh-osf-muted);
+  overflow-wrap: anywhere;
+}
+
 .ywh-osf-management {
   margin-top: 16px;
   padding-top: 14px;

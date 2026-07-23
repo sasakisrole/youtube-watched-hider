@@ -386,18 +386,11 @@ async function main() {
     panel.querySelector('[data-count-total]').textContent === '5');
 
   officialButton.click();
-  const expectedCategories = [
-    core.CATEGORY.OTHER,
-    core.CATEGORY.OTHER_TOPIC,
-    core.CATEGORY.OTHER_TOPIC,
-    core.CATEGORY.OTHER,
-    core.CATEGORY.PENDING,
-  ];
-  check('official mode visibility matches the PR1 display matrix',
-    cards.every((card, index) =>
-      card.classList.contains('ywh-osf-hidden') ===
-      !core.shouldShowCategory(expectedCategories[index], core.MODE.OFFICIAL)
-    ) && panel.querySelector('[data-count-visible]').textContent === '1');
+  check('unbound query stays fail-open all after a mode-button click',
+    cards.every((card) => !card.classList.contains('ywh-osf-hidden')) &&
+    panel.querySelector('[data-mode="all"]').getAttribute('aria-pressed') ===
+      'true' &&
+    panel.querySelector('[data-count-visible]').textContent === '5');
   check('classification changes no inline display or watched dataset',
     cards.every((card, index) =>
       JSON.stringify(card.style) === initialSnapshot[index].style &&
@@ -406,14 +399,10 @@ async function main() {
   check('classification preserves card order and node count',
     results.children.length === initialOrder.length &&
     results.children.every((card, index) => card === initialOrder[index]));
-  check('classification only adds the dedicated class',
-    cards.every((card, index) => {
-      const expected = initialSnapshot[index].classes +
-        (core.shouldShowCategory(expectedCategories[index], core.MODE.OFFICIAL)
-          ? ''
-          : ' ywh-osf-hidden');
-      return card.className === expected;
-    }));
+  check('unbound classification adds no dedicated hidden class',
+    cards.every((card, index) =>
+      card.className === initialSnapshot[index].classes
+    ));
 
   console.log('off / SPA / re-render / cleanup');
   allButton.click();
@@ -440,10 +429,10 @@ async function main() {
   setLocation(runtime.location, '/results', '?search_query=Artist+-+Topic');
   runtime.document.dispatch('yt-navigate-finish');
   panel = runtime.document.getElementById('ywh-osf-panel');
-  check('SPA round-trip restores exactly one panel and retains selected mode',
+  check('SPA round-trip restores one panel and re-resolves unbound to all',
     runtime.document.querySelectorAll('#ywh-osf-panel').length === 1 &&
-    panel.querySelector('[data-mode="official"]').getAttribute('aria-pressed') === 'true' &&
-    cards[2].classList.contains('ywh-osf-hidden'));
+    panel.querySelector('[data-mode="all"]').getAttribute('aria-pressed') === 'true' &&
+    cards.every((card) => !card.classList.contains('ywh-osf-hidden')));
   check('SPA round-trip still has exactly one observer',
     MutationObserverStub.instances.length === 1 &&
     MutationObserverStub.instances.filter((observer) => observer.active).length === 1);
@@ -461,8 +450,8 @@ async function main() {
     addedNodes: [added],
   }]);
   await delay(80);
-  check('infinite-scroll card is classified by the existing observer',
-    added.classList.contains('ywh-osf-hidden') &&
+  check('infinite-scroll card stays visible for an unbound query',
+    !added.classList.contains('ywh-osf-hidden') &&
     countValue(panel, core.CATEGORY.OTHER) === 3 &&
     panel.querySelector('[data-count-total]').textContent === '6');
 
@@ -474,8 +463,8 @@ async function main() {
     attributeName: 'href',
   }]);
   await delay(80);
-  check('a same-name reused card is not auto-confirmed without registration',
-    added.classList.contains('ywh-osf-hidden') &&
+  check('a same-name reused card stays visible but is not auto-confirmed',
+    !added.classList.contains('ywh-osf-hidden') &&
     countValue(panel, core.CATEGORY.OFFICIAL) === 0 &&
     countValue(panel, core.CATEGORY.OTHER) === 3);
   check('re-render leaves one panel, one observer, and every card node in place',
