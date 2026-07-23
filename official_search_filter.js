@@ -70,6 +70,7 @@
     effectiveProfileId: null,
     currentNormalizedQuery: '',
     temporaryRevealActive: false,
+    panelExpanded: false,
   };
 
   function createDefaultSettings() {
@@ -916,6 +917,7 @@
     state.counts = createEmptyCounts();
     state.visibleCount = 0;
     state.temporaryRevealActive = false;
+    state.panelExpanded = false;
   }
 
   function createSvgIcon() {
@@ -943,6 +945,65 @@
     path.setAttribute('stroke-linecap', 'round');
     svg.appendChild(path);
     return svg;
+  }
+
+  function createChevronIcon() {
+    const svg = document.createElementNS(
+      'http://www.w3.org/2000/svg',
+      'svg'
+    );
+    svg.setAttribute('class', 'ywh-osf-panel-toggle__icon');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('width', '20');
+    svg.setAttribute('height', '20');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+
+    const path = document.createElementNS(
+      'http://www.w3.org/2000/svg',
+      'path'
+    );
+    path.setAttribute('d', 'M7 9.5l5 5 5-5');
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', 'currentColor');
+    path.setAttribute('stroke-width', '2');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    svg.appendChild(path);
+    return svg;
+  }
+
+  function setPanelExpanded(expanded) {
+    state.panelExpanded = Boolean(expanded);
+    const panel = document.getElementById?.(PANEL_ID);
+    if (!panel) return;
+
+    const content = panel.querySelector?.('[data-expanded-content]');
+    const button = panel.querySelector?.('[data-panel-toggle]');
+    const label = panel.querySelector?.('[data-panel-toggle-label]');
+    panel.dataset.expanded = String(state.panelExpanded);
+    if (content) {
+      content.hidden = !state.panelExpanded;
+      content.setAttribute(
+        'aria-hidden',
+        String(!state.panelExpanded)
+      );
+    }
+    if (button) {
+      button.setAttribute(
+        'aria-expanded',
+        String(state.panelExpanded)
+      );
+      button.setAttribute(
+        'aria-label',
+        state.panelExpanded
+          ? '検索フィルターを閉じる'
+          : '検索フィルターを開く'
+      );
+    }
+    if (label) {
+      label.textContent = state.panelExpanded ? '閉じる' : '開く';
+    }
   }
 
   function appendText(parent, tagName, className, text) {
@@ -1463,35 +1524,16 @@
     let panel = document.getElementById?.(PANEL_ID);
     if (panel) return panel;
 
+    state.panelExpanded = false;
     panel = document.createElement('section');
     panel.id = PANEL_ID;
     panel.setAttribute('role', 'region');
-    panel.setAttribute('aria-labelledby', 'ywh-osf-title');
+    panel.setAttribute('aria-label', '公式優先検索フィルター');
+    panel.dataset.expanded = 'false';
 
-    const header = document.createElement('div');
-    header.className = 'ywh-osf-panel__header';
-    header.appendChild(createSvgIcon());
-    const heading = appendText(
-      header,
-      'h2',
-      'ywh-osf-panel__title',
-      '公式優先検索フィルター'
-    );
-    heading.id = 'ywh-osf-title';
-    panel.appendChild(header);
-
-    appendText(
-      panel,
-      'p',
-      'ywh-osf-panel__note',
-      '判定できない動画は安全のため表示します'
-    );
-    appendText(
-      panel,
-      'p',
-      'ywh-osf-panel__note',
-      '表示モードは検索語に対応するプロフィールから解決されます。'
-    );
+    const handle = document.createElement('div');
+    handle.className = 'ywh-osf-handle';
+    handle.dataset.collapsedHandle = '';
     const globalHideButton = document.createElement('button');
     globalHideButton.type = 'button';
     globalHideButton.className = 'ywh-osf-global-hide';
@@ -1509,15 +1551,71 @@
         globalHideButton.getAttribute('aria-checked') !== 'true'
       );
     });
-    panel.appendChild(globalHideButton);
+    handle.appendChild(globalHideButton);
+
+    const panelToggle = document.createElement('button');
+    panelToggle.type = 'button';
+    panelToggle.className = 'ywh-osf-panel-toggle';
+    panelToggle.dataset.panelToggle = '';
+    panelToggle.setAttribute('aria-controls', 'ywh-osf-expanded-content');
+    panelToggle.setAttribute('aria-expanded', 'false');
+    panelToggle.setAttribute('aria-label', '検索フィルターを開く');
+    panelToggle.appendChild(createChevronIcon());
+    const panelToggleLabel = appendText(
+      panelToggle,
+      'span',
+      'ywh-osf-panel-toggle__label',
+      '開く'
+    );
+    panelToggleLabel.dataset.panelToggleLabel = '';
+    panelToggle.addEventListener('click', () => {
+      setPanelExpanded(!state.panelExpanded);
+    });
+    handle.appendChild(panelToggle);
+    panel.appendChild(handle);
+
+    const expandedContent = document.createElement('div');
+    expandedContent.id = 'ywh-osf-expanded-content';
+    expandedContent.className = 'ywh-osf-panel__expanded';
+    expandedContent.dataset.expandedContent = '';
+    expandedContent.setAttribute('role', 'region');
+    expandedContent.setAttribute('aria-labelledby', 'ywh-osf-title');
+    expandedContent.setAttribute('aria-hidden', 'true');
+    expandedContent.hidden = true;
+    panel.appendChild(expandedContent);
+
+    const header = document.createElement('div');
+    header.className = 'ywh-osf-panel__header';
+    header.appendChild(createSvgIcon());
+    const heading = appendText(
+      header,
+      'h2',
+      'ywh-osf-panel__title',
+      '公式優先検索フィルター'
+    );
+    heading.id = 'ywh-osf-title';
+    expandedContent.appendChild(header);
+
     appendText(
-      panel,
+      expandedContent,
+      'p',
+      'ywh-osf-panel__note',
+      '判定できない動画は安全のため表示します'
+    );
+    appendText(
+      expandedContent,
+      'p',
+      'ywh-osf-panel__note',
+      '表示モードは検索語に対応するプロフィールから解決されます。'
+    );
+    appendText(
+      expandedContent,
       'p',
       'ywh-osf-global-hide__note',
       'Topicはチャンネル名から自動判定します。'
     );
     const effective = appendText(
-      panel,
+      expandedContent,
       'p',
       'ywh-osf-panel__effective',
       '未登録の検索語: すべて表示'
@@ -1525,7 +1623,7 @@
     effective.dataset.effectiveProfile = '';
     effective.setAttribute('aria-live', 'polite');
     const unboundHint = appendText(
-      panel,
+      expandedContent,
       'p',
       'ywh-osf-panel__hint',
       'この検索語をプロフィールへ紐付けると利用できます'
@@ -1558,7 +1656,7 @@
         'フィルターをオフにしてすべて表示'
       )
     );
-    panel.appendChild(modes);
+    expandedContent.appendChild(modes);
 
     const temporaryRevealButton = createManagementButton(
       '一時的にすべて表示',
@@ -1570,9 +1668,9 @@
     temporaryRevealButton.addEventListener('click', () => {
       toggleTemporaryReveal(temporaryRevealButton);
     });
-    panel.appendChild(temporaryRevealButton);
+    expandedContent.appendChild(temporaryRevealButton);
     const temporaryRevealStatus = appendText(
-      panel,
+      expandedContent,
       'p',
       'ywh-osf-temporary-reveal__status',
       ''
@@ -1591,7 +1689,7 @@
     appendText(summary, 'span', '', ' / ');
     const total = appendText(summary, 'strong', '', '0');
     total.dataset.countTotal = '';
-    panel.appendChild(summary);
+    expandedContent.appendChild(summary);
 
     const counts = document.createElement('dl');
     counts.className = 'ywh-osf-panel__counts';
@@ -1603,9 +1701,10 @@
       value.dataset.count = category;
       counts.appendChild(row);
     }
-    panel.appendChild(counts);
-    panel.appendChild(createManagementSection());
+    expandedContent.appendChild(counts);
+    expandedContent.appendChild(createManagementSection());
     document.body.appendChild(panel);
+    setPanelExpanded(false);
     renderManagementState();
     return panel;
   }
@@ -1623,7 +1722,10 @@
   }
 
   function onNavigateFinish() {
+    const shouldCollapse = isSearchPage();
+    if (shouldCollapse) state.panelExpanded = false;
     initializePage();
+    if (shouldCollapse) setPanelExpanded(false);
   }
 
   function isPanelMutation(mutation) {

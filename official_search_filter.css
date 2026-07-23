@@ -31,6 +31,63 @@
   font: 400 14px/1.45 Roboto, Arial, sans-serif;
 }
 
+#ywh-osf-panel[data-expanded='false'] {
+  right: max(8px, env(safe-area-inset-right));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  width: min(280px, calc(100vw - 24px));
+  max-height: 64px;
+  overflow: visible;
+  padding: 6px;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+}
+
+.ywh-osf-handle {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 52px;
+  gap: 6px;
+  align-items: stretch;
+  pointer-events: auto;
+}
+
+.ywh-osf-panel__expanded {
+  margin-top: 14px;
+}
+
+.ywh-osf-panel__expanded[hidden] {
+  display: none !important;
+}
+
+.ywh-osf-panel-toggle {
+  min-width: 44px;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 4px;
+  border: 1px solid var(--ywh-osf-border);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ywh-osf-panel-toggle__icon {
+  display: block;
+  margin: 0 auto;
+}
+
+#ywh-osf-panel[data-expanded='true'] .ywh-osf-panel-toggle__icon {
+  transform: rotate(180deg);
+}
+
+.ywh-osf-panel-toggle:focus-visible {
+  outline: 3px solid var(--ywh-osf-focus);
+  outline-offset: 2px;
+}
+
 .ywh-osf-panel__header {
   display: flex;
   align-items: center;
@@ -67,6 +124,13 @@
   font: inherit;
   font-weight: 700;
   cursor: pointer;
+}
+
+.ywh-osf-handle .ywh-osf-global-hide {
+  margin-top: 0;
+  padding: 6px 8px;
+  font-size: 12px;
+  line-height: 1.25;
 }
 
 .ywh-osf-global-hide[aria-checked='true'] {
@@ -324,6 +388,13 @@
     width: min(320px, calc(100vw - 16px));
     max-height: calc(100vh - 16px);
   }
+
+  #ywh-osf-panel[data-expanded='false'] {
+    right: max(8px, env(safe-area-inset-right));
+    bottom: max(8px, env(safe-area-inset-bottom));
+    width: min(250px, calc(100vw - 16px));
+    max-height: 72px;
+  }
 }
 
 @media (prefers-color-scheme: dark) {
@@ -341,6 +412,7 @@
   #ywh-osf-panel,
   .ywh-osf-mode-button,
   .ywh-osf-global-hide,
+  .ywh-osf-panel-toggle,
   .ywh-osf-action-button {
     scroll-behavior: auto;
     transition: none !important;

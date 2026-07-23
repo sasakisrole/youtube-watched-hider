@@ -368,10 +368,74 @@ async function main() {
   runtime.run();
 
   let panel = runtime.document.getElementById('ywh-osf-panel');
+  let handle = panel.querySelector('[data-collapsed-handle]');
+  let expandedContent = panel.querySelector('[data-expanded-content]');
+  let panelToggle = panel.querySelector('[data-panel-toggle]');
+  let globalHideButton = panel.querySelector('[data-global-hide]');
+  check('default load shows only the compact collapsed handle',
+    panel.dataset.expanded === 'false' &&
+    expandedContent.hidden === true &&
+    expandedContent.getAttribute('aria-hidden') === 'true' &&
+    panel.children.length === 2 && panel.children[0] === handle &&
+    handle.children.length === 2 &&
+    handle.children[0] === globalHideButton &&
+    handle.children[1] === panelToggle);
+  check('collapsed full mode, counts, and profile sections share one hidden container',
+    expandedContent.contains(panel.querySelector('[data-mode="official"]')) &&
+    expandedContent.contains(panel.querySelector('[data-count-total]')) &&
+    expandedContent.contains(panel.querySelector('.ywh-osf-management')));
+  check('collapsed handle controls are labelled keyboard-native buttons',
+    [globalHideButton, panelToggle].every((button) =>
+      button.tagName === 'BUTTON' && button.type === 'button' &&
+      button.tabIndex >= 0 && Boolean(button.getAttribute('aria-label'))
+    ) && panelToggle.getAttribute('aria-expanded') === 'false');
+  check('collapsed CSS uses a compact bottom-corner non-blocking footprint',
+    CSS.includes("#ywh-osf-panel[data-expanded='false']") &&
+    CSS.includes('bottom: max(8px, env(safe-area-inset-bottom))') &&
+    CSS.includes('width: min(280px, calc(100vw - 24px))') &&
+    CSS.includes('max-height: 64px') &&
+    CSS.includes('pointer-events: none'));
+
+  globalHideButton.click();
+  await delay(10);
+  check('collapsed handle global toggle hides only OTHER without expanding',
+    panel.dataset.expanded === 'false' && expandedContent.hidden === true &&
+    cards[0].classList.contains('ywh-osf-hidden') &&
+    !cards[1].classList.contains('ywh-osf-hidden') &&
+    !cards[2].classList.contains('ywh-osf-hidden') &&
+    cards[3].classList.contains('ywh-osf-hidden') &&
+    !cards[4].classList.contains('ywh-osf-hidden'));
+  check('collapsed toggle leaves watched-hider state untouched',
+    cards[3].style.display === 'none' &&
+    cards[3].dataset.watchedHidden === 'true' &&
+    cards[3].dataset.watchedVideoId === 'other');
+  globalHideButton.click();
+  await delay(10);
+
+  panelToggle.click();
+  check('expand control reveals the complete panel',
+    panel.dataset.expanded === 'true' && expandedContent.hidden === false &&
+    expandedContent.getAttribute('aria-hidden') === 'false' &&
+    panelToggle.getAttribute('aria-expanded') === 'true' &&
+    panelToggle.textContent.includes('閉じる'));
+  panelToggle.click();
+  check('collapse control returns to the handle-only state',
+    panel.dataset.expanded === 'false' && expandedContent.hidden === true &&
+    panelToggle.getAttribute('aria-expanded') === 'false' &&
+    panelToggle.textContent.includes('開く'));
+  panelToggle.click();
+  runtime.document.dispatch('yt-navigate-finish');
+  check('each /results SPA load returns to one collapsed handle',
+    panel.dataset.expanded === 'false' && expandedContent.hidden === true &&
+    runtime.document.querySelectorAll('#ywh-osf-panel').length === 1 &&
+    runtime.document.querySelectorAll('[data-collapsed-handle]').length === 1);
+  panelToggle.click();
+
   const officialButton = panel.querySelector('[data-mode="official"]');
   const allButton = panel.querySelector('[data-mode="all"]');
   check('panel exists once on /results with one active observer',
     runtime.document.querySelectorAll('#ywh-osf-panel').length === 1 &&
+    runtime.document.querySelectorAll('[data-collapsed-handle]').length === 1 &&
     MutationObserverStub.instances.filter((observer) => observer.active).length === 1);
   check('default mode is all and initially hides nothing',
     allButton.getAttribute('aria-pressed') === 'true' &&
@@ -429,13 +493,21 @@ async function main() {
   setLocation(runtime.location, '/results', '?search_query=Artist+-+Topic');
   runtime.document.dispatch('yt-navigate-finish');
   panel = runtime.document.getElementById('ywh-osf-panel');
-  check('SPA round-trip restores one panel and re-resolves unbound to all',
+  handle = panel.querySelector('[data-collapsed-handle]');
+  expandedContent = panel.querySelector('[data-expanded-content]');
+  panelToggle = panel.querySelector('[data-panel-toggle]');
+  check('SPA round-trip restores one collapsed handle and re-resolves unbound to all',
     runtime.document.querySelectorAll('#ywh-osf-panel').length === 1 &&
+    runtime.document.querySelectorAll('[data-collapsed-handle]').length === 1 &&
+    panel.dataset.expanded === 'false' && expandedContent.hidden === true &&
     panel.querySelector('[data-mode="all"]').getAttribute('aria-pressed') === 'true' &&
     cards.every((card) => !card.classList.contains('ywh-osf-hidden')));
   check('SPA round-trip still has exactly one observer',
     MutationObserverStub.instances.length === 1 &&
     MutationObserverStub.instances.filter((observer) => observer.active).length === 1);
+  panelToggle.click();
+  check('SPA-restored handle can reveal the full panel again',
+    panel.dataset.expanded === 'true' && expandedContent.hidden === false);
 
   const added = createCard(
     runtime.document,
@@ -469,6 +541,7 @@ async function main() {
     countValue(panel, core.CATEGORY.OTHER) === 3);
   check('re-render leaves one panel, one observer, and every card node in place',
     runtime.document.querySelectorAll('#ywh-osf-panel').length === 1 &&
+    runtime.document.querySelectorAll('[data-collapsed-handle]').length === 1 &&
     MutationObserverStub.instances.filter((observer) => observer.active).length === 1 &&
     results.children.length === 6 && results.children[5] === added);
 
@@ -489,7 +562,8 @@ async function main() {
     ));
   check('panel and mode group have accessible names and pressed state',
     panel.getAttribute('role') === 'region' &&
-    Boolean(panel.getAttribute('aria-labelledby')) &&
+    Boolean(panel.getAttribute('aria-label')) &&
+    expandedContent.getAttribute('aria-labelledby') === 'ywh-osf-title' &&
     panel.querySelector('[role="group"]').getAttribute('aria-label') &&
     controls.every((button) => button.getAttribute('aria-pressed') !== null));
   check('added UI uses an aria-hidden inline SVG and no emoji or CSS content',

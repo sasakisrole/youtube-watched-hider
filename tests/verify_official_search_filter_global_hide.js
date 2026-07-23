@@ -181,10 +181,14 @@ async function main() {
       toggle.tagName === 'BUTTON' && toggle.type === 'button' &&
       toggle.getAttribute('role') === 'switch' &&
       Boolean(toggle.getAttribute('aria-label')) &&
-      panel(runtime).children.indexOf(toggle) <
+      toggle.parentNode === control(runtime, '[data-collapsed-handle]') &&
+      panel(runtime).children.indexOf(toggle.parentNode) <
         panel(runtime).children.indexOf(
-          panel(runtime).querySelector('.ywh-osf-panel__modes')
-        ));
+          control(runtime, '[data-expanded-content]')
+        ) &&
+      control(runtime, '[data-expanded-content]').contains(
+        panel(runtime).querySelector('.ywh-osf-panel__modes')
+      ));
     check('global toggle explains automatic Topic detection',
       panel(runtime).querySelector('.ywh-osf-global-hide__note').textContent ===
         'Topicはチャンネル名から自動判定します。');
@@ -268,6 +272,35 @@ async function main() {
       ) === 'true' &&
       control(runtime, '[data-mode="official"]').disabled === false &&
       storage.store[STORAGE_KEY].profiles.artist.mode === 'official');
+    runtime.context._ywhOfficialSearchFilter.cleanup();
+  }
+
+  console.log('expanded full-panel controls');
+  {
+    const storage = createStorageStub(settings({
+      profileMode: 'all',
+      queryBindings: { 'expanded query': 'artist' },
+    }));
+    const runtime = makeRuntime(storage, 'expanded query');
+    await settle();
+    control(runtime, '[data-panel-toggle]').click();
+    control(runtime, '[data-mode="official"]').click();
+    await settle();
+    check('expanded enabled mode button reclassifies the bound results',
+      panel(runtime).dataset.expanded === 'true' &&
+      storage.store[STORAGE_KEY].profiles.artist.mode === 'official' &&
+      isShown(runtime.cards.registered) &&
+      isShown(runtime.cards.credit) &&
+      isShown(runtime.cards.pending) &&
+      !isShown(runtime.cards.topic) &&
+      !isShown(runtime.cards.other));
+
+    const temporaryReveal = control(runtime, '[data-temporary-reveal]');
+    temporaryReveal.click();
+    check('expanded temporary reveal restores every mode-hidden card',
+      panel(runtime).dataset.expanded === 'true' &&
+      temporaryReveal.getAttribute('aria-pressed') === 'true' &&
+      Object.values(runtime.cards).every(isShown));
     runtime.context._ywhOfficialSearchFilter.cleanup();
   }
 
