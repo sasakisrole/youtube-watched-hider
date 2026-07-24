@@ -117,9 +117,42 @@ async function testMergeLiked() {
   check('mergeLiked: dedupe final store has 2', stores2.likedVideos.size === 2);
 }
 
+function testLikedMetaStructural() {
+  const WatchedDB = loadWatchedDb({});
+  const parse = (likedSyncMeta, include = true) => WatchedDB.parseImportData({
+    schemaVersion: 2,
+    watchedVideos: [],
+    ...(include ? { likedSyncMeta } : {}),
+  });
+
+  check('liked meta structural: string flagged', parse('corrupt').likedMetaStructuralError === true);
+  check('liked meta structural: array flagged', parse([1, 2]).likedMetaStructuralError === true);
+  check('liked meta structural: number flagged', parse(42).likedMetaStructuralError === true);
+  check('liked meta structural: boolean flagged', parse(true).likedMetaStructuralError === true);
+
+  const valid = parse({ accountId: 'UCabc', ownerName: 'X' });
+  check('liked meta structural: valid object not flagged', valid.likedMetaStructuralError === false);
+  check('liked meta structural: null and absent not flagged',
+    parse(null).likedMetaStructuralError === false && parse(undefined, false).likedMetaStructuralError === false);
+  check('liked meta structural: empty object not flagged when sanitized to null',
+    parse({}).likedMetaStructuralError === false && parse({}).likedSyncMeta === null);
+
+  const invalidDiff = WatchedDB.diffImport(parse('corrupt'), [], []);
+  const validDiff = WatchedDB.diffImport(valid, [], []);
+  check('liked meta structural: diff exposes invalid flag', invalidDiff.invalid.likedMetaStructural === true);
+  check('liked meta structural: diff keeps valid flag false', validDiff.invalid.likedMetaStructural === false);
+
+  const offscreenSource = fs.readFileSync(path.join(ROOT, 'offscreen.js'), 'utf8');
+  const popupSource = fs.readFileSync(path.join(ROOT, 'popup.js'), 'utf8');
+  check('liked meta structural: offscreen keeps both dropped paths wired',
+    (offscreenSource.match(/likedMetaStructural/g) || []).length >= 2);
+  check('liked meta structural: popup warning stays wired', popupSource.includes('likedMetaStructural'));
+}
+
 async function main() {
   await testReplace();
   await testMergeLiked();
+  testLikedMetaStructural();
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail > 0) process.exit(1);
 }
