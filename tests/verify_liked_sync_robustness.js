@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 
 const src = fs.readFileSync(path.join(__dirname, '..', 'background.js'), 'utf8');
+const contentSrc = fs.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
 
 // Extract a top-level function by name (they don't touch chrome.*). Slices from
 // "function NAME(" to the next top-level "\nfunction " — robust against regex
@@ -355,6 +356,18 @@ check('drift: M1 identityConfidence persisted in body',
 // strong-identity test, name-only again reads like a normal fully-identified sync.
 check('drift: M2 name-only weak-identity confidence present in body',
   syncSrc.includes("'name-only'") && syncSrc.includes('ownerChannelId || ownerHandle'));
+// §8.1: all fetches after the initial context selection must use one fixed session,
+// and the content-side InnerTube header must come from that session (never literal 0).
+check('drift: §8.1 fixed-tab sender has a no-fallback branch',
+  extractBracedFn('sendToYouTubeTab').includes('chrome.tabs.sendMessage(fixedTabId, message)'));
+check('drift: §8.1 sync fetches route through the fixed session sender',
+  syncSrc.includes('sendInSyncSession') && !syncSrc.includes("sendToYouTubeTab({ type: 'FETCH_PLAYLIST_HTML'"));
+check('drift: §8.1 final session check precedes DB upsert',
+  syncSrc.indexOf("sendInSyncSession({ type: 'GET_YOUTUBE_SYNC_CONTEXT' })")
+    < syncSrc.indexOf("sendToOffscreenDb('UPSERT_LIKED'"));
+check('drift: §8.1 content uses the captured authUser header',
+  contentSrc.includes("'X-Goog-AuthUser': authUser")
+    && !contentSrc.includes("'X-Goog-AuthUser': '0'"));
 
 // --- v1.42.12 (M2, Codex 2026-07-11 wrapup-review_10): weak-identity warning survives into
 // the COPIED prompt's 高評価Top30 section (the data carried out to an external recommender).
@@ -448,12 +461,20 @@ check('H1 known account => allowed', blocksUnknown('UCabc', false) === false);
 // the real extractItemsAndContinuation so scoping is exercised end-to-end.
 function makeSync(deps) {
   const body = extractBracedFn('syncLikedPlaylist');
+  const sessionAwareSend = async (message, fixedTabId) => {
+    if (message.type === 'GET_YOUTUBE_SYNC_CONTEXT') {
+      if (deps.getSyncContext) return deps.getSyncContext(message, fixedTabId);
+      return { success: true, tabId: Number.isInteger(fixedTabId) ? fixedTabId : 101,
+        authUser: '0', accountId: 'stable-test-account' };
+    }
+    return deps.sendToYouTubeTab(message, fixedTabId);
+  };
   // eslint-disable-next-line no-new-func
   const factory = new Function(
     'sendToYouTubeTab', 'sendToOffscreenDb', 'chrome', 'parseLikedPlaylistHtml', 'extractYtcfg', 'extractItemsAndContinuation', 'extractOwnerIdentity',
     body + '\nreturn syncLikedPlaylist;'
   );
-  return factory(deps.sendToYouTubeTab, deps.sendToOffscreenDb, deps.chrome,
+  return factory(sessionAwareSend, deps.sendToOffscreenDb, deps.chrome,
     deps.parseLikedPlaylistHtml, deps.extractYtcfg, deps.extractItemsAndContinuation, deps.extractOwnerIdentity);
 }
 
@@ -892,6 +913,123 @@ async function runSyncTests() {
     check('L1-K meta persists the upgraded strong identity',
       store.likedSyncMeta && store.likedSyncMeta.accountId === 'UCkenstrong'
       && store.likedSyncMeta.identityConfidence === 'browse-recovered');
+  }
+
+  // §8.1 acceptance (a): changing the active YouTube tab during sync must not change
+  // the destination tab or auth-user header for any fetch.
+  {
+    let activeTabId = 11;
+    let contextCalls = 0;
+    let dbWrites = 0;
+    const fetchCalls = [];
+    const { chrome } = makeChrome();
+    const deps = Object.assign(baseDeps(), { chrome });
+    deps.getSyncContext = async (msg, fixedTabId) => {
+      contextCalls++;
+      return { success: true, tabId: Number.isInteger(fixedTabId) ? fixedTabId : activeTabId,
+        authUser: '3', accountId: 'account-A' };
+    };
+    deps.sendToYouTubeTab = async (msg, fixedTabId) => {
+      fetchCalls.push({ type: msg.type, tabId: fixedTabId, authUser: msg.authUser,
+        syncSessionId: msg.syncSessionId });
+      if (msg.type === 'FETCH_PLAYLIST_HTML') {
+        activeTabId = 22;
+        return { success: true, html: '<html></html>' };
+      }
+      if (msg.type === 'FETCH_INNERTUBE_BROWSE' && msg.body.browseId === 'VLLL') {
+        return { success: true, data: contPage([lockup('vidS81A1', 'a1')], '') };
+      }
+      return { success: false, reason: 'unexpected' };
+    };
+    deps.sendToOffscreenDb = async () => { dbWrites++; return { added: 1 }; };
+    const resp = await makeSync(deps)({ confirmUnknownAccount: true, confirmAccountChange: true });
+    const sessionIds = new Set(fetchCalls.map((c) => c.syncSessionId));
+    check('§8.1(a) active-tab change keeps every fetch on the start tab/account',
+      resp.success === true && contextCalls === 2 && dbWrites === 1
+      && fetchCalls.length >= 2 && fetchCalls.every((c) => c.tabId === 11 && c.authUser === '3')
+      && sessionIds.size === 1 && !fetchCalls.some((c) => c.tabId === 22));
+  }
+
+  // §8.1 acceptance (b): a different end account must skip the DB write entirely.
+  {
+    let contextCalls = 0;
+    let dbWrites = 0;
+    const { chrome } = makeChrome();
+    const deps = Object.assign(baseDeps(), { chrome });
+    deps.getSyncContext = async (msg, fixedTabId) => {
+      contextCalls++;
+      return { success: true, tabId: Number.isInteger(fixedTabId) ? fixedTabId : 31,
+        authUser: '1', accountId: contextCalls === 1 ? 'account-start' : 'account-other' };
+    };
+    deps.sendToYouTubeTab = async (msg) => {
+      if (msg.type === 'FETCH_PLAYLIST_HTML') return { success: true, html: '<html></html>' };
+      if (msg.type === 'FETCH_INNERTUBE_BROWSE') {
+        return { success: true, data: contPage([lockup('vidS81B1', 'b1')], '') };
+      }
+      return { success: false, reason: 'unexpected' };
+    };
+    deps.sendToOffscreenDb = async () => { dbWrites++; return { added: 1 }; };
+    const resp = await makeSync(deps)({ confirmUnknownAccount: true, confirmAccountChange: true });
+    check('§8.1(b) end-account mismatch performs zero DB writes',
+      resp.success === false && resp.reason === 'sync-session-changed'
+      && resp.dbWriteSkipped === true && dbWrites === 0
+      && resp.errors.some((e) => e.includes('DBへ保存せず中止')));
+  }
+
+  // §8.1 acceptance (c): once the chosen tab disappears, never retry an alternate tab.
+  {
+    let dbWrites = 0;
+    let alternateTabCalls = 0;
+    const attemptedTabIds = [];
+    const { chrome } = makeChrome();
+    const deps = Object.assign(baseDeps(), { chrome });
+    deps.getSyncContext = async (msg, fixedTabId) => ({ success: true,
+      tabId: Number.isInteger(fixedTabId) ? fixedTabId : 41, authUser: '2', accountId: 'account-C' });
+    deps.sendToYouTubeTab = async (msg, fixedTabId) => {
+      attemptedTabIds.push(fixedTabId);
+      if (fixedTabId === 41) throw new Error('The tab was closed');
+      alternateTabCalls++;
+      return { success: true, html: '<html></html>' };
+    };
+    deps.sendToOffscreenDb = async () => { dbWrites++; return { added: 1 }; };
+    const resp = await makeSync(deps)({ confirmUnknownAccount: true, confirmAccountChange: true });
+    check('§8.1(c) missing fixed tab aborts without alternate-tab fallback',
+      resp.success === false && resp.reason === 'sync-tab-unavailable'
+      && dbWrites === 0 && alternateTabCalls === 0
+      && attemptedTabIds.length === 1 && attemptedTabIds[0] === 41
+      && resp.errors.some((e) => e.includes('別タブへ切り替えず')));
+  }
+
+  // §8.1 acceptance (d): stable tab/account retains the normal successful path.
+  {
+    let dbWrites = 0;
+    let contextCalls = 0;
+    const fetchCalls = [];
+    const { chrome } = makeChrome();
+    const deps = Object.assign(baseDeps(), { chrome });
+    deps.getSyncContext = async (msg, fixedTabId) => {
+      contextCalls++;
+      return { success: true, tabId: Number.isInteger(fixedTabId) ? fixedTabId : 51,
+        authUser: '4', accountId: 'account-D' };
+    };
+    deps.sendToYouTubeTab = async (msg, fixedTabId) => {
+      fetchCalls.push({ msg, fixedTabId });
+      if (msg.type === 'FETCH_PLAYLIST_HTML') return { success: true, html: '<html></html>' };
+      if (msg.type === 'FETCH_INNERTUBE_BROWSE') {
+        return { success: true, data: contPage([lockup('vidS81D1', 'd1')], '') };
+      }
+      return { success: false, reason: 'unexpected' };
+    };
+    deps.sendToOffscreenDb = async (op, payload) => {
+      dbWrites++;
+      return { added: payload.items.length };
+    };
+    const resp = await makeSync(deps)({ confirmUnknownAccount: true, confirmAccountChange: true });
+    check('§8.1(d) stable tab/account completes the normal sync',
+      resp.success === true && dbWrites === 1 && contextCalls === 2
+      && resp.fetched === 1 && resp.added === 1
+      && resp.diagnostics.tabId === 51 && resp.diagnostics.authUser === '4'
+      && fetchCalls.every((c) => c.fixedTabId === 51));
   }
 }
 

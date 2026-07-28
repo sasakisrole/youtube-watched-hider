@@ -108,15 +108,24 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 });
 
 // --- Helper: send message to a YouTube tab with retry ---
-// Tries each YouTube tab in order until one responds.
-async function sendToYouTubeTab(message) {
+// With a fixed tabId, send only to that tab. This is used by liked sync so a
+// disappearing/unresponsive start tab can never cause an account-crossing fallback.
+// Without a tabId, tries each YouTube tab in order until one responds.
+async function sendToYouTubeTab(message, fixedTabId) {
+  if (Number.isInteger(fixedTabId)) {
+    const result = await chrome.tabs.sendMessage(fixedTabId, message);
+    return result && typeof result === 'object' ? { ...result, tabId: fixedTabId } : result;
+  }
+
   const tabs = await chrome.tabs.query({ url: '*://*.youtube.com/*' });
   if (tabs.length === 0) throw new Error('No YouTube tab open');
 
   for (const tab of tabs) {
     try {
       const result = await chrome.tabs.sendMessage(tab.id, message);
-      return result;
+      if (message && message.type === 'GET_YOUTUBE_SYNC_CONTEXT'
+          && (!result || !result.success)) continue;
+      return result && typeof result === 'object' ? { ...result, tabId: tab.id } : result;
     } catch (e) {
       // This tab didn't respond, try next
     }
@@ -2385,7 +2394,8 @@ function extractYtcfg(html) {
   const clientName = (html.match(/"INNERTUBE_CLIENT_NAME":"([^"]+)"/) || [])[1] || 'WEB';
   const clientVersion = (html.match(/"INNERTUBE_CLIENT_VERSION":"([^"]+)"/) || [])[1] || '';
   const context = extractInnertubeContext(html);
-  return { apiKey, clientName, clientVersion, context };
+  const sessionIndex = (html.match(/"SESSION_INDEX"\s*:\s*"?(\d+)"?/) || [])[1] || '';
+  return { apiKey, clientName, clientVersion, context, authUser: sessionIndex };
 }
 
 // Parses ytInitialData from the playlist HTML and extracts video items + owner identity.
@@ -2429,11 +2439,51 @@ function parseLikedPlaylistHtml(html) {
 }
 
 async function syncLikedPlaylist({ confirmAccountChange, confirmUnknownAccount, maxPages } = {}) {
+  const syncSessionId = (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function')
+    ? globalThis.crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  let sessionStart;
+  try {
+    sessionStart = await sendToYouTubeTab({ type: 'GET_YOUTUBE_SYNC_CONTEXT', syncSessionId });
+  } catch (_e) {
+    return { success: false, reason: 'no-youtube-tab', syncSessionId };
+  }
+  if (!sessionStart || !sessionStart.success || !Number.isInteger(sessionStart.tabId)
+      || !/^\d+$/.test(String(sessionStart.authUser == null ? '' : sessionStart.authUser))) {
+    return { success: false, reason: 'sync-account-unavailable', syncSessionId,
+      errors: ['YouTubeタブの認証アカウントを確認できないため、保存せず中止しました'] };
+  }
+
+  const syncSession = {
+    syncSessionId,
+    tabId: sessionStart.tabId,
+    authUser: String(sessionStart.authUser),
+    accountKey: String(sessionStart.accountId || ''),
+  };
+  let syncTabFailed = false;
+  const sendInSyncSession = async (message) => {
+    try {
+      const result = await sendToYouTubeTab({
+        ...message,
+        syncSessionId: syncSession.syncSessionId,
+        authUser: syncSession.authUser,
+      }, syncSession.tabId);
+      if (!result || result.reason === 'timeout' || result.reason === 'invalid-auth-user') {
+        syncTabFailed = true;
+      }
+      return result;
+    } catch (e) {
+      syncTabFailed = true;
+      throw e;
+    }
+  };
+
   let resp;
   try {
-    resp = await sendToYouTubeTab({ type: 'FETCH_PLAYLIST_HTML', listId: 'LL' });
-  } catch (e) {
-    return { success: false, reason: 'no-youtube-tab' };
+    resp = await sendInSyncSession({ type: 'FETCH_PLAYLIST_HTML', listId: 'LL' });
+  } catch (_e) {
+    return { success: false, reason: 'sync-tab-unavailable', syncSessionId,
+      errors: ['開始時のYouTubeタブが閉じたか応答しないため、別タブへ切り替えず保存を中止しました'] };
   }
   if (!resp || !resp.success) {
     return { success: false, reason: (resp && resp.reason) || 'fetch-failed' };
@@ -2441,6 +2491,10 @@ async function syncLikedPlaylist({ confirmAccountChange, confirmUnknownAccount, 
   const html = resp.html || '';
   const parsed = parseLikedPlaylistHtml(html);
   const ytcfg = extractYtcfg(html);
+  if (ytcfg.authUser && String(ytcfg.authUser) !== syncSession.authUser) {
+    return { success: false, reason: 'sync-session-changed', syncSessionId, dbWriteSkipped: true,
+      errors: ['開始時からYouTubeの認証アカウントが変わったため、DBへ保存せず中止しました'] };
+  }
   const errors = [];
 
   // v1.42.8 (M3): degraded mode. A ytInitialData parse failure is no longer a
@@ -2512,7 +2566,7 @@ async function syncLikedPlaylist({ confirmAccountChange, confirmUnknownAccount, 
   // ask the API for the full LL response which carries the first continuation.
   if (!continuation || !allItems.length) {
     try {
-      const initResp = await sendToYouTubeTab({
+      const initResp = await sendInSyncSession({
         type: 'FETCH_INNERTUBE_BROWSE',
         apiKey: ytcfg.apiKey,
         clientVersion: ytcfg.clientVersion,
@@ -2581,7 +2635,7 @@ async function syncLikedPlaylist({ confirmAccountChange, confirmUnknownAccount, 
     page++;
     let contResp;
     try {
-      contResp = await sendToYouTubeTab({
+      contResp = await sendInSyncSession({
         type: 'FETCH_INNERTUBE_BROWSE',
         apiKey: ytcfg.apiKey,
         clientVersion: ytcfg.clientVersion,
@@ -2636,6 +2690,11 @@ async function syncLikedPlaylist({ confirmAccountChange, confirmUnknownAccount, 
     }
   }
 
+  if (syncTabFailed) {
+    return { success: false, reason: 'sync-tab-unavailable', syncSessionId,
+      errors: ['開始時のYouTubeタブが閉じたか応答しないため、別タブへ切り替えず保存を中止しました'] };
+  }
+
   const uniqueItems = [];
   const seenFinal = new Set();
   for (const it of allItems) {
@@ -2681,6 +2740,34 @@ async function syncLikedPlaylist({ confirmAccountChange, confirmUnknownAccount, 
       reason: 'account-changed',
       previous: meta,
       current: { accountId, ownerName, ownerHandle, ownerChannelId, count: uniqueItems.length },
+    };
+  }
+
+  // §8.1: validate the original tab/account immediately before the first DB write.
+  // Active-tab changes are irrelevant: this probes the fixed start tab directly.
+  // If that tab disappeared or its selected account changed, discard all fetched
+  // rows instead of falling back to another YouTube tab or persisting mixed data.
+  let sessionEnd;
+  try {
+    sessionEnd = await sendInSyncSession({ type: 'GET_YOUTUBE_SYNC_CONTEXT' });
+  } catch (_e) {
+    return { success: false, reason: 'sync-tab-unavailable', syncSessionId, fetched: uniqueItems.length,
+      errors: ['開始時のYouTubeタブが閉じたか応答しないため、別タブへ切り替えず保存を中止しました'] };
+  }
+  const endAuthUser = String(sessionEnd && sessionEnd.authUser == null ? '' : sessionEnd.authUser);
+  const endAccountKey = String((sessionEnd && sessionEnd.accountId) || '');
+  const accountKeyChanged = !!syncSession.accountKey && endAccountKey !== syncSession.accountKey;
+  if (!sessionEnd || !sessionEnd.success
+      || endAuthUser !== syncSession.authUser || accountKeyChanged) {
+    return {
+      success: false,
+      reason: 'sync-session-changed',
+      syncSessionId,
+      fetched: uniqueItems.length,
+      dbWriteSkipped: true,
+      errors: [...errors, '開始時からYouTubeのタブまたは認証アカウントが変わったため、DBへ保存せず中止しました'],
+      expected: { tabId: syncSession.tabId, authUser: syncSession.authUser, accountId: syncSession.accountKey },
+      current: { tabId: syncSession.tabId, authUser: endAuthUser, accountId: endAccountKey },
     };
   }
 
@@ -2748,6 +2835,9 @@ async function syncLikedPlaylist({ confirmAccountChange, confirmUnknownAccount, 
     pages: page,
     errors,
     diagnostics: {
+      syncSessionId,
+      tabId: syncSession.tabId,
+      authUser: syncSession.authUser,
       initialContinuation: !!parsed.continuation,
       ytcfgApiKey: !!ytcfg.apiKey,
       ytcfgContext: !!ytcfg.context,
