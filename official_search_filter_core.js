@@ -23,6 +23,35 @@
       .trim();
   }
 
+  function normalizeCreditAliases(values) {
+    const aliases = [];
+    const seen = new Set();
+
+    for (const value of Array.isArray(values) ? values : []) {
+      const normalized = normalizeText(value);
+      if (!normalized || seen.has(normalized)) continue;
+      seen.add(normalized);
+      aliases.push(normalized);
+    }
+
+    return aliases;
+  }
+
+  function splitCreditValue(value) {
+    const normalized = String(value ?? '')
+      .split(/[\n,，、;；/／&＆]+/)
+      .map(normalizeText)
+      .filter(Boolean);
+    return [...new Set(normalized)];
+  }
+
+  function matchCreditAliases(value, creditAliases) {
+    const aliases = new Set(normalizeCreditAliases(creditAliases));
+    if (aliases.size === 0) return [];
+    return splitCreditValue(value)
+      .filter((part) => aliases.has(part));
+  }
+
   function normalizeChannelPath(value) {
     const raw = String(value ?? '').trim();
     if (!raw) return '';
@@ -201,16 +230,121 @@
     );
   }
 
+  function candidateChannelKey(channel) {
+    const channelId = String(channel?.channelId ?? '').trim();
+    if (channelId) return `id:${channelId}`;
+    const path = normalizeChannelPath(channel?.canonicalPath);
+    return path ? `path:${path}` : '';
+  }
+
+  function inferCreditChannelCandidates({
+    items,
+    creditsByVideoId,
+    creditAliases,
+  } = {}) {
+    const aliases = normalizeCreditAliases(creditAliases);
+    if (aliases.length === 0) {
+      return { candidates: [], relatedVideoIds: [] };
+    }
+
+    const roleLabels = {
+      composer: '作曲',
+      lyricist: '作詞',
+      arranger: '編曲',
+    };
+    const byChannel = new Map();
+    const relatedVideoIds = new Set();
+
+    for (const item of Array.isArray(items) ? items : []) {
+      const videoId = String(item?.videoId ?? '').trim();
+      if (!videoId) continue;
+      const credits = creditsByVideoId?.[videoId];
+      if (!credits || typeof credits !== 'object') continue;
+
+      const matches = [];
+      for (const role of Object.keys(roleLabels)) {
+        const matchedAliases = matchCreditAliases(credits[role], aliases);
+        for (const alias of matchedAliases) {
+          matches.push({
+            role,
+            alias,
+            creditValue: String(credits[role] ?? '').trim(),
+          });
+        }
+      }
+      if (matches.length === 0) continue;
+      relatedVideoIds.add(videoId);
+
+      const channel = item.channel;
+      const key = candidateChannelKey(channel);
+      if (!key) continue;
+
+      let candidate = byChannel.get(key);
+      if (!candidate) {
+        candidate = {
+          channel: {
+            ...(String(channel.channelId ?? '').trim()
+              ? { channelId: String(channel.channelId).trim() }
+              : {}),
+            canonicalPath: normalizeChannelPath(channel.canonicalPath),
+            displayName: String(channel.displayName ?? '').trim(),
+            enabled: true,
+          },
+          reasons: [],
+          matchedVideoIds: [],
+        };
+        byChannel.set(key, candidate);
+      }
+
+      if (!candidate.matchedVideoIds.includes(videoId)) {
+        candidate.matchedVideoIds.push(videoId);
+      }
+      for (const match of matches) {
+        const reason =
+          `${roleLabels[match.role]}クレジット「${match.creditValue}」が` +
+          `別名「${match.alias}」と正規化一致（動画 ${videoId}）`;
+        if (!candidate.reasons.includes(reason)) {
+          candidate.reasons.push(reason);
+        }
+      }
+    }
+
+    return {
+      candidates: [...byChannel.values()],
+      relatedVideoIds: [...relatedVideoIds],
+    };
+  }
+
+  function adoptCreditCandidate({
+    candidate,
+    userAccepted = false,
+    register,
+  } = {}) {
+    if (
+      userAccepted !== true ||
+      !candidate?.channel ||
+      typeof register !== 'function'
+    ) {
+      return false;
+    }
+    register(candidate.channel);
+    return true;
+  }
+
   const api = Object.freeze({
     CATEGORY,
     MODE,
     normalizeText,
+    normalizeCreditAliases,
+    matchCreditAliases,
     normalizeChannelPath,
     isTopicChannel,
     isSameChannel,
     matchProfileForQuery,
     classifyChannel,
     shouldShowCategory,
+    inferCreditChannelCandidates,
+    adoptCreditCandidate,
   });
 
   globalThis.YWHOfficialSearchFilterCore = api;
