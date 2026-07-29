@@ -149,6 +149,39 @@ async function main() {
       { channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw', canonicalPath: '/channel/UCuAXFkgsw1L7xaCfnd5JJOw' }
     ) === true);
 
+  // タブ→パネルの配線ドリフト検出（2026-07-30 別タブ化）。
+  // タブを足してマップに書き忘れる／パネルidを書き間違えると、クリックしても何も出ない。
+  const fs = require('fs');
+  const path = require('path');
+  const ROOT = path.join(__dirname, '..');
+  const html = fs.readFileSync(path.join(ROOT, 'history.html'), 'utf8');
+  const analyzerSrc = fs.readFileSync(path.join(ROOT, 'analyzer.js'), 'utf8');
+  const tabKeys = [...html.matchAll(/data-aztab="([^"]+)"/g)].map((m) => m[1]);
+  const mapSrc = analyzerSrc.match(/const map = \{([^}]*)\};/);
+  const mapKeys = mapSrc ? [...mapSrc[1].matchAll(/(\w+):\s*'([^']+)'/g)] : [];
+  const mapped = new Map(mapKeys.map((m) => [m[1], m[2]]));
+
+  check('every analyze tab is wired to a panel id',
+    tabKeys.length > 0 && tabKeys.every((key) => mapped.has(key)));
+  check('every mapped panel id exists in history.html',
+    mapKeys.length > 0 && [...mapped.values()].every((id) => html.includes(`id="${id}"`)));
+  // マーカーは markup 限定にする（'az-official-box' 単体は <style> のCSS定義にも出るため）。
+  const SECTION_MARK = '<section class="az-official-box"';
+  const artistsAt = html.indexOf('id="azArtistsPanel"');
+  const officialAt = html.indexOf('id="azOfficialPanel"');
+  const channelsAt = html.indexOf('id="azChannelsPanel"');
+  const officialPanelHtml = html.slice(officialAt, channelsAt);
+
+  check('official profile candidates live in their own tab, not the artists tab',
+    mapped.get('official') === 'azOfficialPanel' &&
+    artistsAt > 0 && officialAt > artistsAt && channelsAt > officialAt &&
+    html.slice(artistsAt, officialAt).includes(SECTION_MARK) === false &&
+    officialPanelHtml.includes(SECTION_MARK));
+  check('the review controls moved together with the section',
+    officialPanelHtml.includes('id="azOfficialCandidates"') &&
+    officialPanelHtml.includes('id="azOfficialTarget"') &&
+    officialPanelHtml.includes('id="azOfficialSave"'));
+
   console.log('mandatory confirmation gate');
   const storage = createStorageStub();
   const registration = {
