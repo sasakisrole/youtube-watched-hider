@@ -52,7 +52,10 @@
       .filter((part) => aliases.has(part));
   }
 
-  function normalizeChannelPath(value) {
+  // 遷移・保存に使う正規化。大文字小文字を保持する。
+  // チャンネルID（/channel/UC...）は case-sensitive で、小文字化すると 404 になる（実測）。
+  // ハンドル（/@Name）は case-insensitive だが、表示のため原文の字面を保つ。
+  function canonicalChannelPath(value) {
     const raw = String(value ?? '').trim();
     if (!raw) return '';
 
@@ -77,7 +80,14 @@
       normalized = normalized.replace(/\/+$/, '');
     }
 
-    return normalized.toLowerCase();
+    return normalized;
+  }
+
+  // 突き合わせ専用の正規化。比較キーなので小文字へ畳む。
+  // ⚠️ この戻り値を URL やチャンネルIDの実体として使わないこと（用途を取り違えると
+  // /channel/UC... が 404 になる。2026-07-30 の実害）。
+  function normalizeChannelPath(value) {
+    return canonicalChannelPath(value).toLowerCase();
   }
 
   function isTopicChannel(channelName) {
@@ -338,6 +348,7 @@
     normalizeCreditAliases,
     matchCreditAliases,
     normalizeChannelPath,
+    canonicalChannelPath,
     isTopicChannel,
     isSameChannel,
     matchProfileForQuery,

@@ -3,6 +3,7 @@
 
 const analyze = require('../analyze_official_profiles.js');
 const storeApi = require('../official_profile_store.js');
+const core = require('../official_search_filter_core.js');
 
 let passed = 0;
 let failed = 0;
@@ -121,6 +122,32 @@ async function main() {
   check('channel identity input accepts YouTube only',
     analyze.channelFromInput('https://www.youtube.com/@topic', 'Topic')?.canonicalPath === '/@topic' &&
     analyze.channelFromInput('https://example.com/@topic', 'Topic') === null);
+
+  // 2026-07-30 実害の回帰ガード:
+  // /channel/UC... は case-sensitive で、小文字化すると YouTube が 404 を返し
+  // 「候補チャンネルを開く」がトップページへ戻る。さらに小文字IDを保存すると
+  // 検索結果側の実IDと exact 比較で一致せず、登録した公式チャンネルが機能しない。
+  const idChannel = analyze.channelFromInput(
+    'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+    'Rick Astley'
+  );
+  check('channel id path keeps its original case (navigable URL)',
+    idChannel?.canonicalPath === '/channel/UCuAXFkgsw1L7xaCfnd5JJOw');
+  check('stored channelId keeps its original case (matches the live search-result id)',
+    idChannel?.channelId === 'UCuAXFkgsw1L7xaCfnd5JJOw');
+  check('handle path keeps its original case',
+    analyze.channelFromInput('https://www.youtube.com/@RickAstleyYT', 'Rick')?.canonicalPath ===
+      '/@RickAstleyYT');
+  check('comparison normalizer still folds case (matching semantics unchanged)',
+    core.normalizeChannelPath('/channel/UCuAXFkgsw1L7xaCfnd5JJOw') ===
+      '/channel/ucuaxfkgsw1l7xacfnd5jjow' &&
+    core.canonicalChannelPath('/channel/UCuAXFkgsw1L7xaCfnd5JJOw') ===
+      '/channel/UCuAXFkgsw1L7xaCfnd5JJOw');
+  check('saved profile with a preserved id matches the live channel',
+    core.isSameChannel(
+      { channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw', canonicalPath: idChannel?.canonicalPath },
+      { channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw', canonicalPath: '/channel/UCuAXFkgsw1L7xaCfnd5JJOw' }
+    ) === true);
 
   console.log('mandatory confirmation gate');
   const storage = createStorageStub();

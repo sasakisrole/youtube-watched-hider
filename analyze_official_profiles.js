@@ -91,7 +91,12 @@
         return null;
       }
     }
-    const canonicalPath = core.normalizeChannelPath(raw);
+    // ⚠️ 比較用の normalizeChannelPath（小文字化）を使わない。ここで作る値は
+    // 「リンク先URL」と「保存するチャンネルID」の実体になるので、字面を保つ必要がある
+    // （/channel/UC... を小文字化すると YouTube が 404 を返しトップへ戻る・2026-07-30 実測）。
+    const canonicalPath = typeof core.canonicalChannelPath === 'function'
+      ? core.canonicalChannelPath(raw)
+      : core.normalizeChannelPath(raw);
     if (!isSupportedChannelPath(canonicalPath)) return null;
     const idMatch = canonicalPath.match(/^\/channel\/([^/]+)$/i);
     return {

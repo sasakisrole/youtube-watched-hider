@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.43.6 (2026-07-30)
+**「候補チャンネルを開く」がトップページに飛ぶ不具合を修正**（実利用フィードバック / v1.43.5 の 7jos）。候補の多くを占める Topic チャンネルはハンドルを持たないため oEmbed が `/channel/UC...` を返すが、その path を**比較用の正規化関数（小文字化する）**に通してから URL を組み立てていた。YouTube のチャンネルIDは case-sensitive で、小文字化した `/channel/uc...` は **404**（実測）。ハンドル `/@Name` は case-insensitive のため一部だけ動いて見えていた。
+- **併発していた実害（同根・こちらの方が重い）**: 保存する `channelId` も同じ小文字 path から切り出していたため、検索結果側が返す実ID（`UC...`・字面保持）と exact 比較で一致せず、**Analyze から登録した公式チャンネルが公式優先フィルターで機能していなかった**。
+- Fix: `official_search_filter_core.js` に**字面を保つ** `canonicalChannelPath()` を追加し、`normalizeChannelPath()` はその小文字版として再定義（比較の意味論は不変）。`analyze_official_profiles.channelFromInput()` が遷移URL・保存IDの両方を字面保持側から作るようにした。
+- ⚠️ **v1.43.5 で登録済みの公式プロファイルは、チャンネルIDが小文字で保存されている**ため登録し直しが必要（自動移行は入れていない）。
+- Test: `tests/verify_analyze_official_profiles.js` 12→17。ID path・ハンドル・保存IDの字面保持、比較正規化が従来どおり畳むこと、字面保持IDで `isSameChannel` が一致することを固定。感応性＝修正を戻すと新規3件が FAIL・復元後 sha256 一致。全20ハーネス 0 failed。
+
 ## v1.43.5 (2026-07-29)
 **Analyze画面から公式プロファイルを半自動登録できるようにする**（PENDING id:7jos）。公式優先フィルターの初期設定は channelId を手で探して登録する必要があり、コストが高かった。Analyze（分析）画面は既にアーティスト・クレジット・チャンネルを集計しているので、そこから候補を出して確認1回で登録できるようにした。
 - `official_profile_store.js` を新設し profile/channel の保存経路を共有化（content script へ追加・**新規権限なし**）。
