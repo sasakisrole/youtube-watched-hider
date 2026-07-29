@@ -2,6 +2,7 @@
   'use strict';
 
   const core = globalThis.YWHOfficialSearchFilterCore;
+  const profileStore = globalThis.YWHOfficialProfileStore || null;
 
   if (
     !core ||
@@ -191,6 +192,7 @@
   }
 
   function sanitizeSettings(value) {
+    if (profileStore) return profileStore.sanitizeSettings(value);
     if (
       !isPlainObject(value) ||
       value.schemaVersion !== SETTINGS_SCHEMA_VERSION
@@ -647,6 +649,9 @@
   }
 
   function generateProfileId(displayName, profiles) {
+    if (profileStore) {
+      return profileStore.generateProfileId(displayName, profiles);
+    }
     const base = String(displayName)
       .normalize('NFKC')
       .toLowerCase()
@@ -660,6 +665,9 @@
   }
 
   function duplicateChannelIndex(channels, target) {
+    if (profileStore) {
+      return profileStore.duplicateChannelIndex(channels, target);
+    }
     const targetId = String(target.channelId ?? '').trim();
     const targetPath = normalizeChannelPath(target.canonicalPath);
 
@@ -736,6 +744,12 @@
     }
 
     requestSettingsChange((settings) => {
+      if (profileStore) {
+        const result = profileStore.createProfile(settings, name);
+        if (!result.changed) return false;
+        Object.assign(settings, result.settings);
+        return true;
+      }
       const id = generateProfileId(name, settings.profiles);
       settings.profiles[id] = {
         id,
@@ -842,6 +856,17 @@
     }
 
     requestSettingsChange((settings) => {
+      if (profileStore) {
+        const result = profileStore.addChannel(
+          settings,
+          profileId,
+          channel,
+          { confirmed: true }
+        );
+        if (!result.changed) return false;
+        Object.assign(settings, result.settings);
+        return true;
+      }
       const profile = settings.profiles[profileId];
       if (!profile) return false;
       const duplicateIndex = duplicateChannelIndex(
