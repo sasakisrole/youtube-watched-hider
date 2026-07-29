@@ -281,6 +281,46 @@ if (typeof WatchedDB === 'undefined') {
       });
     }
 
+    // Read credits for a search-result batch in one IndexedDB transaction.
+    // The caller sends the whole videoId group through one extension RPC.
+    async function getCreditsForVideoIds(videoIds) {
+      const ids = [...new Set(
+        (Array.isArray(videoIds) ? videoIds : [])
+          .map((videoId) => String(videoId ?? '').trim())
+          .filter(Boolean)
+      )];
+      if (ids.length === 0) return {};
+
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const store = tx.objectStore(STORE_NAME);
+        const result = {};
+
+        for (const videoId of ids) {
+          const request = store.get(videoId);
+          request.onsuccess = () => {
+            const record = request.result;
+            if (!record) return;
+            const credits = {};
+            for (const role of CREDIT_ROLES) {
+              const value = typeof record[role] === 'string'
+                ? record[role].trim()
+                : '';
+              if (value) credits[role] = value;
+            }
+            if (Object.keys(credits).length > 0) {
+              result[videoId] = credits;
+            }
+          };
+        }
+
+        tx.oncomplete = () => resolve(result);
+        tx.onerror = (event) => reject(event.target.error);
+        tx.onabort = (event) => reject(event.target.error);
+      });
+    }
+
     function normalizeCasBlank(value) {
       return value == null || (typeof value === 'string' && value.trim() === '') ? '' : value;
     }
@@ -1232,7 +1272,7 @@ if (typeof WatchedDB === 'undefined') {
       return { total: all.length, accounts: [...accounts.entries()] };
     }
 
-    return { openDB, addWatched, updateDuration, markDurationFailed, markDurationLive, updateTitle, updateTitleAndChannel, updateCredits, setManualCreditRole, markCreditsChecked, markCreditsFailed, cleanAllCredits, isWatched, checkMultiple, getStats, getAllIds, getWatchedIdsPage, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport, unwrapWatchedRecords, parseImportData, diffImport,
+    return { openDB, addWatched, updateDuration, markDurationFailed, markDurationLive, updateTitle, updateTitleAndChannel, updateCredits, getCreditsForVideoIds, setManualCreditRole, markCreditsChecked, markCreditsFailed, cleanAllCredits, isWatched, checkMultiple, getStats, getAllIds, getWatchedIdsPage, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport, unwrapWatchedRecords, parseImportData, diffImport,
       upsertLiked, getAllLiked, importLikedData, mergeLikedData, clearLikedByAccount, deleteManyRecords, replaceRecords, getLikedStats };
   })();
 }

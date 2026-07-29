@@ -208,6 +208,8 @@ async function handleDbRpc(message) {
       return WatchedDB.markCreditsFailed(message.videoId, message.reason || 'unknown');
     case 'UPDATE_CREDITS':
       return WatchedDB.updateCredits(message.videoId, message.credits || {}, !!message.force, message.creditsSource || '');
+    case 'GET_CREDITS_FOR_VIDEO_IDS':
+      return WatchedDB.getCreditsForVideoIds(message.videoIds || []);
     case 'SET_MANUAL_CREDIT_ROLE': {
       const args = {
         videoId: message.videoId,

@@ -8,7 +8,10 @@
     typeof core.classifyChannel !== 'function' ||
     typeof core.shouldShowCategory !== 'function' ||
     typeof core.normalizeChannelPath !== 'function' ||
-    typeof core.normalizeText !== 'function'
+    typeof core.normalizeText !== 'function' ||
+    typeof core.normalizeCreditAliases !== 'function' ||
+    typeof core.inferCreditChannelCandidates !== 'function' ||
+    typeof core.adoptCreditCandidate !== 'function'
   ) {
     return;
   }
@@ -16,8 +19,11 @@
   const {
     CATEGORY,
     MODE,
+    adoptCreditCandidate,
     classifyChannel,
+    inferCreditChannelCandidates,
     normalizeChannelPath,
+    normalizeCreditAliases,
     normalizeText,
     shouldShowCategory,
   } = core;
@@ -67,6 +73,10 @@
     counts: createEmptyCounts(),
     visibleCount: 0,
     pendingChannel: null,
+    creditCandidates: [],
+    creditRelatedVideoIds: new Set(),
+    creditLookupKey: '',
+    creditLookupGeneration: 0,
     effectiveProfileId: null,
     currentNormalizedQuery: '',
     temporaryRevealActive: false,
@@ -366,6 +376,120 @@
     return null;
   }
 
+  function getVideoIdFromCard(card) {
+    const links = card.querySelectorAll?.('a[href*="/watch?v="]') || [];
+    for (const link of links) {
+      const rawHref = link.getAttribute?.('href') || link.href || '';
+      try {
+        const videoId = new URL(rawHref, location.origin)
+          .searchParams.get('v');
+        if (videoId) return videoId;
+      } catch {
+        // Ignore malformed result links.
+      }
+    }
+    return '';
+  }
+
+  function dbRpc(op, payload = {}) {
+    return new Promise((resolve, reject) => {
+      const sendMessage = globalThis.chrome?.runtime?.sendMessage;
+      if (typeof sendMessage !== 'function') {
+        reject(new Error('DB RPC unavailable'));
+        return;
+      }
+      try {
+        sendMessage.call(
+          globalThis.chrome.runtime,
+          { type: 'DB_RPC', op, ...payload },
+          (response) => {
+            const lastError = globalThis.chrome?.runtime?.lastError;
+            if (lastError) {
+              reject(new Error(lastError.message));
+              return;
+            }
+            if (!response?.success) {
+              reject(new Error(response?.error || 'DB RPC failed'));
+              return;
+            }
+            resolve(response.result);
+          }
+        );
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  function refreshCreditCandidates(cards, profile) {
+    const creditAliases = normalizeCreditAliases([
+      profile?.displayName,
+      ...(profile?.aliases || []),
+    ]);
+    const items = cards.map((card) => ({
+      videoId: getVideoIdFromCard(card),
+      channel: getChannelIdentityFromCard(card),
+    })).filter((item) => item.videoId);
+    const videoIds = [...new Set(items.map((item) => item.videoId))].sort();
+    const itemSignatures = items.map((item) => [
+      item.videoId,
+      item.channel?.channelId || '',
+      item.channel?.canonicalPath || '',
+      item.channel?.displayName || '',
+    ]).sort();
+    const canLookup = Boolean(
+      profile?.id &&
+      creditAliases.length > 0 &&
+      videoIds.length > 0 &&
+      typeof globalThis.chrome?.runtime?.sendMessage === 'function'
+    );
+    const lookupKey = canLookup
+      ? JSON.stringify([profile.id, creditAliases, itemSignatures])
+      : '';
+
+    if (lookupKey === state.creditLookupKey) return;
+
+    state.creditLookupKey = lookupKey;
+    const generation = ++state.creditLookupGeneration;
+    state.creditCandidates = [];
+    state.creditRelatedVideoIds = new Set();
+    renderManagementState();
+    if (!canLookup) return;
+
+    void dbRpc('GET_CREDITS_FOR_VIDEO_IDS', { videoIds })
+      .then((creditsByVideoId) => {
+        if (
+          state.disposed ||
+          generation !== state.creditLookupGeneration ||
+          lookupKey !== state.creditLookupKey
+        ) {
+          return;
+        }
+        const inferred = inferCreditChannelCandidates({
+          items,
+          creditsByVideoId,
+          creditAliases,
+        });
+        state.creditCandidates = inferred.candidates.map((candidate) => ({
+          ...candidate,
+          profileId: profile.id,
+          profileName: profile.displayName || profile.id,
+        }));
+        state.creditRelatedVideoIds = new Set(inferred.relatedVideoIds);
+        scanSearchResults();
+        renderManagementState();
+      })
+      .catch(() => {
+        if (
+          generation === state.creditLookupGeneration &&
+          lookupKey === state.creditLookupKey
+        ) {
+          // Fail open. A later real page mutation may retry the local DB read.
+          state.creditLookupKey = '';
+        }
+      });
+  }
+
   function getCurrentSearchQuery() {
     try {
       return new URL(location.href).searchParams.get('search_query') || '';
@@ -522,6 +646,7 @@
 
     const profile = resolveEffectiveState();
     const cards = getSearchVideoCards();
+    refreshCreditCandidates(cards, profile);
     const counts = createEmptyCounts();
     let visibleCount = 0;
 
@@ -529,7 +654,9 @@
       const category = classifyChannel({
         channel: getChannelIdentityFromCard(card),
         profile,
-        hasRelatedCredit: false,
+        hasRelatedCredit: state.creditRelatedVideoIds.has(
+          getVideoIdFromCard(card)
+        ),
       });
       const shouldShow = shouldShowCategory(category, state.mode);
 
@@ -1094,6 +1221,48 @@
     }
   }
 
+  function showPendingChannel(pending, message) {
+    state.pendingChannel = pending;
+    const panel = document.getElementById?.(PANEL_ID);
+    const target = panel?.querySelector?.('[data-channel-target]');
+    const confirmButton = panel?.querySelector?.('[data-channel-confirm]');
+    if (target) {
+      const channel = pending.channel;
+      const idLabel = channel.channelId || 'なし（pathのみ）';
+      const evidence = pending.candidate?.reasons?.length
+        ? ` / 根拠: ${pending.candidate.reasons.join(' / ')}`
+        : '';
+      target.textContent =
+        `登録対象: ID: ${idLabel} / path: ${channel.canonicalPath} / ` +
+        `名前: ${channel.displayName}${evidence}`;
+      target.hidden = false;
+    }
+    if (confirmButton) confirmButton.disabled = false;
+    setManagementStatus(message);
+  }
+
+  function prepareCreditCandidate(candidate) {
+    if (
+      !candidate ||
+      !state.creditCandidates.includes(candidate) ||
+      !state.settings.profiles[candidate.profileId]
+    ) {
+      setManagementStatus('候補が古いため、検索結果を再確認してください。', true);
+      return;
+    }
+    const channel = sanitizeChannel(candidate.channel);
+    if (!channel?.canonicalPath) {
+      setManagementStatus('候補のチャンネルpathを確認できません。', true);
+      return;
+    }
+    showPendingChannel({
+      source: 'credit-candidate',
+      profileId: candidate.profileId,
+      channel,
+      candidate,
+    }, '根拠と登録対象を確認し、登録ボタンを押してください。');
+  }
+
   function isExplicitChannelPath(path) {
     return /^\/(?:channel\/[^/]+|@[^/]+|c\/[^/]+|user\/[^/]+)$/i
       .test(path);
@@ -1127,24 +1296,11 @@
       displayName,
       enabled: true,
     };
-    state.pendingChannel = {
+    showPendingChannel({
+      source: 'manual',
       profileId: profile.id,
       channel,
-    };
-
-    const panel = document.getElementById?.(PANEL_ID);
-    const target = panel?.querySelector?.('[data-channel-target]');
-    const confirmButton = panel?.querySelector?.('[data-channel-confirm]');
-    if (target) {
-      const idLabel = channelId || 'なし（pathのみ）';
-      target.textContent =
-        `登録対象: ID: ${idLabel} / path: ${canonicalPath} / 名前: ${displayName}`;
-      target.hidden = false;
-    }
-    if (confirmButton) confirmButton.disabled = false;
-    setManagementStatus(
-      '表示された登録対象を確認し、登録ボタンを押してください。'
-    );
+    }, '表示された登録対象を確認し、登録ボタンを押してください。');
   }
 
   function renderManagementState() {
@@ -1163,6 +1319,9 @@
     const bindingSaveButton = panel.querySelector?.('[data-binding-save]');
     const bindingRemoveButton = panel.querySelector?.('[data-binding-remove]');
     const channelList = panel.querySelector?.('[data-channel-list]');
+    const creditCandidateList = panel.querySelector?.(
+      '[data-credit-candidate-list]'
+    );
     const channelInputs = [
       panel.querySelector?.('[data-channel-id-input]'),
       panel.querySelector?.('[data-channel-path-input]'),
@@ -1234,11 +1393,75 @@
 
     if (
       state.pendingChannel &&
-      state.pendingChannel.profileId !== activeProfile?.id
+      (
+        !state.settings.profiles[state.pendingChannel.profileId] ||
+        (
+          state.pendingChannel.source !== 'credit-candidate' &&
+          state.pendingChannel.profileId !== activeProfile?.id
+        )
+      )
     ) {
       clearPendingChannel();
     } else if (confirmButton) {
       confirmButton.disabled = !state.pendingChannel;
+    }
+
+    if (creditCandidateList) {
+      creditCandidateList.textContent = '';
+      const candidates = state.creditCandidates.filter((candidate) => {
+        const profile = state.settings.profiles[candidate.profileId];
+        return profile && duplicateChannelIndex(
+          profile.channels,
+          candidate.channel
+        ) < 0;
+      });
+      if (candidates.length === 0) {
+        appendText(
+          creditCandidateList,
+          'li',
+          'ywh-osf-channel-empty',
+          'クレジット一致による未登録候補はありません。'
+        );
+      } else {
+        for (const candidate of candidates) {
+          const item = document.createElement('li');
+          item.className = 'ywh-osf-channel-item';
+          item.dataset.creditCandidate = '';
+          const detail = document.createElement('div');
+          const identity = [
+            candidate.channel.displayName,
+            candidate.channel.channelId
+              ? `ID: ${candidate.channel.channelId}`
+              : '',
+            candidate.channel.canonicalPath,
+            `登録先: ${candidate.profileName}`,
+          ].filter(Boolean).join(' / ');
+          appendText(
+            detail,
+            'div',
+            'ywh-osf-channel-identity',
+            identity
+          );
+          const reason = appendText(
+            detail,
+            'div',
+            'ywh-osf-panel__note',
+            `候補の根拠: ${candidate.reasons.join(' / ')}`
+          );
+          reason.dataset.creditCandidateReason = '';
+          item.appendChild(detail);
+          const prepareButton = createManagementButton(
+            'この候補を確認',
+            `公式ソース候補を確認: ${identity}`
+          );
+          prepareButton.dataset.creditCandidatePrepare = '';
+          prepareButton.addEventListener('click', () => {
+            prepareCreditCandidate(candidate);
+          });
+          item.appendChild(prepareButton);
+          creditCandidateList.appendChild(item);
+        }
+      }
     }
 
     if (channelList) {
@@ -1429,6 +1652,27 @@
       section,
       'h4',
       'ywh-osf-management__subtitle',
+      'クレジットDBからの公式ソース候補'
+    );
+    appendText(
+      section,
+      'p',
+      'ywh-osf-panel__note',
+      '候補は自動登録されません。根拠を確認し、採用する場合だけ登録してください。'
+    );
+    const creditCandidateList = document.createElement('ul');
+    creditCandidateList.className = 'ywh-osf-channel-list';
+    creditCandidateList.dataset.creditCandidateList = '';
+    creditCandidateList.setAttribute(
+      'aria-label',
+      'クレジットDBから推測した公式ソース候補'
+    );
+    section.appendChild(creditCandidateList);
+
+    appendText(
+      section,
+      'h4',
+      'ywh-osf-management__subtitle',
       '公式チャンネルを明示登録'
     );
     const channelFields = document.createElement('div');
@@ -1491,12 +1735,19 @@
     confirmButton.dataset.channelConfirm = '';
     confirmButton.disabled = true;
     confirmButton.addEventListener('click', () => {
-      if (state.pendingChannel) {
-        requestChannelAdd(
-          state.pendingChannel.profileId,
-          state.pendingChannel.channel
-        );
+      const pending = state.pendingChannel;
+      if (!pending) return;
+      if (pending.source === 'credit-candidate') {
+        adoptCreditCandidate({
+          candidate: pending.candidate,
+          userAccepted: true,
+          register: (channel) => {
+            requestChannelAdd(pending.profileId, channel);
+          },
+        });
+        return;
       }
+      requestChannelAdd(pending.profileId, pending.channel);
     });
     section.appendChild(confirmButton);
 
