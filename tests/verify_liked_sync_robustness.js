@@ -976,6 +976,40 @@ async function runSyncTests() {
       && resp.errors.some((e) => e.includes('DBへ保存せず中止')));
   }
 
+  // §8.1 regression: the playlist HTML fetched mid-sync can reveal that authUser
+  // changed even when the final context probe would look stable again. This must
+  // abort at the response-side guard, before any browse fetch or DB write, so this
+  // case cannot pass merely because the separate end-of-sync guard still exists.
+  {
+    let contextCalls = 0;
+    let browseCalls = 0;
+    let dbWrites = 0;
+    const { chrome } = makeChrome();
+    const deps = Object.assign(baseDeps(), {
+      chrome,
+      extractYtcfg: () => ({ apiKey: 'k', clientVersion: '1', context: { client: {} },
+        authUser: '8' }),
+    });
+    deps.getSyncContext = async (msg, fixedTabId) => {
+      contextCalls++;
+      return { success: true, tabId: Number.isInteger(fixedTabId) ? fixedTabId : 35,
+        authUser: '7', accountId: 'account-mid-fetch' };
+    };
+    deps.sendToYouTubeTab = async (msg) => {
+      if (msg.type === 'FETCH_PLAYLIST_HTML') return { success: true, html: '<html></html>' };
+      if (msg.type === 'FETCH_INNERTUBE_BROWSE') {
+        browseCalls++;
+        return { success: true, data: contPage([lockup('vidS81MID1', 'mid')], '') };
+      }
+      return { success: false, reason: 'unexpected' };
+    };
+    deps.sendToOffscreenDb = async () => { dbWrites++; return { added: 1 }; };
+    const resp = await makeSync(deps)({ confirmUnknownAccount: true, confirmAccountChange: true });
+    check('§8.1 mid-fetch authUser mismatch aborts before browse/end guard and DB write',
+      resp.success === false && resp.reason === 'sync-session-changed'
+      && resp.dbWriteSkipped === true && browseCalls === 0 && contextCalls === 1 && dbWrites === 0);
+  }
+
   // §8.1 acceptance (c): once the chosen tab disappears, never retry an alternate tab.
   {
     let dbWrites = 0;
