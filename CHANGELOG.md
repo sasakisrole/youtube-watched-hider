@@ -1,5 +1,64 @@
 # Changelog
 
+## v1.43.5 (2026-07-29)
+**Analyze画面から公式プロファイルを半自動登録できるようにする**（PENDING id:7jos）。公式優先フィルターの初期設定は channelId を手で探して登録する必要があり、コストが高かった。Analyze（分析）画面は既にアーティスト・クレジット・チャンネルを集計しているので、そこから候補を出して確認1回で登録できるようにした。
+- `official_profile_store.js` を新設し profile/channel の保存経路を共有化（content script へ追加・**新規権限なし**）。
+- Analyze の集計から公式/Topic候補を提示し、**ユーザー確認後に** profile＋channel を保存する。
+- 名前一致だけで公式確定はしない原則を維持（未確認時は storage の read/write ゼロ）。
+- Test: `tests/verify_analyze_official_profiles.js` 12件。感応性＝confirmed ゲート2箇所を潰すと 3 failed・復元後 12/12。
+- ⚠️ 実機スモーク未実施。
+
+## v1.43.4 (2026-07-29)
+**クレジット候補生成の事前確認に推定所要時間と件数上限を追加**（PENDING id:9ni6）。v1.42.15 で件数の事前提示は入ったが、「何分かかるか」と「何件で止めるか」は選べなかった。
+- 確認ダイアログに、対象件数と `background.js` の実レート制御値から算出した**推定所要時間**を表示。
+- 処理件数の上限（全件 / 上位N件）を選べるようにし、生成ループがN件で停止する。
+- Test: `tests/verify_manual_credits_ui.js` に3ケース追加（58→61 passed）。感応性＝上限適用行を差し替えると当該1件のみ FAIL・復元後 61/61。
+- ⚠️ 実機スモーク未実施。
+
+## v1.43.3 (2026-07-28)
+**公式チャンネル候補をクレジットDBから推測して提示する**（PENDING id:7kyr）。公式チャンネル登録が「channelId を自分で探す」手作業でしかできなかったのを減らす。
+- 検索結果の videoId 群からクレジットを **DBへ一括取得**（1件ずつ問い合わせない）。
+- `creditAliases` を NFKC 正規化して突き合わせ、公式/関連チャンネル候補を生成。
+- 候補は**提示のみ**。`userAccepted=true` の明示採用時だけ登録する（名前一致・部分クエリ一致だけでは自動確定しない）。
+- `CATEGORY.CREDIT_RELATED` / `hasRelatedCredit` を実配線（従来は false 固定の scaffold）。
+- Test: 新規 `tests/verify_official_search_filter_credits.js` 13件・既存全19本 0 failed。感応性＝10変異＋独立変異1件（明示採用チェックを潰すと2件 FAIL・復元後 SHA 一致）。
+- ⚠️ 実機スモーク（実YouTube検索DOM・実DB/offscreen lifecycle・SPA遷移）未実施。
+
+## v1.43.2 (2026-07-28)
+**高評価同期を開始時のタブ・認証アカウントへ固定する**（HANDOFF §8.1 / PENDING id:w2mp）。同期中に別タブ・別アカウントへ切り替えると、別アカウントの結果を取り込みうる穴があった。
+- 同期開始時に syncSessionId / tabId / authUser を固定し、終了時に一致を確認する。
+- 途中の fetch 応答が別 authUser だった場合のガードを配線。
+- Test: `tests/verify_liked_sync_robustness.js` を 138→147 passed へ。中間HTMLの authUser 照合は**既存テストで無試験だった**（条件を false に潰しても 146 green のまま）ため、開始・終了は同一で fetch 応答だけ別 authUser のケースを追加し、browse未実行・終了時ガード未到達・DB書込み0 を検証。感応性＝正常147 / 変異146+1 failed / 復元147。
+
+## v1.43.1 (2026-07-25)
+**不正な likedSyncMeta の import 警告を配線**（PENDING id:2gkw ①）。バックアップ import 時、`likedSyncMeta`（高評価の同期アカウント情報）が存在するのに非plain-object（string/number/boolean/array）だと、従来は**無警告で null 化**され利用者が気づけなかった。既存の `likedStructural`（非配列 likedVideos）と対称に可視化する。**捨てる挙動は不変**（throwしない・meta は従来どおり null 化）＝診断フラグと警告表示の追加のみ。
+- `db.js`: `parseImportData` に `likedMetaStructuralError`（present かつ非plain-object限定＝空object・identity欠落の正当metaは誤警告しない）／`diffImport.invalid` へ伝播。
+- `offscreen.js`: importPayload・replaceApply 両経路の dropped へ配線。
+- `popup.js`: プレビュー / import結果 / sync結果 の3経路に警告表示（droppedNote 配列化で複数理由を併記）。
+- Test: `tests/verify_import_modes.js` 13→24。旧コードでは `likedMetaStructuralError=undefined` ＝新テスト FAIL（退行検出力あり）。
+- 安全: DB書込 / データ削除 / 外部通信 / manifest権限 / DBスキーマ 変更なし。
+
+## v1.43.0 (2026-07-23)
+**YouTube検索に「公式優先フィルター」を導入**（PENDING id:qdo5 / PR1〜PR4＋後続2件）。検索結果でアーティストの公式・本人Topicチャンネルを見やすくする新サブシステム。転載の自動判定はせず、**登録チャンネルのホワイトリスト方式**。
+- PR1: 純粋関数 core＋専用テスト（未配線）。
+- PR2: 仮UI＋検索結果ページへの安全配線。
+- PR3a/3b/3c: 設定保存基盤（`chrome.storage.local`・mode永続化）／プロフィール・投稿元管理／queryBinding・プロフィール別 mode。
+- PR4: 発掘モード＋3つのUI契約（公式のみ / 発掘 / すべて表示）。
+- 追加: 登録不要のグローバル「その他を隠す」トグル（設定ゼロで使える）／パネルを**既定折りたたみ**の非侵襲UIへ（実利用フィードバック＝常時パネルが YouTube の結果とUIを塞ぐ、への対応）。
+- 安全条件: `.ywh-osf-hidden` 限定・`style.display` / watched dataset / 並び順 / 件数に触れない・manifest権限・外部通信の変更なし。
+- Test: 全18ハーネス 727 passed / 0 failed。
+- ⚠️ 実機スモーク未実施。
+
+## v1.42.15 (2026-07-23)
+**クレジットの手動確認とロール別 provenance（サブバッチ1 A/B/C）**。
+- A: role別 provenance と manual credit 書込みのデータ層。
+- B: 不足クレジットの手動確認UI（MusicBrainz を呼ばない独立view）。
+- C: Enrich候補生成の **fetch前ゲート**。対象動画数と対象チャンネル数（distinct）を提示して開始/キャンセルを選べるようにした。キャンセルは fetch・`enrichCreditsMb`・DB書込みを一切出さず状態不変（副作用0）。書き戻し前の既存 confirm は別境界として維持。
+- Test: `tests/verify_manual_credits_ui.js` に7チェック追加（独立VERIFYで mutation survival 0/5）。全スイート 535 passed / 0 failed。
+- 外部通信先・host_permission の追加なし。
+
+> ⚠️ v1.42.15〜v1.43.5 は、実装時にバージョンを上げそびれたぶんを **2026-07-30 に遡って機能単位で採番**したもの（コードは各コミット時点のまま）。以後は機能ごとにその場で `manifest.json` を上げ、本ファイルへ追記する。
+
 ## v1.42.14 (2026-07-12)
 **概要欄クレジット補完（Path A）を「動画まるごと」から「不足ロール単位」判定へ**（HANDOFF §3.1 + §3.4 軽量版 / PENDING id:wryh・Path B に続く残り）。「クレジット補完（概要欄）」ボタンの対象選定 `runFixCredits` の targets フィルタが `!(composer || lyricist || arranger || creditsRaw)` ＝**作曲・作詞・編曲のどれか1つでも埋まっていれば永久に除外**していたため、「作曲だけ埋まって編曲が空」の部分クレジット動画が二度と概要欄を再スキャンされなかった（取りこぼし・HANDOFF §14 最優先）。Path B（enrich_credits.js の MusicBrainz/uta-net ウォーターフォール）は v1.42.13 までで role-unit 化済みだが、概要欄バッチ（Path A）は whole-video 判定のまま残っていた。
 - **Fix(§3.1・ロール単位判定)**: 対象選定を新モジュール `credit_target.js` の `isFixCreditsTarget()` に集約。composer/lyricist/arranger の**どれかが空なら対象**に含める（既存値は上書きしない＝background の `UPDATE_CREDITS` が `!existing[k]` で空欄のみ埋める挙動は不変）。判定を enrich_credits.js から独立させ Path A を自己完結に保つ（Path B は据え置き・単一ソース原則）。
