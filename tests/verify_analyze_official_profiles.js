@@ -230,6 +230,124 @@ async function main() {
   check('query binding remains off by default',
     Object.keys(settings.queryBindings).length === 0);
 
+  console.log('candidate list state (registered / excluded / duplicate guard)');
+  const baseChannel = {
+    channelId: 'UC_STATE',
+    canonicalPath: '/channel/UC_STATE',
+    displayName: 'State Artist - Topic',
+    sourceChannelName: 'State Artist - Topic',
+  };
+  const first = storeApi.mutateConfirmedRegistration(
+    storeApi.createDefaultSettings(),
+    { profileName: 'State Artist', channel: baseChannel, confirmed: true }
+  );
+  check('first registration creates exactly one profile',
+    first.changed === true &&
+    Object.keys(first.settings.profiles).length === 1);
+  check('the source channel name is persisted for later matching',
+    Object.values(first.settings.profiles)[0].channels[0].sourceChannelName ===
+      'State Artist - Topic');
+
+  const second = storeApi.mutateConfirmedRegistration(
+    first.settings,
+    { profileName: 'State Artist', channel: baseChannel, confirmed: true }
+  );
+  check('registering the same channel again is refused, not duplicated',
+    second.changed === false &&
+    second.reason === 'already-registered' &&
+    Object.keys(second.settings.profiles).length === 1);
+
+  const renamed = storeApi.mutateConfirmedRegistration(
+    first.settings,
+    { profileName: 'renamed retry', channel: baseChannel, confirmed: true }
+  );
+  check('a renamed retry of the same channel is still refused',
+    renamed.changed === false &&
+    renamed.reason === 'already-registered' &&
+    Object.keys(renamed.settings.profiles).length === 1);
+
+  check('registered candidates are detected by their source channel name',
+    storeApi.findRegisteredProfileId(first.settings,
+      { channelName: 'State Artist - Topic', profileName: 'State Artist' }) !== null);
+  check('unrelated candidates are not treated as registered',
+    storeApi.findRegisteredProfileId(first.settings,
+      { channelName: 'Other Artist - Topic', profileName: 'Other Artist' }) === null);
+  check('legacy rows without a source name still match by display name',
+    storeApi.findRegisteredProfileId(
+      {
+        schemaVersion: 1,
+        activeProfileId: null,
+        globalMode: 'all',
+        hideOtherGlobal: false,
+        queryBindings: {},
+        candidateExclusions: [],
+        profiles: {
+          legacy: {
+            id: 'legacy',
+            displayName: 'Legacy Artist',
+            aliases: [],
+            mode: 'all',
+            channels: [{
+              channelId: 'UC_L',
+              canonicalPath: '/channel/UC_L',
+              displayName: 'Legacy Artist - Topic',
+            }],
+          },
+        },
+      },
+      { channelName: 'Legacy Artist - Topic', profileName: 'Legacy Artist' }
+    ) === 'legacy');
+
+  const excludedOnce = storeApi.setCandidateExcluded(first.settings, 'Release', true);
+  const excludedTwice = storeApi.setCandidateExcluded(excludedOnce.settings, 'Release', true);
+  const restored = storeApi.setCandidateExcluded(excludedOnce.settings, 'Release', false);
+  check('manual exclusion is stored, idempotent and reversible',
+    excludedOnce.changed === true &&
+    excludedOnce.settings.candidateExclusions.includes('Release') &&
+    excludedTwice.changed === false &&
+    restored.changed === true &&
+    restored.settings.candidateExclusions.includes('Release') === false);
+  check('exclusions survive the settings sanitizer',
+    storeApi.sanitizeSettings(excludedOnce.settings).candidateExclusions
+      .includes('Release'));
+  check('exclusion list rejects non-strings and duplicates',
+    storeApi.sanitizeCandidateExclusions(['A', 'A', '', 42, null, ' B ']).length === 2);
+
+  const pool = [
+    { channelName: 'State Artist - Topic', profileName: 'State Artist' },
+    { channelName: 'Release', profileName: 'Release' },
+    { channelName: 'Fresh Artist - Topic', profileName: 'Fresh Artist' },
+  ];
+  const parts = analyze.partitionCandidates(pool, excludedOnce.settings, storeApi);
+  check('the visible list drops both registered and excluded candidates',
+    parts.visible.length === 1 &&
+    parts.visible[0].channelName === 'Fresh Artist - Topic' &&
+    parts.registered.length === 1 &&
+    parts.excluded.length === 1);
+
+  const stateDoc = new FakeDocument();
+  const stateContainer = stateDoc.createElement('div');
+  let excludedArg = null;
+  analyze.renderCandidateRows(
+    stateContainer,
+    parts.visible,
+    { onReview: () => {}, onExclude: (candidate) => { excludedArg = candidate; } }
+  );
+  const excludeButton = stateContainer.children[0].children
+    .find((child) => child.dataset && child.dataset.officialExclude);
+  if (excludeButton && excludeButton.listeners && excludeButton.listeners.click) {
+    excludeButton.listeners.click();
+  }
+  check('each row offers a manual exclude action wired to the candidate',
+    Boolean(excludeButton) && excludedArg === parts.visible[0]);
+
+  const emptyContainer = stateDoc.createElement('div');
+  analyze.renderCandidateRows(emptyContainer, [], { onReview: () => {} },
+    { registeredCount: 1, excludedCount: 1 });
+  check('the empty state explains what is hidden instead of claiming none exist',
+    emptyContainer.textContent.includes('登録済み 1 件') &&
+    emptyContainer.textContent.includes('除外 1 件'));
+
   console.log(`\nResult: ${passed} passed, ${failed} failed`);
   if (failed) process.exit(1);
 }

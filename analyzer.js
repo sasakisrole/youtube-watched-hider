@@ -681,12 +681,92 @@
     const saveButton = document.getElementById('azOfficialSave');
     if (!api || !store || !container || !saveButton) return;
 
-    const candidates = api.buildCandidates(data).slice(0, 50);
-    api.renderCandidateRows(
-      container,
-      candidates,
-      (candidate) => void openOfficialCandidateReview(candidate)
-    );
+    const allCandidates = api.buildCandidates(data).slice(0, 50);
+
+    // 登録済み・除外済みを一覧から外して描き直す。保存直後にも呼ぶので、
+    // 登録した候補はその場で消える（＝二重登録の入口を塞ぐ）。
+    async function paint() {
+      let settings = null;
+      try {
+        settings = await store.loadSettings();
+      } catch {
+        settings = null;
+      }
+      const parts = api.partitionCandidates(allCandidates, settings, store);
+      api.renderCandidateRows(
+        container,
+        parts.visible,
+        {
+          onReview: (candidate) => void openOfficialCandidateReview(candidate),
+          onExclude: (candidate) => void excludeCandidate(candidate),
+        },
+        {
+          registeredCount: parts.registered.length,
+          excludedCount: parts.excluded.length,
+        }
+      );
+      renderExcludedFooter(parts);
+    }
+
+    function renderExcludedFooter(parts) {
+      const footer = document.getElementById('azOfficialHidden');
+      if (!footer) return;
+      footer.textContent = '';
+      const registered = parts.registered.length;
+      const excluded = parts.excluded;
+      if (!registered && !excluded.length) return;
+
+      const note = document.createElement('span');
+      const pieces = [];
+      if (registered) pieces.push(`登録済み ${registered} 件`);
+      if (excluded.length) {
+        pieces.push(`除外 ${excluded.length} 件（${excluded.map((c) => c.channelName).join('、')}）`);
+      }
+      note.textContent = `非表示: ${pieces.join(' / ')}`;
+      footer.appendChild(note);
+
+      if (excluded.length) {
+        const restore = document.createElement('button');
+        restore.type = 'button';
+        restore.className = 'sort-btn';
+        restore.id = 'azOfficialRestore';
+        restore.textContent = '除外をすべて戻す';
+        restore.addEventListener('click', async () => {
+          restore.disabled = true;
+          try {
+            for (const candidate of excluded) {
+              await store.updateCandidateExclusion(candidate.channelName, false);
+            }
+            setOfficialRegistrationStatus('除外を戻しました。');
+            await paint();
+          } catch (error) {
+            setOfficialRegistrationStatus(`除外を戻せませんでした: ${error.message}`, true);
+            restore.disabled = false;
+          }
+        });
+        footer.appendChild(restore);
+      }
+    }
+
+    async function excludeCandidate(candidate) {
+      try {
+        const result = await store.updateCandidateExclusion(candidate.channelName, true);
+        if (!result.saved && result.reason !== 'unchanged') {
+          throw new Error(result.reason || '保存できませんでした');
+        }
+        if (currentOfficialCandidate === candidate) {
+          const review = document.getElementById('azOfficialReview');
+          if (review) review.hidden = true;
+          currentOfficialCandidate = null;
+        }
+        setOfficialRegistrationStatus(`「${candidate.channelName}」を候補から外しました。`);
+        await paint();
+      } catch (error) {
+        setOfficialRegistrationStatus(`候補から外せませんでした: ${error.message}`, true);
+      }
+    }
+
+    void paint();
 
     saveButton.onclick = async () => {
       if (!currentOfficialCandidate) {
@@ -722,13 +802,30 @@
       try {
         const result = await store.registerConfirmed({
           profileName,
-          channel,
+          channel: {
+            ...channel,
+            // 候補一覧の出どころを残す＝登録後にその候補を一覧から外すための鍵
+            sourceChannelName: currentOfficialCandidate.channelName,
+          },
           confirmed: true,
           bindQuery: false,
         });
+        if (!result.saved && result.reason === 'already-registered') {
+          document.getElementById('azOfficialConfirmed').checked = false;
+          const review = document.getElementById('azOfficialReview');
+          if (review) review.hidden = true;
+          currentOfficialCandidate = null;
+          setOfficialRegistrationStatus('このチャンネルは登録済みです（重複登録は行いませんでした）。');
+          await paint();
+          return;
+        }
         if (!result.saved) throw new Error(result.reason || '保存できませんでした');
         document.getElementById('azOfficialConfirmed').checked = false;
+        const review = document.getElementById('azOfficialReview');
+        if (review) review.hidden = true;
+        currentOfficialCandidate = null;
         setOfficialRegistrationStatus('プロフィールとチャンネルを登録しました。');
+        await paint();
       } catch (error) {
         setOfficialRegistrationStatus(`保存できませんでした: ${error.message}`, true);
       } finally {

@@ -20,6 +20,7 @@
       hideOtherGlobal: false,
       profiles: {},
       queryBindings: {},
+      candidateExclusions: [],
     };
   }
 
@@ -43,11 +44,15 @@
     const channelId = String(value.channelId ?? '').trim();
     const canonicalPath = normalizeChannelPath(value.canonicalPath);
     const displayName = String(value.displayName ?? '').trim();
+    // 候補一覧の出どころ（Analyze の集計チャンネル名）。登録済み判定の主キーにする。
+    // プロフィール名を編集して保存しても候補と結び付けられるようにするため。
+    const sourceChannelName = String(value.sourceChannelName ?? '').trim();
     if (!channelId && !canonicalPath) return null;
 
     return {
       ...(channelId ? { channelId } : {}),
       ...(canonicalPath ? { canonicalPath } : {}),
+      ...(sourceChannelName ? { sourceChannelName } : {}),
       displayName,
       enabled: value.enabled !== false,
     };
@@ -133,6 +138,50 @@
     return bindings;
   }
 
+  const MAX_EXCLUSIONS = 500;
+
+  function sanitizeCandidateExclusions(value) {
+    if (!Array.isArray(value)) return [];
+    const seen = new Set();
+    const result = [];
+    for (const entry of value) {
+      if (typeof entry !== 'string') continue;
+      const name = entry.trim();
+      if (!name) continue;
+      const key = normalizeText(name);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      result.push(name);
+      if (result.length >= MAX_EXCLUSIONS) break;
+    }
+    return result;
+  }
+
+  // 候補（Analyze の集計チャンネル）が、すでにプロフィールとして登録済みかを判定する。
+  // 主キーは sourceChannelName。旧データ（v1.43.7 以前の登録）には無いので、
+  // チャンネル表示名・プロフィール表示名でもフォールバック照合する。
+  function findRegisteredProfileId(settingsValue, candidate) {
+    const settings = sanitizeSettings(settingsValue);
+    const channelKey = normalizeText(candidate?.channelName);
+    const profileKey = normalizeText(candidate?.profileName);
+    if (!channelKey && !profileKey) return null;
+
+    for (const profile of Object.values(settings.profiles)) {
+      for (const channel of profile.channels) {
+        const sourceKey = normalizeText(channel.sourceChannelName);
+        if (sourceKey && channelKey && sourceKey === channelKey) return profile.id;
+      }
+    }
+    for (const profile of Object.values(settings.profiles)) {
+      if (profileKey && normalizeText(profile.displayName) === profileKey) return profile.id;
+      for (const channel of profile.channels) {
+        const displayKey = normalizeText(channel.displayName);
+        if (displayKey && channelKey && displayKey === channelKey) return profile.id;
+      }
+    }
+    return null;
+  }
+
   function sanitizeSettings(value) {
     if (
       !isPlainObject(value) ||
@@ -157,6 +206,7 @@
           : false,
       profiles,
       queryBindings: sanitizeQueryBindings(value.queryBindings, profiles),
+      candidateExclusions: sanitizeCandidateExclusions(value.candidateExclusions),
     };
   }
 
@@ -236,6 +286,32 @@
       return { changed: false, settings, reason: 'invalid-target' };
     }
 
+    // 二重登録の防止。同じチャンネルが既にどれかのプロフィールに入っているなら
+    // 新しいプロフィールを作らない（従来は createProfile が毎回走り、同名でも
+    // id に -2 が付いた別プロフィールが増えていた）。
+    for (const existing of Object.values(settings.profiles)) {
+      if (duplicateChannelIndex(existing.channels, channel) >= 0) {
+        return {
+          changed: false,
+          settings,
+          reason: 'already-registered',
+          profileId: existing.id,
+        };
+      }
+    }
+    const alreadyBySource = findRegisteredProfileId(settings, {
+      channelName: channel.sourceChannelName,
+      profileName,
+    });
+    if (alreadyBySource) {
+      return {
+        changed: false,
+        settings,
+        reason: 'already-registered',
+        profileId: alreadyBySource,
+      };
+    }
+
     const created = createProfile(settings, profileName);
     settings = created.settings;
     const profile = settings.profiles[created.profileId];
@@ -298,6 +374,46 @@
     });
   }
 
+  function setCandidateExcluded(settingsValue, channelName, excluded) {
+    const settings = sanitizeSettings(settingsValue);
+    const name = String(channelName ?? '').trim();
+    if (!name) return { changed: false, settings, reason: 'invalid-target' };
+
+    const key = normalizeText(name);
+    const index = settings.candidateExclusions
+      .findIndex((entry) => normalizeText(entry) === key);
+    if (excluded === false) {
+      if (index < 0) return { changed: false, settings, reason: 'unchanged' };
+      settings.candidateExclusions.splice(index, 1);
+      return { changed: true, settings };
+    }
+    if (index >= 0) return { changed: false, settings, reason: 'unchanged' };
+    if (settings.candidateExclusions.length >= MAX_EXCLUSIONS) {
+      return { changed: false, settings, reason: 'limit-reached' };
+    }
+    settings.candidateExclusions.push(name);
+    return { changed: true, settings };
+  }
+
+  async function loadSettings(storageArea) {
+    const area = storageArea || globalThis.chrome?.storage?.local;
+    if (!area) return createDefaultSettings();
+    const stored = await storageGet(area);
+    return sanitizeSettings(stored[STORAGE_KEY]);
+  }
+
+  async function updateCandidateExclusion(channelName, excluded, storageArea) {
+    const area = storageArea || globalThis.chrome?.storage?.local;
+    if (!area) return { saved: false, reason: 'storage-unavailable' };
+    const stored = await storageGet(area);
+    const result = setCandidateExcluded(stored[STORAGE_KEY], channelName, excluded);
+    if (!result.changed) {
+      return { saved: false, reason: result.reason || 'unchanged', settings: result.settings };
+    }
+    await storageSet(area, result.settings);
+    return { saved: true, settings: result.settings };
+  }
+
   async function registerConfirmed(registration, storageArea) {
     if (registration?.confirmed !== true) {
       return { saved: false, reason: 'confirmation-required' };
@@ -333,6 +449,11 @@
     addChannel,
     mutateConfirmedRegistration,
     registerConfirmed,
+    sanitizeCandidateExclusions,
+    findRegisteredProfileId,
+    setCandidateExcluded,
+    updateCandidateExclusion,
+    loadSettings,
   });
 
   globalThis.YWHOfficialProfileStore = api;

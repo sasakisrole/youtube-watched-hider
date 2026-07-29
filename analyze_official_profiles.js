@@ -132,14 +132,46 @@
     return element;
   }
 
-  function renderCandidateRows(container, candidates, onReview) {
+  // settings（保存済みプロフィール・除外リスト）で候補を仕分ける。
+  // 登録済み・除外済みは一覧から外す＝二重登録とノイズを構造的に防ぐ。
+  function partitionCandidates(candidates, settings, storeApi) {
+    const list = Array.isArray(candidates) ? candidates : [];
+    const exclusions = new Set(
+      (settings?.candidateExclusions || []).map((name) => String(name).trim())
+    );
+    const isRegistered = typeof storeApi?.findRegisteredProfileId === 'function'
+      ? (candidate) => Boolean(storeApi.findRegisteredProfileId(settings, candidate))
+      : () => false;
+
+    const visible = [];
+    const registered = [];
+    const excluded = [];
+    for (const candidate of list) {
+      if (exclusions.has(String(candidate.channelName).trim())) {
+        excluded.push(candidate);
+      } else if (isRegistered(candidate)) {
+        registered.push(candidate);
+      } else {
+        visible.push(candidate);
+      }
+    }
+    return { visible, registered, excluded };
+  }
+
+  function renderCandidateRows(container, candidates, handlers, summary) {
+    const onReview = typeof handlers === 'function' ? handlers : handlers?.onReview;
+    const onExclude = typeof handlers === 'function' ? null : handlers?.onExclude;
     container.textContent = '';
     if (!candidates.length) {
+      const hiddenCount =
+        (summary?.registeredCount || 0) + (summary?.excludedCount || 0);
       appendText(
         container,
         'p',
         'az-official-empty',
-        '現在の集計には公式プロファイル候補がありません。'
+        hiddenCount
+          ? `未登録の候補はありません（登録済み ${summary?.registeredCount || 0} 件・除外 ${summary?.excludedCount || 0} 件は非表示）。`
+          : '現在の集計には公式プロファイル候補がありません。'
       );
       return 0;
     }
@@ -171,6 +203,18 @@
       button.dataset.officialReview = candidate.channelName;
       button.addEventListener('click', () => onReview?.(candidate));
       row.appendChild(button);
+
+      if (onExclude) {
+        const exclude = container.ownerDocument.createElement('button');
+        exclude.type = 'button';
+        exclude.className = 'sort-btn';
+        exclude.textContent = '候補から外す';
+        exclude.title = '複数アーティストが混ざるチャンネルなど、候補に出したくないものを隠します（あとで戻せます）';
+        exclude.dataset.officialExclude = candidate.channelName;
+        exclude.addEventListener('click', () => onExclude(candidate));
+        row.appendChild(exclude);
+      }
+
       container.appendChild(row);
     }
     return candidates.length;
@@ -183,6 +227,7 @@
     channelFromInput,
     resolveCandidateChannel,
     renderCandidateRows,
+    partitionCandidates,
     stripTopicSuffix,
   });
 
