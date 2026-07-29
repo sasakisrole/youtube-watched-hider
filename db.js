@@ -735,6 +735,7 @@ if (typeof WatchedDB === 'undefined') {
       let likedVideos = [];
       let droppedLiked = 0;
       let likedStructuralError = false;
+      let likedMetaStructuralError = false;
       let likedSyncMeta = null;
       if (data && typeof data === 'object' && data.schemaVersion === 2) {
         if (Array.isArray(data.likedVideos)) {
@@ -748,6 +749,9 @@ if (typeof WatchedDB === 'undefined') {
           likedStructuralError = true;
         }
         likedSyncMeta = sanitizeLikedSyncMetaFlat(data.likedSyncMeta);
+        if (data.likedSyncMeta != null && (typeof data.likedSyncMeta !== 'object' || Array.isArray(data.likedSyncMeta))) {
+          likedMetaStructuralError = true;
+        }
       }
 
       return {
@@ -758,6 +762,7 @@ if (typeof WatchedDB === 'undefined') {
         droppedWatched: w.dropped,
         droppedLiked,
         likedStructuralError,
+        likedMetaStructuralError,
       };
     }
 
@@ -789,6 +794,7 @@ if (typeof WatchedDB === 'undefined') {
           watched: p.droppedWatched || 0,
           liked: p.droppedLiked || 0,
           likedStructural: !!p.likedStructuralError,
+          likedMetaStructural: !!p.likedMetaStructuralError,
         },
       };
     }

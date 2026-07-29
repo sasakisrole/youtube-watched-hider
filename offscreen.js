@@ -68,6 +68,7 @@ async function importPayload(message, merge) {
       liked: parsed.droppedLiked || 0,
       // u1ps (Codex B1 VERIFY minor 2): non-array likedVideos block skipped whole.
       likedStructural: !!parsed.likedStructuralError,
+      likedMetaStructural: !!parsed.likedMetaStructuralError,
     },
     watchedIds,
     watched,
@@ -117,6 +118,7 @@ async function replaceApply(message) {
       watched: parsed.droppedWatched || 0,
       liked: parsed.droppedLiked || 0,
       likedStructural: !!parsed.likedStructuralError,
+      likedMetaStructural: !!parsed.likedMetaStructuralError,
     },
     watchedIds,
     liked: { imported: res.importedLiked },
