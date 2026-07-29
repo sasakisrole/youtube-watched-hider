@@ -761,6 +761,46 @@
     .az-table a { color: var(--text-muted); text-decoration: none; margin-right: 10px; font-size: 12px; }
     .az-table a:hover { color: var(--accent); }
 
+    .az-official-box {
+      margin: 0 0 14px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface-2);
+    }
+    .az-official-box h3 { font-size: 13px; margin-bottom: 4px; }
+    .az-official-note, .az-official-status, .az-official-evidence {
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+    .az-official-candidates { display: grid; gap: 6px; margin-top: 10px; }
+    .az-official-candidate {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+    }
+    .az-official-candidate strong { margin-right: 8px; }
+    .az-official-badge {
+      color: var(--accent);
+      font-size: 11px;
+      margin-right: 8px;
+    }
+    .az-official-review {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+    }
+    .az-official-fields { display: flex; gap: 8px; flex-wrap: wrap; }
+    .az-official-fields input { min-width: 220px; flex: 1; }
+    .az-official-target { color: var(--accent); font-size: 12px; }
+
     .az-kwgrid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -944,6 +984,24 @@
         <input type="text" id="azArtistFilter" placeholder="アーティスト名で絞り込み" class="search-box" style="max-width:260px;">
         <label class="chk"><input type="checkbox" id="azTopicOnly" checked>-Topicのみ</label>
       </div>
+      <section class="az-official-box" aria-labelledby="azOfficialTitle">
+        <h3 id="azOfficialTitle">公式プロファイル候補</h3>
+        <p class="az-official-note">Topic表記またはクレジット比率から候補を出します。名前だけでは公式と確定せず、リンク先を確認するまで保存しません。</p>
+        <div class="az-official-candidates" id="azOfficialCandidates"></div>
+        <div class="az-official-review" id="azOfficialReview" hidden>
+          <div class="az-official-fields">
+            <input type="text" id="azOfficialProfileName" aria-label="プロフィール名" placeholder="プロフィール名">
+            <input type="url" id="azOfficialChannelUrl" aria-label="確認済みチャンネルURL" placeholder="https://www.youtube.com/@...">
+          </div>
+          <div>
+            <a class="az-official-target" id="azOfficialTarget" target="_blank" rel="noopener">候補チャンネルを開く</a>
+            <a class="az-official-target" id="azOfficialSample" target="_blank" rel="noopener">候補元動画を開く</a>
+          </div>
+          <label class="chk"><input type="checkbox" id="azOfficialConfirmed">リンク先が本人の公式またはTopicチャンネルであることを確認した</label>
+          <div><button class="sort-btn" id="azOfficialSave" type="button">プロフィール＋チャンネルを登録</button></div>
+          <p class="az-official-status" id="azOfficialStatus" role="status" aria-live="polite"></p>
+        </div>
+      </section>
       <table class="az-table" id="azArtistsTable"><thead><tr><th style="width:40px;">#</th><th>アーティスト</th><th style="width:60px;">再生</th><th>リンク</th></tr></thead><tbody></tbody></table>
     </div>
     <div class="az-panel" id="azChannelsPanel" style="display:none;">
@@ -1023,6 +1081,9 @@
 
   <script src="chart.umd.min.js"></script>
   <script src="credit_target.js"></script>
+  <script src="official_search_filter_core.js"></script>
+  <script src="official_profile_store.js"></script>
+  <script src="analyze_official_profiles.js"></script>
   <script src="enrich_credits.js"></script>
   <script src="history.js"></script>
   <script src="analyzer.js"></script>

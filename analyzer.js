@@ -626,6 +626,117 @@
     document.getElementById('azPromptText').textContent = lines.join('\n');
   }
 
+  let currentOfficialCandidate = null;
+  let currentOfficialChannelName = '';
+
+  function setOfficialRegistrationStatus(message, isError = false) {
+    const status = document.getElementById('azOfficialStatus');
+    if (!status) return;
+    status.textContent = message;
+    status.style.color = isError ? 'var(--danger, #e66)' : 'var(--text-muted)';
+  }
+
+  async function openOfficialCandidateReview(candidate) {
+    const api = window.YWHAnalyzeOfficialProfiles;
+    const review = document.getElementById('azOfficialReview');
+    if (!api || !review) return;
+
+    currentOfficialCandidate = candidate;
+    currentOfficialChannelName = candidate.channelName;
+    review.hidden = false;
+    document.getElementById('azOfficialProfileName').value = candidate.profileName;
+    document.getElementById('azOfficialChannelUrl').value = '';
+    document.getElementById('azOfficialConfirmed').checked = false;
+
+    const sample = document.getElementById('azOfficialSample');
+    sample.href = candidate.sampleVideoId
+      ? `https://www.youtube.com/watch?v=${encodeURIComponent(candidate.sampleVideoId)}`
+      : `https://www.youtube.com/results?search_query=${encodeURIComponent(candidate.channelName)}`;
+    const target = document.getElementById('azOfficialTarget');
+    target.removeAttribute('href');
+    setOfficialRegistrationStatus('候補元動画からチャンネルURLを取得しています…');
+
+    try {
+      const channel = await api.resolveCandidateChannel(candidate);
+      if (currentOfficialCandidate !== candidate) return;
+      if (!channel) throw new Error('チャンネルURLを取得できませんでした');
+      currentOfficialChannelName = channel.displayName || candidate.channelName;
+      const url = `https://www.youtube.com${channel.canonicalPath}`;
+      document.getElementById('azOfficialChannelUrl').value = url;
+      target.href = url;
+      setOfficialRegistrationStatus('リンク先を開き、本人の公式またはTopicチャンネルか確認してください。');
+    } catch (error) {
+      if (currentOfficialCandidate !== candidate) return;
+      setOfficialRegistrationStatus(
+        `自動取得できませんでした。確認したチャンネルURLを入力してください（${error.message}）。`,
+        true
+      );
+    }
+  }
+
+  function renderOfficialProfileCandidates(data) {
+    const api = window.YWHAnalyzeOfficialProfiles;
+    const store = window.YWHOfficialProfileStore;
+    const container = document.getElementById('azOfficialCandidates');
+    const saveButton = document.getElementById('azOfficialSave');
+    if (!api || !store || !container || !saveButton) return;
+
+    const candidates = api.buildCandidates(data).slice(0, 50);
+    api.renderCandidateRows(
+      container,
+      candidates,
+      (candidate) => void openOfficialCandidateReview(candidate)
+    );
+
+    saveButton.onclick = async () => {
+      if (!currentOfficialCandidate) {
+        setOfficialRegistrationStatus('先に候補を選んでください。', true);
+        return;
+      }
+      const profileName = document.getElementById('azOfficialProfileName').value.trim();
+      const channel = api.channelFromInput(
+        document.getElementById('azOfficialChannelUrl').value,
+        currentOfficialChannelName || currentOfficialCandidate.channelName
+      );
+      if (!profileName || !channel) {
+        setOfficialRegistrationStatus('プロフィール名とYouTubeチャンネルURLを確認してください。', true);
+        return;
+      }
+      if (!document.getElementById('azOfficialConfirmed').checked) {
+        setOfficialRegistrationStatus('リンク先を確認し、確認欄をチェックしてください。', true);
+        return;
+      }
+      const approved = window.confirm(
+        `次の内容を公式プロファイルとして登録しますか？\n` +
+        `プロフィール: ${profileName}\n` +
+        `チャンネル: ${channel.displayName}\n` +
+        `URL: https://www.youtube.com${channel.canonicalPath}`
+      );
+      if (!approved) {
+        setOfficialRegistrationStatus('登録をキャンセルしました。');
+        return;
+      }
+
+      saveButton.disabled = true;
+      setOfficialRegistrationStatus('保存中です…');
+      try {
+        const result = await store.registerConfirmed({
+          profileName,
+          channel,
+          confirmed: true,
+          bindQuery: false,
+        });
+        if (!result.saved) throw new Error(result.reason || '保存できませんでした');
+        document.getElementById('azOfficialConfirmed').checked = false;
+        setOfficialRegistrationStatus('プロフィールとチャンネルを登録しました。');
+      } catch (error) {
+        setOfficialRegistrationStatus(`保存できませんでした: ${error.message}`, true);
+      } finally {
+        saveButton.disabled = false;
+      }
+    };
+  }
+
   async function runAnalysis() {
     const data = (typeof allData !== 'undefined' && allData) ? allData : [];
     const chCount = buildChannelCount(data);
@@ -645,6 +756,7 @@
     document.getElementById('azArtist').textContent = topicCh.length.toLocaleString();
     document.getElementById('azMusic').textContent = musicPlays.toLocaleString();
 
+    renderOfficialProfileCandidates(data);
     renderArtists(chCount);
     renderChannels(chCount);
     renderKeywords(data, chCount);

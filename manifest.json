@@ -25,6 +25,7 @@
       "js": [
         "content.js",
         "official_search_filter_core.js",
+        "official_profile_store.js",
         "official_search_filter.js"
       ],
       "css": [
