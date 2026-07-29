@@ -32,6 +32,7 @@ const autoBackupToggle = document.getElementById('autoBackupToggle');
 const backupNowBtn = document.getElementById('backupNowBtn');
 const lastBackupInfo = document.getElementById('lastBackupInfo');
 const viewerBtn = document.getElementById('viewerBtn');
+const whatsnewBtn = document.getElementById('whatsnewBtn');
 const aboutBtn = document.getElementById('aboutBtn');
 const aboutPanel = document.getElementById('aboutPanel');
 const nextBackupInfo = document.getElementById('nextBackupInfo');
@@ -371,6 +372,11 @@ historySearch.addEventListener('input', () => {
 // Open viewer in new tab
 viewerBtn.addEventListener('click', () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('history.html') });
+});
+
+// Open the usage guide + release notes page
+whatsnewBtn.addEventListener('click', () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('whatsnew.html') });
 });
 
 // Export (versioned envelope format)

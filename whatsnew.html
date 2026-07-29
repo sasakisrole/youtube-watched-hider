@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>使い方と更新情報 - YouTube Watched Hider</title>
+  <style>
+    :root {
+      --bg: #fafafa;
+      --surface: #ffffff;
+      --surface-2: #f4f4f6;
+      --border: #e8e8e8;
+      --text: #18181b;
+      --text-muted: #71717a;
+      --text-faint: #a1a1aa;
+      --accent: #3f3f9c;
+      --accent-soft: #eeeefc;
+      --radius: 8px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1115;
+        --surface: #181b22;
+        --surface-2: #1f232c;
+        --border: #2a2f39;
+        --text: #f1f1f3;
+        --text-muted: #a8aebb;
+        --text-faint: #6c7180;
+        --accent: #8b8bff;
+        --accent-soft: #1f1f3d;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 32px 20px 72px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans",
+        "Noto Sans JP", Meiryo, sans-serif;
+      font-size: 14px;
+      line-height: 1.8;
+    }
+    .wrap { max-width: 760px; margin: 0 auto; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .lede { color: var(--text-muted); margin: 0 0 8px; }
+    .current {
+      display: inline-block;
+      padding: 1px 10px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    h2 {
+      font-size: 15px;
+      margin: 40px 0 6px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .section-note { color: var(--text-faint); font-size: 12px; margin: 0 0 14px; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      margin-bottom: 10px;
+    }
+    .card h3 { font-size: 14px; margin: 0 0 2px; }
+    .card .where { color: var(--accent); font-size: 12px; }
+    .card p { margin: 8px 0 0; color: var(--text-muted); }
+    .card ol { margin: 8px 0 0; padding-left: 20px; color: var(--text-muted); }
+    .card ol li { margin: 3px 0; }
+    .card .caution {
+      margin: 10px 0 0;
+      padding: 8px 10px;
+      background: var(--surface-2);
+      border-radius: 6px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+    .release { border-top: 1px solid var(--border); padding: 14px 0; }
+    .release:first-of-type { border-top: none; }
+    .release-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+    .ver { font-weight: 700; font-variant-numeric: tabular-nums; }
+    .date { color: var(--text-faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+    .release .summary { margin: 6px 0 0; }
+    .release ul { margin: 8px 0 0; padding-left: 20px; color: var(--text-muted); }
+    .release li { margin: 4px 0; }
+    details { margin-top: 18px; }
+    summary { cursor: pointer; color: var(--accent); padding: 8px 0; }
+    .older { border-top: 1px solid var(--border); padding: 10px 0; }
+    .older .summary { margin: 4px 0 0; color: var(--text-muted); font-size: 13px; }
+    .empty { color: var(--text-muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>使い方と更新情報</h1>
+    <p class="lede">
+      いま入っているのは <span class="current" id="currentVersion">-</span> です。
+    </p>
+
+    <h2>使い方</h2>
+    <p class="section-note">いまの状態の説明です。過去の経緯は下の更新履歴を見てください。</p>
+    <div id="features"></div>
+
+    <h2>更新履歴</h2>
+    <p class="section-note">CHANGELOG.md から自動生成しています。</p>
+    <div id="recent" class="empty">読み込み中です…</div>
+    <details id="olderWrap" hidden>
+      <summary id="olderSummary">それより前の更新を表示</summary>
+      <div id="older"></div>
+    </details>
+  </div>
+
+  <script src="whatsnew_data.js"></script>
+  <script src="whatsnew.js"></script>
+</body>
+</html>
