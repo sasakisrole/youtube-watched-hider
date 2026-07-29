@@ -68,10 +68,40 @@
     };
   }
 
-  function buildEnrichmentConfirmText(preCount) {
+  function getLimitedVideoCount(videoCount, limit) {
+    const count = Math.max(0, Math.floor(Number(videoCount) || 0));
+    if (limit == null) return count;
+    const parsedLimit = Math.floor(Number(limit));
+    return Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(count, parsedLimit) : count;
+  }
+
+  function estimateEnrichmentMinutes(videoCount, rateLimitMs) {
+    const count = Math.max(0, Math.floor(Number(videoCount) || 0));
+    const interval = Math.max(0, Number(rateLimitMs) || 0);
+    if (!count || !interval) return 0;
+    return Math.max(1, Math.ceil((count * interval) / 60000));
+  }
+
+  function buildEnrichmentConfirmText(preCount, rateLimitMs, limit = null) {
     const videoCount = Number(preCount && preCount.videoCount) || 0;
     const channelCount = Number(preCount && preCount.channelCount) || 0;
-    return `${videoCount}動画 / ${channelCount}チャンネルを固定ルールとMusicBrainzで照合します。`;
+    const processCount = getLimitedVideoCount(videoCount, limit);
+    const minutes = estimateEnrichmentMinutes(processCount, rateLimitMs);
+    return `${videoCount}動画 / ${channelCount}チャンネルを固定ルールとMusicBrainzで照合します。`
+      + ` 処理予定 ${processCount}件、推定所要時間 約${minutes}分。`;
+  }
+
+  function limitEnrichmentGroups(groups, limit) {
+    if (limit == null) return groups;
+    let remaining = Math.max(0, Math.floor(Number(limit) || 0));
+    const limited = new Map();
+    for (const [channel, videos] of groups) {
+      if (!remaining) break;
+      const selected = videos.slice(0, remaining);
+      if (selected.length) limited.set(channel, selected);
+      remaining -= selected.length;
+    }
+    return limited;
   }
 
   // Which of the still-missing roles does this candidate actually fill? Drives
@@ -863,7 +893,7 @@
       if (!hasCandidates && !this.generating && this.commitBtn) this.commitBtn.disabled = true;
     }
 
-    confirmGeneration(preCount) {
+    confirmGeneration(preCount, rateLimitMs) {
       const host = this.autoView || this.modal;
       if (!host || typeof document.createElement !== 'function') return Promise.resolve(false);
 
@@ -882,9 +912,51 @@
 
       const description = document.createElement('p');
       description.id = 'enrichPreCountDescription';
-      description.textContent = buildEnrichmentConfirmText(preCount);
+      description.textContent = buildEnrichmentConfirmText(preCount, rateLimitMs);
       description.style.margin = '8px 0 12px';
       panel.appendChild(description);
+
+      const limitRow = document.createElement('div');
+      limitRow.style.display = 'flex';
+      limitRow.style.gap = '8px';
+      limitRow.style.alignItems = 'center';
+      limitRow.style.flexWrap = 'wrap';
+      limitRow.style.margin = '0 0 12px';
+
+      const limitLabel = document.createElement('label');
+      limitLabel.setAttribute('for', 'enrichPreCountLimitMode');
+      limitLabel.textContent = '処理件数:';
+
+      const limitMode = document.createElement('select');
+      limitMode.id = 'enrichPreCountLimitMode';
+      limitMode.dataset.enrichPrecountLimitMode = 'true';
+      limitMode.setAttribute('aria-label', '処理件数の指定方法');
+      const allOption = document.createElement('option');
+      allOption.value = 'all';
+      allOption.textContent = '全件';
+      const limitedOption = document.createElement('option');
+      limitedOption.value = 'limited';
+      limitedOption.textContent = '上位N件';
+      limitMode.appendChild(allOption);
+      limitMode.appendChild(limitedOption);
+      limitMode.value = 'all';
+
+      const limitInput = document.createElement('input');
+      limitInput.type = 'number';
+      limitInput.dataset.enrichPrecountLimit = 'true';
+      limitInput.setAttribute('aria-label', '処理する上位件数');
+      limitInput.min = '1';
+      limitInput.max = String(preCount.videoCount);
+      limitInput.step = '1';
+      limitInput.value = String(Math.min(100, preCount.videoCount));
+      limitInput.disabled = true;
+      limitInput.style.width = '7em';
+      limitInput.style.minHeight = '44px';
+
+      limitRow.appendChild(limitLabel);
+      limitRow.appendChild(limitMode);
+      limitRow.appendChild(limitInput);
+      panel.appendChild(limitRow);
 
       const actions = document.createElement('div');
       actions.style.display = 'flex';
@@ -914,6 +986,23 @@
       panel.appendChild(actions);
       host.appendChild(panel);
 
+      const selectedLimit = () => {
+        if (limitMode.value !== 'limited') return null;
+        const value = Number(limitInput.value);
+        return Number.isInteger(value) && value >= 1 && value <= preCount.videoCount ? value : undefined;
+      };
+      const updateEstimate = () => {
+        const limit = selectedLimit();
+        start.disabled = limitMode.value === 'limited' && limit === undefined;
+        description.textContent = buildEnrichmentConfirmText(preCount, rateLimitMs, limit);
+      };
+      limitMode.addEventListener('change', () => {
+        limitInput.disabled = limitMode.value !== 'limited';
+        updateEstimate();
+      });
+      limitInput.addEventListener('input', updateEstimate);
+      updateEstimate();
+
       const previousFocus = document.activeElement;
       return new Promise((resolve) => {
         let settled = false;
@@ -926,7 +1015,7 @@
           resolve(confirmed);
         };
         this.cancelGenerationConfirmation = () => finish(false);
-        start.addEventListener('click', () => finish(true));
+        start.addEventListener('click', () => finish({ limit: selectedLimit() }));
         cancel.addEventListener('click', () => finish(false));
         panel.addEventListener('keydown', (event) => {
           if (event.key !== 'Escape') return;
@@ -985,8 +1074,8 @@
     async generateCandidates() {
       if (this.generating || this.committing || this.confirmingGeneration) return;
       const records = this.getRecords();
-      const groups = this.groupUnassigned(records);
-      if (!groups.size) {
+      const allGroups = this.groupUnassigned(records);
+      if (!allGroups.size) {
         this.resetSession();
         this.setMessage('未割当 creditsRaw の対象行がありません。', 'success');
         return;
@@ -995,14 +1084,21 @@
       const preCount = getEnrichmentPreCount(records);
       this.confirmingGeneration = true;
       this.updateButtons();
-      let confirmed = false;
+      let confirmation = null;
       try {
-        confirmed = await this.confirmGeneration(preCount);
+        const config = await sendRuntimeMessage({ type: 'getEnrichCreditsConfig' });
+        if (!config || !config.success || !(Number(config.rateLimitMs) > 0)) {
+          throw new Error('通信間隔を取得できません');
+        }
+        confirmation = await this.confirmGeneration(preCount, Number(config.rateLimitMs));
+      } catch (error) {
+        this.setMessage(`候補生成の事前確認に失敗しました: ${error.message}`, 'error');
       } finally {
         this.confirmingGeneration = false;
         this.updateButtons();
       }
-      if (!confirmed) return;
+      if (!confirmation) return;
+      const groups = limitEnrichmentGroups(allGroups, confirmation.limit);
 
       const beginOk = !this.env.beginMaintenance || this.env.beginMaintenance('生成中…（中止）', true);
       if (!beginOk) {
@@ -1427,7 +1523,10 @@
     manualRecordMatchesSearch,
     needsCreditEnrichment,
     getEnrichmentPreCount,
+    getLimitedVideoCount,
+    estimateEnrichmentMinutes,
     buildEnrichmentConfirmText,
+    limitEnrichmentGroups,
     coveredNeededRoles,
     limitCandidateToRoles,
     waterfallAccept,

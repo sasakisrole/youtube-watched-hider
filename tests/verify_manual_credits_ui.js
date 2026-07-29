@@ -3,8 +3,10 @@ const fs = require('fs');
 const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const SOURCE = fs.readFileSync(path.join(ROOT, 'enrich_credits.js'), 'utf8');
+const BACKGROUND_SOURCE = fs.readFileSync(path.join(ROOT, 'background.js'), 'utf8');
 const HTML = fs.readFileSync(path.join(ROOT, 'history.html'), 'utf8');
 const CT = require(path.join(ROOT, 'credit_target.js'));
+const ENRICH_RATE_LIMIT_MS = Number(BACKGROUND_SOURCE.match(/const ENRICH_RATE_LIMIT_MS = (\d+);/)[1]);
 
 let pass = 0;
 let fail = 0;
@@ -110,7 +112,9 @@ function load(records = [], rpc, options = {}) {
   const chromeStub = { runtime: { getURL: () => '', getManifest: () => ({ version: 'test' }), lastError: null,
     sendMessage: (message, cb) => {
       counters.messages++; counters.runtime.push(message);
-      cb(options.runtime ? options.runtime(message, counters.runtime.length) : { success: false });
+      cb(message.type === 'getEnrichCreditsConfig'
+        ? { success: true, rateLimitMs: ENRICH_RATE_LIMIT_MS }
+        : options.runtime ? options.runtime(message, counters.runtime.length) : { success: false });
     } },
   tabs: {
     create: () => { counters.tabs++; throw new Error('chrome.tabs.create must not be called'); },
@@ -148,8 +152,11 @@ async function testPure() {
     && H.CREDIT_SOURCE_LABELS.manual === '手動入力');
   const preCount = H.getEnrichmentPreCount(preCountRecords());
   check('pre-count uses enrichment gate and distinct target channels', preCount.videoCount === 3 && preCount.channelCount === 2);
-  check('pre-count confirmation text includes both computed counts', H.buildEnrichmentConfirmText(preCount)
-    === '3動画 / 2チャンネルを固定ルールとMusicBrainzで照合します。');
+  const expectedMinutes = Math.max(1, Math.ceil((preCount.videoCount * ENRICH_RATE_LIMIT_MS) / 60000));
+  const confirmText = H.buildEnrichmentConfirmText(preCount, ENRICH_RATE_LIMIT_MS);
+  check('pre-count confirmation text includes both computed counts', confirmText.includes('3動画 / 2チャンネル'));
+  check('pre-count confirmation includes estimate derived from count x background interval',
+    confirmText.includes(`処理予定 3件、推定所要時間 約${expectedMinutes}分`));
   const rows = [base('partial', { composer: 'Known', creditsRaw: '' }), base('raw'), base('empty', { creditsRaw: '' }),
     base('complete', { composer: 'A', lyricist: 'B', arranger: 'C' }), base('lookup', { title: 'Needle', channel: 'Special' })];
   check('rows include context+missing only', H.getManualReviewRows(rows).map((r) => r.videoId).join(',') === 'partial,raw,lookup');
@@ -234,6 +241,7 @@ async function testGenerationPreCount() {
   cancelled.controller.errors = ['kept-error'];
 
   const cancelPromise = cancelled.controller.generateCandidates();
+  await Promise.resolve();
   const panel = find(cancelled.controller.autoView, (e) => e.classList.contains('enrich-precount-confirm'));
   const cancelButton = find(panel, (e) => e.dataset.enrichPrecountAction === 'cancel');
   const startButton = find(panel, (e) => e.dataset.enrichPrecountAction === 'start');
@@ -261,12 +269,37 @@ async function testGenerationPreCount() {
   });
   started.controller.switchView('auto');
   const startPromise = started.controller.generateCandidates();
+  await Promise.resolve();
   const startPanel = find(started.controller.autoView, (e) => e.classList.contains('enrich-precount-confirm'));
   await find(startPanel, (e) => e.dataset.enrichPrecountAction === 'start').trigger('click');
   await startPromise;
   const mbMessages = started.counters.runtime.filter((message) => message.type === 'enrichCreditsMb');
-  check('pre-count start reaches existing rules and MusicBrainz generation flow', started.counters.fetches === 1
+  check('full-count selection preserves existing all-target generation flow', started.counters.fetches === 1
     && mbMessages.length === 3 && started.controller.generating === false);
+
+  const limited = load(records, undefined, {
+    fetch: async () => ({ ok: true, json: async () => ({ rules: [] }) }),
+    runtime: (message) => message.type === 'enrichCreditsMb'
+      ? { success: true, candidate: null }
+      : { success: false },
+  });
+  limited.controller.switchView('auto');
+  const limitedPromise = limited.controller.generateCandidates();
+  await Promise.resolve();
+  const limitedPanel = find(limited.controller.autoView, (e) => e.classList.contains('enrich-precount-confirm'));
+  const limitMode = find(limitedPanel, (e) => e.dataset.enrichPrecountLimitMode === 'true');
+  const limitInput = find(limitedPanel, (e) => e.dataset.enrichPrecountLimit === 'true');
+  limitMode.value = 'limited';
+  await limitMode.trigger('change');
+  limitInput.value = '2';
+  await limitInput.trigger('input');
+  check('limited selection updates estimate from selected count x background interval',
+    limitedPanel.textContent.includes(`処理予定 2件、推定所要時間 約${Math.max(1, Math.ceil((2 * ENRICH_RATE_LIMIT_MS) / 60000))}分`));
+  await find(limitedPanel, (e) => e.dataset.enrichPrecountAction === 'start').trigger('click');
+  await limitedPromise;
+  const limitedMbMessages = limited.counters.runtime.filter((message) => message.type === 'enrichCreditsMb');
+  check('upper limit N stops candidate generation loop at N videos',
+    limitedMbMessages.length === 2 && limited.controller.generating === false);
 
   const manual = load(records, undefined, {
     fetch: async () => { throw new Error('manual view must not fetch'); },
