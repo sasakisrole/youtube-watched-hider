@@ -1391,6 +1391,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'getEnrichCreditsConfig') {
+    sendResponse({ success: true, rateLimitMs: ENRICH_RATE_LIMIT_MS });
+    return false;
+  }
+
   if (message.type === 'FIX_CHANNELS') {
     // message.videoIds: string[]
     // message.force: boolean (overwrite existing non-empty channel/title)
