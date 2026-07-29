@@ -2508,6 +2508,27 @@ window._ytWatchedHider = (() => {
     }
   }
 
+  // Read the account selector that YouTube embedded in this tab's current document.
+  // SESSION_INDEX is the value required by X-Goog-AuthUser. The optional stable
+  // account key strengthens the end-of-sync comparison when YouTube exposes one.
+  function getYouTubeSyncContext() {
+    const html = document.documentElement ? document.documentElement.innerHTML : '';
+    const readConfigValue = (key) => {
+      const match = html.match(new RegExp('"' + key + '"\\s*:\\s*(?:"((?:\\\\.|[^"])*)"|(\\d+))'));
+      if (!match) return '';
+      if (match[2] != null) return match[2];
+      try { return JSON.parse('"' + match[1] + '"'); } catch (_e) { return match[1]; }
+    };
+    const authUser = readConfigValue('SESSION_INDEX');
+    const accountId = readConfigValue('LOGGED_IN_USER_ACCOUNT_ID')
+      || readConfigValue('DELEGATED_SESSION_ID');
+    return {
+      success: /^\d+$/.test(String(authUser)),
+      authUser: String(authUser),
+      accountId: String(accountId || ''),
+    };
+  }
+
   // §8.2 (H1): bound every fetch proxied through this content script (they run
   // in the YouTube tab so real cookies are attached — see FETCH_WATCH_HTML
   // etc. below). background.js's own abort/port-disconnect signal is checked
@@ -2522,6 +2543,11 @@ window._ytWatchedHider = (() => {
 
   // Listen for messages from background script
   function onMessage(message, sender, sendResponse) {
+    if (message.type === 'GET_YOUTUBE_SYNC_CONTEXT') {
+      sendResponse({ ...getYouTubeSyncContext(), syncSessionId: message.syncSessionId || '' });
+      return true;
+    }
+
     if (message.type === 'VIDEO_DETECTED') {
       if (location.pathname === '/watch') {
         attachVideoEndedListener();
@@ -2636,7 +2662,12 @@ window._ytWatchedHider = (() => {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), PROXY_FETCH_TIMEOUT_MS);
         try {
-          const url = `https://www.youtube.com/playlist?list=${encodeURIComponent(message.listId || 'LL')}`;
+          const authUser = String(message.authUser == null ? '' : message.authUser);
+          if (!/^\d+$/.test(authUser)) {
+            sendResponse({ success: false, reason: 'invalid-auth-user' });
+            return;
+          }
+          const url = `https://www.youtube.com/playlist?list=${encodeURIComponent(message.listId || 'LL')}&authuser=${encodeURIComponent(authUser)}`;
           const res = await fetch(url, { signal: controller.signal });
           const finalUrl = res.url || '';
           if (/google\.com\/sorry/i.test(finalUrl)) {
@@ -2664,12 +2695,17 @@ window._ytWatchedHider = (() => {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), PROXY_FETCH_TIMEOUT_MS);
         try {
+          const authUser = String(message.authUser == null ? '' : message.authUser);
+          if (!/^\d+$/.test(authUser)) {
+            sendResponse({ success: false, reason: 'invalid-auth-user' });
+            return;
+          }
           const url = `https://www.youtube.com/youtubei/v1/browse?prettyPrint=false${message.apiKey ? '&key=' + encodeURIComponent(message.apiKey) : ''}`;
           const headers = {
             'Content-Type': 'application/json',
             'X-YouTube-Client-Name': '1',
             'X-Origin': 'https://www.youtube.com',
-            'X-Goog-AuthUser': '0',
+            'X-Goog-AuthUser': authUser,
           };
           if (message.clientVersion) headers['X-YouTube-Client-Version'] = message.clientVersion;
           const auth = await computeSapisidHash();
