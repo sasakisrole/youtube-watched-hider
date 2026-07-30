@@ -11,6 +11,7 @@
   const { MODE, normalizeChannelPath, normalizeText } = core;
   const STORAGE_KEY = 'officialSearchFilter';
   const SETTINGS_SCHEMA_VERSION = 1;
+  const CHANNEL_ID_MIGRATION_UNRESOLVED = 'unresolved-lowercase';
 
   function createDefaultSettings() {
     return {
@@ -42,7 +43,12 @@
     if (!isPlainObject(value)) return null;
 
     const channelId = String(value.channelId ?? '').trim();
-    const canonicalPath = normalizeChannelPath(value.canonicalPath);
+    const navigablePath = typeof core.canonicalChannelPath === 'function'
+      ? core.canonicalChannelPath(value.canonicalPath)
+      : normalizeChannelPath(value.canonicalPath);
+    const canonicalPath = /^\/channel\/UC[A-Za-z0-9_-]{22}$/.test(navigablePath)
+      ? navigablePath
+      : normalizeChannelPath(navigablePath);
     const displayName = String(value.displayName ?? '').trim();
     // 候補一覧の出どころ（Analyze の集計チャンネル名）。登録済み判定の主キーにする。
     // プロフィール名を編集して保存しても候補と結び付けられるようにするため。
@@ -55,6 +61,9 @@
       ...(sourceChannelName ? { sourceChannelName } : {}),
       displayName,
       enabled: value.enabled !== false,
+      ...(value.channelIdMigration === CHANNEL_ID_MIGRATION_UNRESOLVED
+        ? { channelIdMigration: CHANNEL_ID_MIGRATION_UNRESOLVED }
+        : {}),
     };
   }
 
@@ -182,7 +191,7 @@
     return null;
   }
 
-  function sanitizeSettings(value) {
+  function sanitizeSettingsBase(value) {
     if (
       !isPlainObject(value) ||
       value.schemaVersion !== SETTINGS_SCHEMA_VERSION
@@ -208,6 +217,97 @@
       queryBindings: sanitizeQueryBindings(value.queryBindings, profiles),
       candidateExclusions: sanitizeCandidateExclusions(value.candidateExclusions),
     };
+  }
+
+  function isLowercaseChannelIdCandidate(value) {
+    return /^uc[a-z0-9_-]{22}$/.test(String(value ?? '').trim());
+  }
+
+  function authoritativeChannelId(value) {
+    const channelId = String(value?.channelId ?? '').trim();
+    if (/^UC[A-Za-z0-9_-]{22}$/.test(channelId)) return channelId;
+    const canonicalPath = typeof core.canonicalChannelPath === 'function'
+      ? core.canonicalChannelPath(value?.canonicalPath)
+      : String(value?.canonicalPath ?? '').trim();
+    const match = canonicalPath.match(/^\/channel\/(UC[A-Za-z0-9_-]{22})$/);
+    return match?.[1] || '';
+  }
+
+  function migrateSanitizedLowercaseChannelIds(settings, recoveryChannels = []) {
+    const evidenceByLowercaseId = new Map();
+    const addEvidence = (value) => {
+      const channelId = authoritativeChannelId(value);
+      if (!channelId) return;
+      const key = channelId.toLowerCase();
+      if (!evidenceByLowercaseId.has(key)) {
+        evidenceByLowercaseId.set(key, new Set());
+      }
+      evidenceByLowercaseId.get(key).add(channelId);
+    };
+
+    for (const profile of Object.values(settings.profiles)) {
+      for (const channel of profile.channels) addEvidence({
+        canonicalPath: channel.canonicalPath,
+      });
+    }
+    if (Array.isArray(recoveryChannels)) {
+      for (const channel of recoveryChannels) addEvidence(channel);
+    }
+
+    let changed = false;
+    let recoveredCount = 0;
+    let unresolvedCount = 0;
+    for (const profile of Object.values(settings.profiles)) {
+      for (const channel of profile.channels) {
+        if (!isLowercaseChannelIdCandidate(channel.channelId)) {
+          if (channel.channelIdMigration === CHANNEL_ID_MIGRATION_UNRESOLVED) {
+            delete channel.channelIdMigration;
+            changed = true;
+          }
+          continue;
+        }
+
+        const evidence = evidenceByLowercaseId.get(channel.channelId);
+        if (evidence?.size === 1) {
+          const [recoveredId] = evidence;
+          channel.channelId = recoveredId;
+          if (
+            normalizeChannelPath(channel.canonicalPath) ===
+            `/channel/${recoveredId.toLowerCase()}`
+          ) {
+            channel.canonicalPath = `/channel/${recoveredId}`;
+          }
+          if (channel.channelIdMigration) delete channel.channelIdMigration;
+          changed = true;
+          recoveredCount += 1;
+          continue;
+        }
+
+        unresolvedCount += 1;
+        if (channel.channelIdMigration !== CHANNEL_ID_MIGRATION_UNRESOLVED) {
+          channel.channelIdMigration = CHANNEL_ID_MIGRATION_UNRESOLVED;
+          changed = true;
+        }
+      }
+    }
+
+    return {
+      changed,
+      settings,
+      recoveredCount,
+      unresolvedCount,
+    };
+  }
+
+  function migrateLowercaseChannelIds(settingsValue, recoveryChannels = []) {
+    return migrateSanitizedLowercaseChannelIds(
+      sanitizeSettingsBase(settingsValue),
+      recoveryChannels
+    );
+  }
+
+  function sanitizeSettings(value) {
+    return migrateLowercaseChannelIds(value).settings;
   }
 
   function generateProfileId(displayName, profiles) {
@@ -399,7 +499,9 @@
     const area = storageArea || globalThis.chrome?.storage?.local;
     if (!area) return createDefaultSettings();
     const stored = await storageGet(area);
-    return sanitizeSettings(stored[STORAGE_KEY]);
+    const migration = migrateLowercaseChannelIds(stored[STORAGE_KEY]);
+    if (migration.changed) await storageSet(area, migration.settings);
+    return migration.settings;
   }
 
   async function updateCandidateExclusion(channelName, excluded, storageArea) {
@@ -422,11 +524,16 @@
     if (!area) return { saved: false, reason: 'storage-unavailable' };
 
     const stored = await storageGet(area);
-    const result = mutateConfirmedRegistration(
+    const migration = migrateLowercaseChannelIds(
       stored[STORAGE_KEY],
+      [registration.channel]
+    );
+    const result = mutateConfirmedRegistration(
+      migration.settings,
       registration
     );
     if (!result.changed) {
+      if (migration.changed) await storageSet(area, result.settings);
       return { saved: false, reason: result.reason || 'unchanged' };
     }
     await storageSet(area, result.settings);
@@ -443,6 +550,9 @@
     createDefaultSettings,
     sanitizeChannel,
     sanitizeSettings,
+    migrateLowercaseChannelIds,
+    isLowercaseChannelIdCandidate,
+    CHANNEL_ID_MIGRATION_UNRESOLVED,
     duplicateChannelIndex,
     generateProfileId,
     createProfile,

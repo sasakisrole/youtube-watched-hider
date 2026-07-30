@@ -647,6 +647,9 @@
     document.getElementById('azOfficialProfileName').value = candidate.profileName;
     document.getElementById('azOfficialChannelUrl').value = '';
     document.getElementById('azOfficialConfirmed').checked = false;
+    document.getElementById('azOfficialBindQuery').checked = false;
+    document.getElementById('azOfficialBindQueryText').textContent =
+      `検索語「${candidate.profileName}」にも紐づける`;
 
     const sample = document.getElementById('azOfficialSample');
     sample.href = candidate.sampleVideoId
@@ -786,11 +789,14 @@
         setOfficialRegistrationStatus('リンク先を確認し、確認欄をチェックしてください。', true);
         return;
       }
+      const bindQuery = document.getElementById('azOfficialBindQuery').checked;
+      const query = String(currentOfficialCandidate.profileName || '').trim();
       const approved = window.confirm(
         `次の内容を公式プロファイルとして登録しますか？\n` +
         `プロフィール: ${profileName}\n` +
         `チャンネル: ${channel.displayName}\n` +
-        `URL: https://www.youtube.com${channel.canonicalPath}`
+        `URL: https://www.youtube.com${channel.canonicalPath}` +
+        (bindQuery ? `\n検索語「${query}」にも紐づける` : '')
       );
       if (!approved) {
         setOfficialRegistrationStatus('登録をキャンセルしました。');
@@ -808,10 +814,12 @@
             sourceChannelName: currentOfficialCandidate.channelName,
           },
           confirmed: true,
-          bindQuery: false,
+          query,
+          bindQuery,
         });
         if (!result.saved && result.reason === 'already-registered') {
           document.getElementById('azOfficialConfirmed').checked = false;
+          document.getElementById('azOfficialBindQuery').checked = false;
           const review = document.getElementById('azOfficialReview');
           if (review) review.hidden = true;
           currentOfficialCandidate = null;
@@ -821,6 +829,7 @@
         }
         if (!result.saved) throw new Error(result.reason || '保存できませんでした');
         document.getElementById('azOfficialConfirmed').checked = false;
+        document.getElementById('azOfficialBindQuery').checked = false;
         const review = document.getElementById('azOfficialReview');
         if (review) review.hidden = true;
         currentOfficialCandidate = null;
