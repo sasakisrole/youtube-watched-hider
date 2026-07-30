@@ -68,6 +68,22 @@ check('missing roles, no creditsRaw, requireRawHint:false -> included',
   H.needsCreditEnrichment({ composer: '', lyricist: '', arranger: '' }, { requireRawHint: false }) === true);
 check('null record -> false', H.needsCreditEnrichment(null) === false);
 
+// --- enrichment duration estimate ------------------------------------------
+console.log('estimateEnrichmentMinutes');
+check('request-count bounds are fixed at one to six per video',
+  H.ENRICH_REQUESTS_PER_VIDEO_MIN === 1 && H.ENRICH_REQUESTS_PER_VIDEO_MAX === 6);
+check('minimum case uses one request per video',
+  eq(H.estimateEnrichmentMinutes(1, 60000), { minMinutes: 1, maxMinutes: 6 }));
+check('maximum case uses six requests per video',
+  eq(H.estimateEnrichmentMinutes(60, 1000), { minMinutes: 1, maxMinutes: 6 }));
+check('zero videos produce a zero-width estimate',
+  eq(H.estimateEnrichmentMinutes(0, 1000), { minMinutes: 0, maxMinutes: 0 })
+    && H.buildEnrichmentConfirmText({ videoCount: 0, channelCount: 0 }, 1000)
+      .includes('処理予定 0件、推定所要時間 約0〜0分（最大 約0 回の通信）'));
+check('upper limit applies to both estimate bounds and maximum request count',
+  H.buildEnrichmentConfirmText({ videoCount: 100, channelCount: 20 }, 60000, 2)
+    .includes('処理予定 2件、推定所要時間 約2〜12分（最大 約12 回の通信）'));
+
 // --- coveredNeededRoles -----------------------------------------------------
 console.log('coveredNeededRoles');
 check('candidate fills only roles that are still missing',

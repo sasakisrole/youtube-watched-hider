@@ -152,11 +152,12 @@ async function testPure() {
     && H.CREDIT_SOURCE_LABELS.manual === '手動入力');
   const preCount = H.getEnrichmentPreCount(preCountRecords());
   check('pre-count uses enrichment gate and distinct target channels', preCount.videoCount === 3 && preCount.channelCount === 2);
-  const expectedMinutes = Math.max(1, Math.ceil((preCount.videoCount * ENRICH_RATE_LIMIT_MS) / 60000));
+  const expectedMinutes = H.estimateEnrichmentMinutes(preCount.videoCount, ENRICH_RATE_LIMIT_MS);
   const confirmText = H.buildEnrichmentConfirmText(preCount, ENRICH_RATE_LIMIT_MS);
   check('pre-count confirmation text includes both computed counts', confirmText.includes('3動画 / 2チャンネル'));
-  check('pre-count confirmation includes estimate derived from count x background interval',
-    confirmText.includes(`処理予定 3件、推定所要時間 約${expectedMinutes}分`));
+  check('pre-count confirmation includes request-range estimate and maximum request count',
+    confirmText.includes(`処理予定 3件、推定所要時間 約${expectedMinutes.minMinutes}〜${expectedMinutes.maxMinutes}分`
+      + `（最大 約${preCount.videoCount * H.ENRICH_REQUESTS_PER_VIDEO_MAX} 回の通信）`));
   const rows = [base('partial', { composer: 'Known', creditsRaw: '' }), base('raw'), base('empty', { creditsRaw: '' }),
     base('complete', { composer: 'A', lyricist: 'B', arranger: 'C' }), base('lookup', { title: 'Needle', channel: 'Special' })];
   check('rows include context+missing only', H.getManualReviewRows(rows).map((r) => r.videoId).join(',') === 'partial,raw,lookup');
@@ -293,8 +294,10 @@ async function testGenerationPreCount() {
   await limitMode.trigger('change');
   limitInput.value = '2';
   await limitInput.trigger('input');
-  check('limited selection updates estimate from selected count x background interval',
-    limitedPanel.textContent.includes(`処理予定 2件、推定所要時間 約${Math.max(1, Math.ceil((2 * ENRICH_RATE_LIMIT_MS) / 60000))}分`));
+  const limitedMinutes = limited.win.EnrichCreditsTestHooks.estimateEnrichmentMinutes(2, ENRICH_RATE_LIMIT_MS);
+  check('limited selection updates request-range estimate from selected count',
+    limitedPanel.textContent.includes(`処理予定 2件、推定所要時間 約${limitedMinutes.minMinutes}〜${limitedMinutes.maxMinutes}分`
+      + '（最大 約12 回の通信）'));
   await find(limitedPanel, (e) => e.dataset.enrichPrecountAction === 'start').trigger('click');
   await limitedPromise;
   const limitedMbMessages = limited.counters.runtime.filter((message) => message.type === 'enrichCreditsMb');

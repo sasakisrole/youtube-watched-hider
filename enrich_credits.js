@@ -75,20 +75,33 @@
     return Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(count, parsedLimit) : count;
   }
 
+  // Each MusicBrainz lookup starts with one strict recording search. At most it
+  // also performs one fallback search, one recording fetch, and three work fetches.
+  const ENRICH_REQUESTS_PER_VIDEO_MIN = 1;
+  const ENRICH_REQUESTS_PER_VIDEO_MAX = 6;
+
   function estimateEnrichmentMinutes(videoCount, rateLimitMs) {
     const count = Math.max(0, Math.floor(Number(videoCount) || 0));
     const interval = Math.max(0, Number(rateLimitMs) || 0);
-    if (!count || !interval) return 0;
-    return Math.max(1, Math.ceil((count * interval) / 60000));
+    if (!count || !interval) return { minMinutes: 0, maxMinutes: 0 };
+    const estimateForRequestCount = (requestsPerVideo) => (
+      Math.max(1, Math.ceil((count * requestsPerVideo * interval) / 60000))
+    );
+    return {
+      minMinutes: estimateForRequestCount(ENRICH_REQUESTS_PER_VIDEO_MIN),
+      maxMinutes: estimateForRequestCount(ENRICH_REQUESTS_PER_VIDEO_MAX),
+    };
   }
 
   function buildEnrichmentConfirmText(preCount, rateLimitMs, limit = null) {
     const videoCount = Number(preCount && preCount.videoCount) || 0;
     const channelCount = Number(preCount && preCount.channelCount) || 0;
     const processCount = getLimitedVideoCount(videoCount, limit);
-    const minutes = estimateEnrichmentMinutes(processCount, rateLimitMs);
+    const { minMinutes, maxMinutes } = estimateEnrichmentMinutes(processCount, rateLimitMs);
+    const maxRequests = processCount * ENRICH_REQUESTS_PER_VIDEO_MAX;
     return `${videoCount}動画 / ${channelCount}チャンネルを固定ルールとMusicBrainzで照合します。`
-      + ` 処理予定 ${processCount}件、推定所要時間 約${minutes}分。`;
+      + ` 処理予定 ${processCount}件、推定所要時間 約${minMinutes}〜${maxMinutes}分`
+      + `（最大 約${maxRequests} 回の通信）。`;
   }
 
   function limitEnrichmentGroups(groups, limit) {
@@ -1524,6 +1537,8 @@
     needsCreditEnrichment,
     getEnrichmentPreCount,
     getLimitedVideoCount,
+    ENRICH_REQUESTS_PER_VIDEO_MIN,
+    ENRICH_REQUESTS_PER_VIDEO_MAX,
     estimateEnrichmentMinutes,
     buildEnrichmentConfirmText,
     limitEnrichmentGroups,
