@@ -92,6 +92,27 @@ const likedPromptNotes = eval('(function(){ '
 const resolveLikedSync = eval('(function(){ '
   + extractBracedFn('resolveLikedSync', analyzerSrc) + '\n return resolveLikedSync; })()');
 
+function makeImportedMetaHarness(initialMeta = null) {
+  const store = { likedSyncMeta: initialMeta };
+  const storageLocalGet = async (defaults) => Object.assign({}, defaults, store);
+  const storageLocalSet = async (values) => { Object.assign(store, values); };
+  const storageLocalSetChecked = storageLocalSet;
+  // eslint-disable-next-line no-new-func
+  const factory = new Function(
+    'storageLocalGet', 'storageLocalSet', 'storageLocalSetChecked',
+    extractBracedFn('getImportedLikedCount') + '\n'
+      + extractBracedFn('getUnverifiedImportedLikedMeta') + '\n'
+      + extractBracedFn('storeImportedMeta') + '\n'
+      + extractBracedFn('storeImportedMetaIfAbsent') + '\n'
+      + extractBracedFn('getReplaceImportedLikedMeta') + '\n'
+      + 'return { storeImportedMeta, storeImportedMetaIfAbsent, getReplaceImportedLikedMeta };'
+  );
+  return {
+    store,
+    ...factory(storageLocalGet, storageLocalSet, storageLocalSetChecked),
+  };
+}
+
 let pass = 0, fail = 0;
 function check(name, cond) {
   if (cond) { pass++; console.log('  PASS ' + name); }
@@ -469,12 +490,18 @@ function makeSync(deps) {
     }
     return deps.sendToYouTubeTab(message, fixedTabId);
   };
+  const syncDbSend = async (op, payload) => {
+    if (op === 'GET_LIKED_STATS') {
+      return deps.getLikedStats ? deps.getLikedStats() : { total: 0, accounts: [] };
+    }
+    return deps.sendToOffscreenDb(op, payload);
+  };
   // eslint-disable-next-line no-new-func
   const factory = new Function(
     'sendToYouTubeTab', 'sendToOffscreenDb', 'chrome', 'parseLikedPlaylistHtml', 'extractYtcfg', 'extractItemsAndContinuation', 'extractOwnerIdentity',
     body + '\nreturn syncLikedPlaylist;'
   );
-  return factory(sessionAwareSend, deps.sendToOffscreenDb, deps.chrome,
+  return factory(sessionAwareSend, syncDbSend, deps.chrome,
     deps.parseLikedPlaylistHtml, deps.extractYtcfg, deps.extractItemsAndContinuation, deps.extractOwnerIdentity);
 }
 
@@ -500,6 +527,53 @@ const baseDeps = () => ({
   extractItemsAndContinuation,
   extractOwnerIdentity,
 });
+
+function makeStoredOwnerSyncHarness(likedSyncMeta, likedTotal) {
+  const { chrome, store } = makeChrome();
+  store.likedSyncMeta = likedSyncMeta;
+  const state = { dbWrites: 0, statsReads: 0 };
+  const deps = Object.assign(baseDeps(), {
+    chrome,
+    parseLikedPlaylistHtml: () => ({
+      items: [{ videoId: 'vid-owner-guard', title: 'guard', source: 'scoped' }],
+      continuation: '',
+      ownerName: 'Owner',
+      ownerHandle: '@owner',
+      ownerChannelId: 'UCowner',
+    }),
+  });
+  deps.sendToYouTubeTab = async (msg) => {
+    if (msg.type === 'FETCH_PLAYLIST_HTML') return { success: true, html: '<html></html>' };
+    if (msg.type === 'FETCH_INNERTUBE_BROWSE') return { success: true, data: {} };
+    return { success: false, reason: 'unexpected' };
+  };
+  deps.getLikedStats = async () => {
+    state.statsReads++;
+    return { total: likedTotal, accounts: [] };
+  };
+  deps.sendToOffscreenDb = async (op, payload) => {
+    if (op !== 'UPSERT_LIKED') throw new Error('unexpected DB op: ' + op);
+    state.dbWrites++;
+    return { added: payload.items.length };
+  };
+  return { syncLikedPlaylist: makeSync(deps), store, state };
+}
+
+async function restoreOwnerlessMeta(mode) {
+  const initialMeta = mode === 'safe-merge' ? { accountId: 'UCprevious' } : null;
+  const harness = makeImportedMetaHarness(initialMeta);
+  const result = { liked: { imported: 2 }, likedSyncMeta: null };
+  if (mode === 'backup-merge') {
+    await harness.storeImportedMeta(result);
+  } else if (mode === 'safe-merge') {
+    await harness.storeImportedMetaIfAbsent(result);
+  } else if (mode === 'replace') {
+    harness.store.likedSyncMeta = harness.getReplaceImportedLikedMeta(result);
+  } else {
+    throw new Error('unknown import mode: ' + mode);
+  }
+  return harness.store.likedSyncMeta;
+}
 
 async function runSyncTests() {
   // Scenario A: out-of-scope lockup mixed into the init browse must NOT be saved.
@@ -1064,6 +1138,71 @@ async function runSyncTests() {
       && resp.fetched === 1 && resp.added === 1
       && resp.diagnostics.tabId === 51 && resp.diagnostics.authUser === '4'
       && fetchCalls.every((c) => c.fixedTabId === 51));
+  }
+
+  // u1ps: liked rows with no stored owner must enter the existing account-change
+  // confirmation flow. Declining must leave the DB untouched.
+  {
+    const h = makeStoredOwnerSyncHarness(null, 2);
+    const confirmations = [];
+    const { cancelled, resp } = await resolveLikedSync({
+      doSync: (flags) => h.syncLikedPlaylist(flags),
+      confirm: (kind, r) => { confirmations.push({ kind, response: r }); return false; },
+    });
+    check('u1ps metaなし + likedあり: 確認拒否でDB書込み0',
+      cancelled === true && resp.success === false && resp.reason === 'account-changed'
+      && resp.dbWriteSkipped === true && h.state.dbWrites === 0
+      && h.state.statsReads === 1 && confirmations.length === 1
+      && confirmations[0].kind === 'account-changed');
+    check('u1ps 持ち主不明確認: 判断可能な日本語警告を返す',
+      resp.warning === 'このデータの持ち主アカウントが不明です。今のアカウントで同期すると別アカウントのデータと混ざる可能性があります。'
+      && resp.previous && resp.previous.ownerName === resp.warning
+      && resp.previous.ownerHandle === '' && resp.previous.ownerChannelId === '');
+  }
+
+  {
+    const h = makeStoredOwnerSyncHarness(null, 2);
+    const confirmations = [];
+    const { cancelled, resp } = await resolveLikedSync({
+      doSync: (flags) => h.syncLikedPlaylist(flags),
+      confirm: (kind) => { confirmations.push(kind); return true; },
+    });
+    check('u1ps metaなし + likedあり: 承認後は従来どおり同期',
+      cancelled === false && resp.success === true && h.state.dbWrites === 1
+      && confirmations.join(',') === 'account-changed'
+      && h.store.likedSyncMeta && h.store.likedSyncMeta.accountId === 'UCowner');
+  }
+
+  check('u1ps 3 Importモード: background handlerが未確認meta保存を配線',
+    src.includes('await storeImportedMeta(result)')
+    && src.includes('await storeImportedMetaIfAbsent(result)')
+    && src.includes('likedSyncMeta: getReplaceImportedLikedMeta(result)'));
+
+  for (const [mode, label] of [
+    ['replace', '置換'],
+    ['safe-merge', '安全統合'],
+    ['backup-merge', 'backup優先統合'],
+  ]) {
+    const importedMeta = await restoreOwnerlessMeta(mode);
+    const h = makeStoredOwnerSyncHarness(importedMeta, 2);
+    const resp = await h.syncLikedPlaylist({});
+    check('u1ps Import ' + label + ': metaなしliked復元後は次回同期で確認要求',
+      importedMeta && importedMeta.ownerUnverified === true && !importedMeta.accountId
+      && importedMeta.restoredLikedCount === 2
+      && resp.success === false && resp.reason === 'account-changed'
+      && resp.dbWriteSkipped === true && h.state.dbWrites === 0);
+  }
+
+  {
+    const h = makeStoredOwnerSyncHarness({ accountId: 'UCowner', ownerName: 'Owner' }, 2);
+    let confirmations = 0;
+    const { cancelled, resp } = await resolveLikedSync({
+      doSync: (flags) => h.syncLikedPlaylist(flags),
+      confirm: () => { confirmations++; return true; },
+    });
+    check('u1ps accountId一致: 通常同期は確認なし',
+      cancelled === false && resp.success === true && confirmations === 0
+      && h.state.statsReads === 0 && h.state.dbWrites === 1);
   }
 }
 

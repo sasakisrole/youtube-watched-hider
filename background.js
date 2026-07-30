@@ -495,7 +495,33 @@ function summarizeBackupError(result) {
   return result.reason || 'unknown';
 }
 
+function getImportedLikedCount(result) {
+  return Number(result && result.liked && result.liked.imported) || 0;
+}
+
+// A backup can legitimately contain liked rows without likedSyncMeta (old backup,
+// stripped metadata, etc.). Persist an explicit owner-unverified marker instead of
+// leaving/restoring a known account identity that cannot describe those rows.
+// accountId intentionally stays empty so the next sync must confirm before merging.
+function getUnverifiedImportedLikedMeta(result) {
+  const importedCount = getImportedLikedCount(result);
+  const importedMeta = result && result.likedSyncMeta;
+  if (importedCount < 1 || (importedMeta && importedMeta.accountId)) return null;
+  return {
+    ...(importedMeta || {}),
+    accountId: '',
+    ownerUnverified: true,
+    restoredAt: Date.now(),
+    restoredLikedCount: importedCount,
+  };
+}
+
 async function storeImportedMeta(result) {
+  const unverifiedMeta = getUnverifiedImportedLikedMeta(result);
+  if (unverifiedMeta) {
+    await storageLocalSetChecked({ likedSyncMeta: unverifiedMeta });
+    return;
+  }
   if (result && result.likedSyncMeta) {
     await storageLocalSet({ likedSyncMeta: result.likedSyncMeta });
   }
@@ -506,12 +532,24 @@ async function storeImportedMeta(result) {
 // locally (fresh install). This matches the mode's "競合は現在を優先" contract,
 // whereas storeImportedMeta (backup overwrites) is for "backup優先で統合".
 async function storeImportedMetaIfAbsent(result) {
+  // Even current-priority merge cannot keep the current owner label after adding
+  // ownerless backup rows: that would confidently mislabel the mixed data.
+  const unverifiedMeta = getUnverifiedImportedLikedMeta(result);
+  if (unverifiedMeta) {
+    await storageLocalSetChecked({ likedSyncMeta: unverifiedMeta });
+    return;
+  }
   if (!result || !result.likedSyncMeta) return;
   const { likedSyncMeta } = await storageLocalGet({ likedSyncMeta: null });
   if (likedSyncMeta == null) {
     // Checked write (Codex B2 minor 3) so a failed fill surfaces as an error.
     await storageLocalSetChecked({ likedSyncMeta: result.likedSyncMeta });
   }
+}
+
+function getReplaceImportedLikedMeta(result) {
+  return getUnverifiedImportedLikedMeta(result)
+    || ((result && result.likedSyncMeta) || null);
 }
 
 function broadcastToYouTubeTabs(message) {
@@ -1133,7 +1171,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // fails the records are replaced while meta keeps its old value and the
         // response is an error — the state is recoverable from the pre-replace
         // backup file that was just downloaded, and a re-import re-applies meta.
-        await storageLocalSetChecked({ likedSyncMeta: result.likedSyncMeta || null });
+        await storageLocalSetChecked({ likedSyncMeta: getReplaceImportedLikedMeta(result) });
         const addedIds = Array.isArray(result.watchedIds) ? result.watchedIds : [];
         broadcastCacheInvalidated({ reason: 'replace-import', mode: 'reload', clear: true, addedIds });
         sendResponse({ success: true, backup, ...result });
@@ -2745,6 +2783,52 @@ async function syncLikedPlaylist({ confirmAccountChange, confirmUnknownAccount, 
       reason: 'account-changed',
       previous: meta,
       current: { accountId, ownerName, ownerHandle, ownerChannelId, count: uniqueItems.length },
+    };
+  }
+
+  // Stored-owner guard: account-change detection above cannot compare anything when
+  // likedSyncMeta is null or lacks accountId. Imported rows normally carry the
+  // ownerUnverified marker, but also cover pre-existing/legacy markerless states by
+  // asking the DB whether liked rows actually exist. An empty store remains a normal
+  // first sync and must not prompt.
+  let storedLikedCount = 0;
+  if (!meta || !meta.accountId) {
+    if (meta && meta.ownerUnverified) {
+      storedLikedCount = Number(meta.restoredLikedCount) || 1;
+    } else {
+      try {
+        const stats = await sendToOffscreenDb('GET_LIKED_STATS');
+        if (!stats || !Number.isFinite(Number(stats.total))) {
+          throw new Error('invalid liked stats');
+        }
+        storedLikedCount = Number(stats.total);
+      } catch (e) {
+        return {
+          success: false,
+          reason: 'stored-owner-check-failed',
+          dbWriteSkipped: true,
+          errors: ['保存済み高評価データの持ち主を確認できないため、DBへ保存せず中止しました: ' + e.message],
+        };
+      }
+    }
+  }
+  if (storedLikedCount > 0 && !confirmAccountChange) {
+    const warning = 'このデータの持ち主アカウントが不明です。今のアカウントで同期すると別アカウントのデータと混ざる可能性があります。';
+    return {
+      success: false,
+      reason: 'account-changed',
+      previous: {
+        ...(meta || {}),
+        accountId: '',
+        ownerName: warning,
+        ownerHandle: '',
+        ownerChannelId: '',
+        ownerUnverified: true,
+      },
+      current: { accountId, ownerName, ownerHandle, ownerChannelId, count: uniqueItems.length },
+      warning,
+      storedLikedCount,
+      dbWriteSkipped: true,
     };
   }
 
