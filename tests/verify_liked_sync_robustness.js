@@ -477,6 +477,150 @@ check('H1 known account => allowed', blocksUnknown('UCabc', false) === false);
   check('M2 stale response ignored', likedRecords.length === 1 && likedRecords[0] === 'fresh');
 })();
 
+// --- l1cm: execute analyzer.js's real >3s late callbacks with a manual clock. ---
+// The production loaders, shared refresh, panel renderer, and prompt renderer all run;
+// advancing past 3000ms is synchronous, so these regressions never sleep.
+function makeLateLikedViewHarness() {
+  class FakeElement {
+    constructor() {
+      this._text = '';
+      this.children = [];
+      this.textWriteCount = 0;
+      const classes = new Set();
+      this.classList = {
+        add: (name) => classes.add(name),
+        remove: (name) => classes.delete(name),
+        toggle: (name, force) => force ? classes.add(name) : classes.delete(name),
+      };
+    }
+    get textContent() { return this._text + this.children.map((c) => c.textContent).join(''); }
+    set textContent(value) { this._text = String(value); this.children = []; this.textWriteCount++; }
+    appendChild(child) {
+      this.children.push(...(child && child.isFragment ? child.children : [child]));
+      return child;
+    }
+  }
+  const elements = new Map();
+  const selectors = new Map();
+  const getElement = (id) => {
+    if (!elements.has(id)) elements.set(id, new FakeElement());
+    return elements.get(id);
+  };
+  const document = {
+    getElementById: getElement,
+    querySelector: (selector) => {
+      if (!selectors.has(selector)) selectors.set(selector, new FakeElement());
+      return selectors.get(selector);
+    },
+    createElement: () => new FakeElement(),
+    createDocumentFragment: () => Object.assign(new FakeElement(), { isFragment: true }),
+  };
+  const window = { CreditTarget: {
+    isTopicChannelName: () => false,
+    stripTopicChannelSuffix: (name) => String(name).replace(/\s*-\s*Topic$/i, ''),
+    isValidCreditValue: () => true,
+  } };
+
+  let now = 0;
+  let nextTimerId = 1;
+  const timers = new Map();
+  const fakeSetTimeout = (fn, delay) => {
+    const id = nextTimerId++;
+    timers.set(id, { at: now + Number(delay || 0), fn });
+    return id;
+  };
+  const fakeClearTimeout = (id) => timers.delete(id);
+  const advanceBy = (ms) => {
+    now += ms;
+    [...timers.entries()].filter(([, t]) => t.at <= now).forEach(([id, t]) => {
+      if (timers.delete(id)) t.fn();
+    });
+  };
+
+  const pending = new Map();
+  const chrome = { runtime: { sendMessage: (message, callback) => {
+    const queue = pending.get(message.type) || [];
+    queue.push(callback);
+    pending.set(message.type, queue);
+  } } };
+  const respond = (type, index, response) => {
+    const callback = (pending.get(type) || [])[index];
+    if (!callback) throw new Error(`missing ${type} callback ${index}`);
+    callback(response);
+  };
+
+  const fnNames = [
+    'appendCell', 'getDurationSec', 'addDurationStat', 'sortByCountThenName',
+    'buildChannelCount', 'splitCreditField', 'sourceOf', 'buildCreditCount',
+    'buildChannelMusicScore', 'isCleanCreditName', 'topCredits', 'loadLikedMeta',
+    'loadLiked', 'refreshLikedViews', 'buildLikedArtistCount', 'renderLikedPanel',
+    'topLikedArtists', 'likedPromptNotes', 'renderPrompt',
+  ];
+  const body = [
+    'let likedRecords = [], likedMeta = null, loadLikedMetaSeq = 0, loadLikedSeq = 0;',
+    ...fnNames.map((name) => extractBracedFn(name, analyzerSrc)),
+    'return { loadLiked, loadLikedMeta, refreshLikedViews, getRows: () => likedRecords.slice() };',
+  ].join('\n');
+  // eslint-disable-next-line no-new-func
+  const factory = new Function(
+    'chrome', 'document', 'window', 'setTimeout', 'clearTimeout', 'allData', body);
+  return {
+    ...factory(chrome, document, window, fakeSetTimeout, fakeClearTimeout, []),
+    advanceBy, respond, element: getElement,
+  };
+}
+
+async function runLateLikedViewTests() {
+  {
+    const h = makeLateLikedViewHarness();
+    const timedOut = h.loadLiked(h.refreshLikedViews);
+    h.advanceBy(3001);
+    await timedOut;
+    h.respond('GET_LIKED', 0, { success: true, rows: [
+      { channel: 'Late Artist' }, { channel: 'Late Artist' },
+    ] });
+    check('l1cm late rows: >3s response re-renders liked panel',
+      h.element('azLikedTotal').textContent === '2');
+    check('l1cm late rows: >3s response updates copied prompt source',
+      h.element('azPromptText').textContent.includes('Late Artist (2回)'));
+  }
+  {
+    const h = makeLateLikedViewHarness();
+    const rowsLoaded = h.loadLiked(h.refreshLikedViews);
+    h.respond('GET_LIKED', 0, { success: true, rows: [{ channel: 'Meta Artist' }] });
+    await rowsLoaded;
+    h.refreshLikedViews();
+    const metaTimedOut = h.loadLikedMeta(h.refreshLikedViews);
+    h.advanceBy(3001);
+    await metaTimedOut;
+    h.respond('GET_LIKED_META', 0, { meta: {
+      ownerHandle: '@late', count: 1, lastSyncedAt: 1, partial: true,
+      identityConfidence: 'html',
+    } });
+    check('l1cm late meta: >3s response re-renders partial warning in panel',
+      h.element('azLikedAccount').textContent.includes('部分同期'));
+    check('l1cm late meta: >3s response updates copied prompt note',
+      h.element('azPromptText').textContent.includes('高評価データは**部分同期**'));
+  }
+  {
+    const h = makeLateLikedViewHarness();
+    const oldTimedOut = h.loadLiked(h.refreshLikedViews);
+    h.advanceBy(3001);
+    await oldTimedOut;
+    const freshLoad = h.loadLiked(h.refreshLikedViews);
+    h.respond('GET_LIKED', 1, { success: true, rows: [{ channel: 'Fresh Artist' }] });
+    await freshLoad;
+    h.refreshLikedViews();
+    const writesBeforeStale = h.element('azLikedTotal').textWriteCount;
+    h.respond('GET_LIKED', 0, { success: true, rows: [{ channel: 'Stale Artist' }] });
+    check('l1cm stale late rows: superseded generation is ignored without re-render',
+      h.getRows()[0].channel === 'Fresh Artist'
+      && h.element('azPromptText').textContent.includes('Fresh Artist (1回)')
+      && !h.element('azPromptText').textContent.includes('Stale Artist')
+      && h.element('azLikedTotal').textWriteCount === writesBeforeStale);
+  }
+}
+
 // --- L1 (v1.42.6): run syncLikedPlaylist body with mocked I/O ---
 // Injects sendToYouTubeTab / sendToOffscreenDb / chrome / parse+ytcfg mocks and
 // the real extractItemsAndContinuation so scoping is exercised end-to-end.
@@ -1400,7 +1544,7 @@ async function runResolveTests() {
   }
 }
 
-runSyncTests().then(runResolveTests).then(() => {
+runSyncTests().then(runLateLikedViewTests).then(runResolveTests).then(() => {
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 }).catch((e) => {
