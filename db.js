@@ -7,6 +7,7 @@ if (typeof WatchedDB === 'undefined') {
     const STORE_NAME = 'watchedVideos';
     const LIKED_STORE = 'likedVideos';
     const CREDIT_ROLES = ['composer', 'lyricist', 'arranger'];
+    const CREDITS_RAW_RESPONSE_MAX_LENGTH = 4096;
     const CREDIT_ROLE_SOURCES = new Set(['topic', 'general', 'enrich:rule', 'enrich:mb', 'manual']);
 
     let dbInstance = null;
@@ -303,11 +304,14 @@ if (typeof WatchedDB === 'undefined') {
             const record = request.result;
             if (!record) return;
             const credits = {};
-            for (const role of CREDIT_ROLES) {
-              const value = typeof record[role] === 'string'
-                ? record[role].trim()
+            for (const field of [...CREDIT_ROLES, 'creditsRaw']) {
+              let value = typeof record[field] === 'string'
+                ? record[field].trim()
                 : '';
-              if (value) credits[role] = value;
+              if (field === 'creditsRaw') {
+                value = value.slice(0, CREDITS_RAW_RESPONSE_MAX_LENGTH);
+              }
+              if (value) credits[field] = value;
             }
             if (Object.keys(credits).length > 0) {
               result[videoId] = credits;

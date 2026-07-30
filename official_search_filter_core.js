@@ -37,10 +37,31 @@
     return aliases;
   }
 
+  function splitJapaneseMiddleDot(value) {
+    const normalized = normalizeText(value);
+    if (!normalized || !normalized.includes('・')) {
+      return normalized ? [normalized] : [];
+    }
+
+    const parts = normalized
+      .split(/・+/)
+      .map(normalizeText)
+      .filter(Boolean);
+    const shouldSplit = parts.length > 1 && parts.every((part) => {
+      const compact = part.replace(/\s+/g, '');
+      return (
+        [...compact].length >= 2 &&
+        !/^[\p{Script=Katakana}\u30FC]+$/u.test(compact)
+      );
+    });
+
+    return shouldSplit ? parts : [normalized];
+  }
+
   function splitCreditValue(value) {
     const normalized = String(value ?? '')
-      .split(/[\n,，、;；/／&＆]+/)
-      .map(normalizeText)
+      .split(/[\n,，、;；/／&＆]+|\s+·\s+/)
+      .flatMap(splitJapaneseMiddleDot)
       .filter(Boolean);
     return [...new Set(normalized)];
   }
@@ -261,6 +282,7 @@
       composer: '作曲',
       lyricist: '作詞',
       arranger: '編曲',
+      creditsRaw: '未割当',
     };
     const byChannel = new Map();
     const relatedVideoIds = new Set();

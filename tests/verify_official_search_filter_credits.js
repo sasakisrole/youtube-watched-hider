@@ -141,6 +141,24 @@ async function main() {
       panel(runtime).querySelector('[data-count="credit-related"]').textContent === '1' &&
       !runtime.cards.official.classList.contains('ywh-osf-hidden'));
 
+    const rawMatch = core.inferCreditChannelCandidates({
+      items: [{
+        videoId: 'raw',
+        channel: {
+          canonicalPath: '/@raw-candidate',
+          displayName: 'Raw Credit Candidate',
+        },
+      }],
+      creditsByVideoId: {
+        raw: { creditsRaw: 'Someone Else · ＡＲＴＩＳＴ' },
+      },
+      creditAliases: ['artist'],
+    });
+    check('(b) creditsRaw is used as candidate evidence',
+      rawMatch.candidates.length === 1 &&
+      rawMatch.relatedVideoIds[0] === 'raw' &&
+      rawMatch.candidates[0].reasons[0].includes('未割当クレジット'));
+
     let registrationCalls = 0;
     const inferredCandidate = core.inferCreditChannelCandidates({
       items: [{
@@ -233,31 +251,53 @@ async function main() {
 
   console.log('DB batch read');
   {
+    const rawAtLimit = 'x'.repeat(4096);
+    const rawOverLimit = 'y'.repeat(4097);
     const fixture = loadWatchedDbForCredits({
       v1: {
         videoId: 'v1',
         composer: ' Alice ',
         lyricist: '',
         arranger: 'Bob',
+        creditsRaw: ' Carol · Dave ',
         title: 'not returned',
       },
-      v2: { videoId: 'v2', composer: '', lyricist: '', arranger: '' },
+      v2: {
+        videoId: 'v2',
+        composer: '',
+        lyricist: '',
+        arranger: '',
+        creditsRaw: 'Raw Person',
+      },
+      v3: { videoId: 'v3', creditsRaw: rawAtLimit },
+      v4: { videoId: 'v4', creditsRaw: rawOverLimit },
     });
     const result = await fixture.watchedDb.getCreditsForVideoIds([
       'v1',
       'v2',
+      'v3',
+      'v4',
       'v1',
       'missing',
     ]);
     const counts = fixture.counts();
     check('DB batch dedupes ids and uses one readonly transaction',
       counts.transactions === 1 &&
-      counts.gets === 3 &&
+      counts.gets === 5 &&
       JSON.stringify(counts.transactionModes) === JSON.stringify(['readonly']));
-    check('DB batch returns only nonblank credit roles keyed by videoId',
-      JSON.stringify(result) === JSON.stringify({
-        v1: { composer: 'Alice', arranger: 'Bob' },
+    check('DB batch returns nonblank roles and creditsRaw keyed by videoId',
+      JSON.stringify(result.v1) === JSON.stringify({
+        composer: 'Alice',
+        arranger: 'Bob',
+        creditsRaw: 'Carol · Dave',
+      }) &&
+      JSON.stringify(result.v2) === JSON.stringify({
+        creditsRaw: 'Raw Person',
       }));
+    check('DB batch preserves creditsRaw at the 4096-unit boundary',
+      result.v3.creditsRaw === rawAtLimit);
+    check('DB batch truncates creditsRaw beyond the 4096-unit boundary',
+      result.v4.creditsRaw === 'y'.repeat(4096));
   }
 
   const offscreenSource = fs.readFileSync(

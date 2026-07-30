@@ -6,6 +6,7 @@ const {
   CATEGORY,
   MODE,
   normalizeText,
+  matchCreditAliases,
   normalizeChannelPath,
   isTopicChannel,
   isSameChannel,
@@ -76,6 +77,45 @@ test(
     assert.strictEqual(
       normalizeText(' ＦＯＸ   Capture PLAN '),
       'fox capture plan'
+    );
+  }
+);
+
+test(
+  'matchCreditAliases: 漢字名2名を「・」で分割',
+  () => {
+    assert.deepStrictEqual(
+      matchCreditAliases(
+        '田中太郎・鈴木花子',
+        ['田中太郎', '鈴木花子']
+      ),
+      ['田中太郎', '鈴木花子']
+    );
+  }
+);
+
+test(
+  'matchCreditAliases: カタカナ名の「・」は分割しない',
+  () => {
+    assert.deepStrictEqual(
+      matchCreditAliases(
+        'ジャン・ピエール',
+        ['ジャン', 'ピエール', 'ジャン・ピエール']
+      ),
+      ['ジャン・ピエール']
+    );
+  }
+);
+
+test(
+  'matchCreditAliases: 既存の「、」「／」「&」区切りを維持',
+  () => {
+    assert.deepStrictEqual(
+      matchCreditAliases(
+        '田中太郎、鈴木花子／佐藤一郎 & 高橋二郎',
+        ['田中太郎', '鈴木花子', '佐藤一郎', '高橋二郎']
+      ),
+      ['田中太郎', '鈴木花子', '佐藤一郎', '高橋二郎']
     );
   }
 );
