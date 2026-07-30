@@ -2585,6 +2585,17 @@ async function syncLikedPlaylist({ confirmAccountChange, confirmUnknownAccount, 
     return scoped;
   }
 
+  // zn5r: a tied fallback cannot prove which container is the liked-list body.
+  // Reject the entire page instead of letting the extractor's best guess reach the DB.
+  // `null` distinguishes this safety rejection from a genuinely empty usable page.
+  function selectProvenPageItems(ext, errorPrefix) {
+    if (ext.primaryUncertain) {
+      errors.push(errorPrefix + ': primary-uncertain');
+      return null;
+    }
+    return selectUsable(ext.items);
+  }
+
   const allItems = selectUsable(parsed.items || []).map((it) => ({ ...it }));
 
   // Prefer the full INNERTUBE_CONTEXT extracted from HTML; fall back to a minimal one.
@@ -2617,13 +2628,10 @@ async function syncLikedPlaylist({ confirmAccountChange, confirmUnknownAccount, 
       });
       if (initResp && initResp.success && initResp.data) {
         const ext0 = extractItemsAndContinuation(initResp.data);
-        // v1.42.9 (H1): an ambiguous primary pick (tie among unnamed containers) means
-        // we can't prove which array is the liked body. Keep the best-guess items but
-        // flag partial so an unproven pick never reads as a clean, complete sync.
-        if (ext0.primaryUncertain) errors.push('init-browse: primary-uncertain');
         // The browse response often carries a fuller item set than HTML; merge dedup.
-        // H1: only merge items from this response's primary container.
-        const usable0 = selectUsable(ext0.items);
+        // H1/zn5r: only merge items from a proven primary container. A tied fallback
+        // is reported as partial but contributes no guessed liked rows.
+        const usable0 = selectProvenPageItems(ext0, 'init-browse') || [];
         const seen = new Set(allItems.map(x => x.videoId));
         for (const it of usable0) {
           if (!seen.has(it.videoId)) {
@@ -2698,13 +2706,14 @@ async function syncLikedPlaylist({ confirmAccountChange, confirmUnknownAccount, 
       errors.push('page-' + page + ': empty-page');
       break;
     }
-    // v1.42.9 (H1): ambiguous primary pick on a continuation page => flag partial and
-    // stop trusting the chain (the token was already dropped as unproven upstream).
-    if (ext.primaryUncertain) errors.push('page-' + page + ': primary-uncertain');
     // H1: harvest only this page's primary-container items; anything in a sibling
     // shelf array is dropped. (With structural selection a page that has items
     // always has scoped ones, so `no-scoped-items` is a defensive guard.)
-    const usable = selectUsable(ext.items);
+    const usable = selectProvenPageItems(ext, 'page-' + page);
+    if (usable === null) {
+      continuation = '';
+      break;
+    }
     if (!usable.length) {
       errors.push('page-' + page + ': no-scoped-items');
       break;
@@ -2746,17 +2755,21 @@ async function syncLikedPlaylist({ confirmAccountChange, confirmUnknownAccount, 
     uniqueItems.push({ ...it, playlistIndex: it.playlistIndex || uniqueItems.length + 1 });
   }
 
-  // Genuinely-empty / logged-out: static HTML had no items AND the authenticated
-  // browse fallback returned nothing either.
-  if (!uniqueItems.length) return { success: false, reason: 'no-items', errors };
-
-  const accountId = ownerChannelId || ownerHandle || ownerName || 'unknown';
-
   // Partial-sync detection (M1): pagination stopped before exhausting the
   // playlist. Either a continuation token still remained (cap hit / broke with a
   // live token) or a page-level / init-browse failure occurred mid-fetch.
+  // Compute this before the no-items return so a wholly rejected uncertain page is
+  // still reported as incomplete even though no guessed rows are persisted.
   const hasMore = !!continuation;
   const partial = hasMore || errors.some((e) => /^(page-\d+|init-browse)/.test(e));
+
+  // Genuinely-empty / logged-out: static HTML had no items AND the authenticated
+  // browse fallback returned nothing either.
+  if (!uniqueItems.length) {
+    return { success: false, reason: 'no-items', partial, hasMore, errors };
+  }
+
+  const accountId = ownerChannelId || ownerHandle || ownerName || 'unknown';
 
   // Account identity guard (H1): never persist an 'unknown' account silently.
   // A first sync — or a re-sync while the stored account is also 'unknown' —

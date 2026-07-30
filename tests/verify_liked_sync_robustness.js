@@ -634,6 +634,98 @@ async function runSyncTests() {
       && resp.diagnostics.scopeFallbacks === undefined);
   }
 
+  // zn5r: a tie between same-size unnamed containers leaves the real liked-list body
+  // unknown. None of that page's guessed items may reach UPSERT_LIKED, and the result
+  // must retain the existing partial/error signal instead of reading as a clean sync.
+  {
+    let dbWrites = 0;
+    const { chrome } = makeChrome();
+    const initData = {
+      onResponseReceivedActions: [
+        { appendContinuationItemsAction: { continuationItems: [ lockup('vidGuessA', 'ga') ] } },
+        { reloadContinuationItemsCommand: { continuationItems: [ lockup('vidGuessB', 'gb') ] } },
+      ],
+    };
+    const sendToYouTubeTab = async (msg) => {
+      if (msg.type === 'FETCH_PLAYLIST_HTML') return { success: true, html: '<html></html>' };
+      if (msg.type === 'FETCH_INNERTUBE_BROWSE' && msg.body.browseId === 'VLLL') {
+        return { success: true, data: initData };
+      }
+      return { success: false, reason: 'unexpected' };
+    };
+    const sendToOffscreenDb = async () => {
+      dbWrites++;
+      return { added: 0 };
+    };
+    const syncLikedPlaylist = makeSync(Object.assign(baseDeps(), { sendToYouTubeTab, sendToOffscreenDb, chrome }));
+    const resp = await syncLikedPlaylist({ confirmUnknownAccount: true, confirmAccountChange: true });
+    check('zn5r ambiguous init: DB write is zero',
+      dbWrites === 0);
+    check('zn5r ambiguous init: reported incomplete with primary-uncertain',
+      resp.success === false && resp.reason === 'no-items' && resp.partial === true
+      && (resp.errors || []).some((e) => e === 'init-browse: primary-uncertain'));
+  }
+
+  // zn5r regression: a non-tied single container remains the normal save path.
+  {
+    let saved = null;
+    let dbWrites = 0;
+    const { chrome } = makeChrome();
+    const initData = { contents: [ lockup('vidCertain', 'certain') ] };
+    const sendToYouTubeTab = async (msg) => {
+      if (msg.type === 'FETCH_PLAYLIST_HTML') return { success: true, html: '<html></html>' };
+      if (msg.type === 'FETCH_INNERTUBE_BROWSE' && msg.body.browseId === 'VLLL') {
+        return { success: true, data: initData };
+      }
+      return { success: false, reason: 'unexpected' };
+    };
+    const sendToOffscreenDb = async (op, payload) => {
+      dbWrites++;
+      saved = payload.items;
+      return { added: payload.items.length };
+    };
+    const syncLikedPlaylist = makeSync(Object.assign(baseDeps(), { sendToYouTubeTab, sendToOffscreenDb, chrome }));
+    const resp = await syncLikedPlaylist({ confirmUnknownAccount: true, confirmAccountChange: true });
+    check('zn5r certain init: normal item is still saved',
+      resp.success === true && resp.partial === false && dbWrites === 1
+      && saved && saved.length === 1 && saved[0].videoId === 'vidCertain');
+  }
+
+  // The same guard is shared by continuation pages: keep earlier proven rows but
+  // discard every item from the first ambiguous continuation page.
+  {
+    let saved = null;
+    const { chrome } = makeChrome();
+    const initData = contPage([lockup('vidCertainPage1', 'p1')], 'AMBIGUOUS_PAGE');
+    const ambiguousPage = {
+      onResponseReceivedActions: [
+        { appendContinuationItemsAction: { continuationItems: [ lockup('vidPageGuessA', 'pga') ] } },
+        { reloadContinuationItemsCommand: { continuationItems: [ lockup('vidPageGuessB', 'pgb') ] } },
+      ],
+    };
+    const sendToYouTubeTab = async (msg) => {
+      if (msg.type === 'FETCH_PLAYLIST_HTML') return { success: true, html: '<html></html>' };
+      if (msg.type === 'FETCH_INNERTUBE_BROWSE' && msg.body.browseId === 'VLLL') {
+        return { success: true, data: initData };
+      }
+      if (msg.type === 'FETCH_INNERTUBE_BROWSE' && msg.body.continuation === 'AMBIGUOUS_PAGE') {
+        return { success: true, data: ambiguousPage };
+      }
+      return { success: false, reason: 'unexpected' };
+    };
+    const sendToOffscreenDb = async (op, payload) => {
+      saved = payload.items;
+      return { added: payload.items.length };
+    };
+    const syncLikedPlaylist = makeSync(Object.assign(baseDeps(), { sendToYouTubeTab, sendToOffscreenDb, chrome }));
+    const resp = await syncLikedPlaylist({ confirmUnknownAccount: true, confirmAccountChange: true });
+    const ids = (saved || []).map((x) => x.videoId);
+    check('zn5r ambiguous continuation: guessed page items are not saved',
+      resp.success === true && resp.partial === true
+      && ids.join(',') === 'vidCertainPage1'
+      && (resp.errors || []).some((e) => e === 'page-2: primary-uncertain'));
+  }
+
   // Scenario C (v1.42.7 — THE H1 regression test, Codex 2026-07-10):
   // A continuation token that lives OUTSIDE the primary container (here: a
   // recommendation shelf's own continuationItemRenderer) must never be fetched.
