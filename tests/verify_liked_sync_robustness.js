@@ -553,13 +553,14 @@ function makeLateLikedViewHarness() {
     'appendCell', 'getDurationSec', 'addDurationStat', 'sortByCountThenName',
     'buildChannelCount', 'splitCreditField', 'sourceOf', 'buildCreditCount',
     'buildChannelMusicScore', 'isCleanCreditName', 'topCredits', 'loadLikedMeta',
-    'loadLiked', 'refreshLikedViews', 'buildLikedArtistCount', 'renderLikedPanel',
-    'topLikedArtists', 'likedPromptNotes', 'renderPrompt',
+    'loadLiked', 'refreshLikedViews', 'setPromptCopyStale', 'reloadLikedAfterSync',
+    'buildLikedArtistCount', 'renderLikedPanel', 'topLikedArtists',
+    'likedPromptNotes', 'renderPrompt',
   ];
   const body = [
     'let likedRecords = [], likedMeta = null, loadLikedMetaSeq = 0, loadLikedSeq = 0;',
     ...fnNames.map((name) => extractBracedFn(name, analyzerSrc)),
-    'return { loadLiked, loadLikedMeta, refreshLikedViews, getRows: () => likedRecords.slice() };',
+    'return { loadLiked, loadLikedMeta, refreshLikedViews, reloadLikedAfterSync, getRows: () => likedRecords.slice() };',
   ].join('\n');
   // eslint-disable-next-line no-new-func
   const factory = new Function(
@@ -601,6 +602,44 @@ async function runLateLikedViewTests() {
       h.element('azLikedAccount').textContent.includes('部分同期'));
     check('l1cm late meta: >3s response updates copied prompt note',
       h.element('azPromptText').textContent.includes('高評価データは**部分同期**'));
+  }
+  {
+    const h = makeLateLikedViewHarness();
+    const metaTimedOut = h.loadLikedMeta(h.refreshLikedViews);
+    h.advanceBy(3001);
+    await metaTimedOut;
+    h.respond('GET_LIKED_META', 0, { meta: {
+      ownerHandle: '@meta-only', count: 4, lastSyncedAt: 1, partial: true,
+      identityConfidence: 'html',
+    } });
+    const panelPartial = h.element('azLikedAccount').textContent.includes('部分同期');
+    const prompt = h.element('azPromptText').textContent;
+    const promptPartial = prompt.includes('高評価データは**部分同期**')
+      && prompt.includes('まだ読み込まれていません（同期メタ情報では4件）');
+    check('l1cm meta-only late: empty rows still show partial state in panel and prompt',
+      panelPartial && promptPartial);
+  }
+  {
+    const h = makeLateLikedViewHarness();
+    const syncCompletePos = analyzerSrc.indexOf('msg.textContent = `同期完了:');
+    const reloadCallPos = analyzerSrc.indexOf('await reloadLikedAfterSync();', syncCompletePos);
+    const wiredAfterSyncComplete = syncCompletePos !== -1 && reloadCallPos > syncCompletePos;
+    const reload = h.reloadLikedAfterSync();
+    const disabledDuringReload = h.element('azCopyPrompt').disabled === true;
+    h.advanceBy(3001);
+    await reload;
+    const disabledAfterTimeout = h.element('azCopyPrompt').disabled === true
+      && h.element('azCopyMsg').textContent.includes('コピーできません');
+    h.respond('GET_LIKED', 0, { success: true, rows: [{ channel: 'Fresh After Sync' }] });
+    const disabledAfterOneLateResponse = h.element('azCopyPrompt').disabled === true;
+    h.respond('GET_LIKED_META', 0, { meta: {
+      ownerHandle: '@fresh', count: 1, lastSyncedAt: 1, partial: false,
+      identityConfidence: 'html',
+    } });
+    const enabledAfterBothResponses = h.element('azCopyPrompt').disabled === false;
+    check('l1cm post-sync reload: copy stays disabled through timeout until both late responses arrive',
+      wiredAfterSyncComplete && disabledDuringReload && disabledAfterTimeout
+      && disabledAfterOneLateResponse && enabledAfterBothResponses);
   }
   {
     const h = makeLateLikedViewHarness();
