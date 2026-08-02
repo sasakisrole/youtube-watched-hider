@@ -2,6 +2,7 @@
 // Handles: tab URL monitoring, message passing, auto-backup
 
 importScripts('credit_target.js');
+importScripts('official_search_filter_core.js');
 
 // Extract video ID from YouTube URL
 function extractVideoId(url) {
@@ -995,6 +996,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'PREVIEW_VIDEO_CREDITS') {
+    const options = message.options || {};
+    if (options.persistToHistory !== false) {
+      sendResponse({ ok: false, reason: 'persist-to-history-not-allowed' });
+      return false;
+    }
+    previewCreditsService.start({
+      videoIds: message.videoIds,
+      options,
+      explicitUserAction: options.userInitiated === true,
+      onProgress: (progress) => {
+        if (sender.tab?.id == null) return;
+        chrome.tabs.sendMessage(sender.tab.id, {
+          type: 'PREVIEW_VIDEO_CREDITS_PROGRESS',
+          ...progress,
+        }).catch(() => {});
+      },
+    }).then(sendResponse).catch((error) => {
+      sendResponse({ ok: false, reason: 'preview-failed', error: error.message });
+    });
+    return true;
+  }
+
+  if (message.type === 'CANCEL_PREVIEW_VIDEO_CREDITS') {
+    sendResponse({ ok: previewCreditsService.cancel() });
+    return false;
+  }
+
   if (message.type === 'V135_CONTENT_READY') {
     chrome.storage.local.get({ migrationV135Done: false }, (result) => {
       const run = !result.migrationV135Done && !v135MigrationInProgress && sender.tab && sender.tab.id;
@@ -1826,11 +1855,15 @@ async function fetchCreditsFromWatch(videoId, abortSignal) {
     const slice = html.slice(vdStart, vdStart + 100000);
     const descMatch = slice.match(/"shortDescription":"((?:\\.|[^"\\])*)"/);
     if (!descMatch) return { videoId, ok: false, reason: 'no-description' };
+    const titleMatch = slice.match(/"title":"((?:\\.|[^"\\])*)"/);
+    const authorMatch = slice.match(/"author":"((?:\\.|[^"\\])*)"/);
+    const title = titleMatch ? decodeJsonStringLiteral(titleMatch[1]) : '';
+    const artist = authorMatch ? decodeJsonStringLiteral(authorMatch[1]) : '';
     const desc = decodeJsonStringLiteral(descMatch[1]);
     const credits = parseCreditsFromDescription(desc);
     const hasAny = credits.composer || credits.lyricist || credits.arranger || credits.creditsRaw;
-    if (!hasAny) return { videoId, ok: true, credits, hasAny: false, reason: 'no-credits' };
-    return { videoId, ok: true, credits, hasAny: true };
+    if (!hasAny) return { videoId, ok: true, credits, hasAny: false, reason: 'no-credits', title, artist };
+    return { videoId, ok: true, credits, hasAny: true, title, artist };
   } catch (e) {
     return { videoId, ok: false, reason: 'fetch-error', error: e.message };
   }
@@ -1854,6 +1887,33 @@ async function runCreditsCleanupOnce() {
   }
   return null;
 }
+
+const PREVIEW_CREDITS_CACHE_KEY = 'videoCreditPreviewCacheV1';
+
+async function readPreviewCreditsCache() {
+  const stored = await chrome.storage.local.get(PREVIEW_CREDITS_CACHE_KEY);
+  const cache = stored && stored[PREVIEW_CREDITS_CACHE_KEY];
+  return cache && typeof cache === 'object' && !Array.isArray(cache) ? cache : {};
+}
+
+async function writePreviewCreditsCache(cache) {
+  const now = Date.now();
+  const ttl = self.YWHOfficialSearchFilterCore.PREVIEW_CREDITS_CACHE_TTL_MS;
+  const entries = Object.entries(cache || {})
+    .filter(([, value]) => Number(value?.checkedAt) > 0 && now - Number(value.checkedAt) < ttl)
+    .sort((a, b) => Number(b[1].checkedAt) - Number(a[1].checkedAt))
+    .slice(0, 200);
+  await chrome.storage.local.set({ [PREVIEW_CREDITS_CACHE_KEY]: Object.fromEntries(entries) });
+}
+
+const previewCreditsService = self.YWHOfficialSearchFilterCore.createPreviewCreditsService({
+  // Uses the existing shared watch-HTML queue and its pacing/sorry-stop behavior.
+  fetchYouTubeCredits: fetchCreditsFromWatch,
+  // Uses the existing MusicBrainz source queue and >=1s rate limit.
+  lookupMusicBrainz: enrichCreditsLookupMb,
+  readCache: readPreviewCreditsCache,
+  writeCache: writePreviewCreditsCache,
+});
 
 async function fixDurationsBatch(videoIds, onProgress, abortSignal) {
   if (!videoIds.length) return { success: true, updated: 0, live: 0, fetchFailed: 0, total: 0, processed: 0 };

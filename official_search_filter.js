@@ -78,6 +78,14 @@
     creditRelatedVideoIds: new Set(),
     creditLookupKey: '',
     creditLookupGeneration: 0,
+    previewVideoIds: [],
+    previewCreditsByVideoId: {},
+    previewResults: {},
+    previewRunning: false,
+    previewCancelling: false,
+    previewProcessed: 0,
+    previewTotal: 0,
+    previewMessage: '',
     effectiveProfileId: null,
     currentNormalizedQuery: '',
     temporaryRevealActive: false,
@@ -423,6 +431,87 @@
     });
   }
 
+  function runtimeMessage(message) {
+    return new Promise((resolve, reject) => {
+      const sendMessage = globalThis.chrome?.runtime?.sendMessage;
+      if (typeof sendMessage !== 'function') {
+        reject(new Error('runtime messaging unavailable'));
+        return;
+      }
+      try {
+        sendMessage.call(globalThis.chrome.runtime, message, (response) => {
+          const lastError = globalThis.chrome?.runtime?.lastError;
+          if (lastError) reject(new Error(lastError.message));
+          else resolve(response);
+        });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  async function startPreviewCredits() {
+    if (state.previewRunning) return;
+    const videoIds = state.previewVideoIds.slice(0, core.PREVIEW_CREDITS_MAX_VIDEOS || 20);
+    if (videoIds.length === 0) return;
+    state.previewRunning = true;
+    state.previewCancelling = false;
+    state.previewProcessed = 0;
+    state.previewTotal = videoIds.length;
+    state.previewMessage = 'クレジットを確認しています。';
+    renderPanelState();
+    try {
+      const response = await runtimeMessage({
+        type: 'PREVIEW_VIDEO_CREDITS',
+        videoIds,
+        options: {
+          sources: ['youtube', 'musicbrainz'],
+          persistToHistory: false,
+          userInitiated: true,
+        },
+      });
+      if (!response?.ok) {
+        state.previewMessage = response?.reason === 'already-running'
+          ? '別のクレジット確認が実行中です。'
+          : `確認できませんでした: ${response?.reason || 'unknown'}`;
+        return;
+      }
+      state.previewResults = response.results || {};
+      for (const [videoId, result] of Object.entries(state.previewResults)) {
+        if (result?.credits) state.previewCreditsByVideoId[videoId] = result.credits;
+      }
+      state.previewProcessed = Number(response.processed) || 0;
+      state.previewTotal = Number(response.total) || videoIds.length;
+      state.previewMessage = response.autoStopped
+        ? 'YouTubeの異常応答を検出したため停止しました。'
+        : response.aborted
+          ? 'クレジット確認を中止しました。'
+          : 'クレジット確認が完了しました。';
+      state.creditLookupKey = '';
+      scanSearchResults();
+    } catch (error) {
+      state.previewMessage = `確認できませんでした: ${error.message}`;
+    } finally {
+      state.previewRunning = false;
+      state.previewCancelling = false;
+      renderPanelState();
+    }
+  }
+
+  async function cancelPreviewCredits() {
+    if (!state.previewRunning || state.previewCancelling) return;
+    state.previewCancelling = true;
+    state.previewMessage = '中止を要求しています。';
+    renderPanelState();
+    try {
+      await runtimeMessage({ type: 'CANCEL_PREVIEW_VIDEO_CREDITS' });
+    } catch (_error) {
+      state.previewMessage = '中止要求を送信できませんでした。';
+      state.previewCancelling = false;
+      renderPanelState();
+    }
+  }
+
   function refreshCreditCandidates(cards, profile) {
     const creditAliases = normalizeCreditAliases([
       profile?.displayName,
@@ -469,7 +558,10 @@
         }
         const inferred = inferCreditChannelCandidates({
           items,
-          creditsByVideoId,
+          creditsByVideoId: {
+            ...(creditsByVideoId || {}),
+            ...state.previewCreditsByVideoId,
+          },
           creditAliases,
         });
         state.creditCandidates = inferred.candidates.map((candidate) => ({
@@ -641,6 +733,43 @@
         ? '一時表示: 有効'
         : '';
     }
+    const previewStart = panel.querySelector?.('[data-preview-credits-start]');
+    const previewCancel = panel.querySelector?.('[data-preview-credits-cancel]');
+    const previewStatus = panel.querySelector?.('[data-preview-credits-status]');
+    const previewResults = panel.querySelector?.('[data-preview-credits-results]');
+    const previewCount = Math.min(
+      state.previewVideoIds.length,
+      core.PREVIEW_CREDITS_MAX_VIDEOS || 20
+    );
+    if (previewStart) {
+      previewStart.textContent = `他Topic ${previewCount}件をクレジット確認`;
+      previewStart.disabled = state.previewRunning || previewCount === 0;
+      previewStart.setAttribute('aria-disabled', String(previewStart.disabled));
+    }
+    if (previewCancel) {
+      previewCancel.hidden = !state.previewRunning;
+      previewCancel.disabled = !state.previewRunning || state.previewCancelling;
+    }
+    if (previewStatus) {
+      previewStatus.textContent = state.previewRunning
+        ? `${state.previewMessage} ${state.previewProcessed}/${state.previewTotal}`
+        : state.previewMessage;
+    }
+    if (previewResults) {
+      previewResults.textContent = '';
+      for (const [videoId, result] of Object.entries(state.previewResults)) {
+        const values = ['composer', 'lyricist', 'arranger']
+          .filter((role) => result?.credits?.[role])
+          .map((role) => `${role}: ${result.credits[role]}`);
+        const error = result?.error?.kind ? ` / error: ${result.error.kind}` : '';
+        appendText(
+          previewResults,
+          'li',
+          result?.status === 'error' ? 'ywh-osf-preview-result--error' : '',
+          `${videoId}: ${result?.status || 'unknown'}${values.length ? ` / ${values.join(' / ')}` : ''}${error}`
+        );
+      }
+    }
   }
 
   function scanSearchResults() {
@@ -650,6 +779,7 @@
     const cards = getSearchVideoCards();
     refreshCreditCandidates(cards, profile);
     const counts = createEmptyCounts();
+    const previewVideoIds = [];
     let visibleCount = 0;
 
     for (const card of cards) {
@@ -663,6 +793,10 @@
       const shouldShow = shouldShowCategory(category, state.mode);
 
       counts[category] = (counts[category] || 0) + 1;
+      if (category === CATEGORY.OTHER_TOPIC) {
+        const videoId = getVideoIdFromCard(card);
+        if (videoId && !previewVideoIds.includes(videoId)) previewVideoIds.push(videoId);
+      }
       if (shouldShow) visibleCount += 1;
       if (state.temporaryRevealActive) {
         card.classList.remove(HIDDEN_CLASS);
@@ -672,6 +806,7 @@
     }
 
     state.counts = counts;
+    state.previewVideoIds = previewVideoIds;
     state.visibleCount = visibleCount;
     renderPanelState();
   }
@@ -1525,6 +1660,46 @@
     }
   }
 
+  function createPreviewCreditsSection() {
+    const section = document.createElement('section');
+    section.className = 'ywh-osf-preview-credits';
+    appendText(section, 'h3', 'ywh-osf-management__title', '未知動画のクレジット確認');
+    appendText(
+      section,
+      'p',
+      'ywh-osf-panel__note',
+      'ボタンを押したときだけ、他Topic動画を最大20件確認します。視聴履歴には登録しません。'
+    );
+    const actions = document.createElement('div');
+    actions.className = 'ywh-osf-preview-actions';
+    const start = createManagementButton(
+      '他Topic 0件をクレジット確認',
+      '他Topic動画のクレジット確認を開始'
+    );
+    start.dataset.previewCreditsStart = '';
+    start.addEventListener('click', startPreviewCredits);
+    actions.appendChild(start);
+    const cancel = createManagementButton(
+      '中止',
+      '実行中のクレジット確認を中止',
+      'ywh-osf-action-button ywh-osf-action-button--danger'
+    );
+    cancel.dataset.previewCreditsCancel = '';
+    cancel.hidden = true;
+    cancel.addEventListener('click', cancelPreviewCredits);
+    actions.appendChild(cancel);
+    section.appendChild(actions);
+    const status = appendText(section, 'p', 'ywh-osf-preview-status', '');
+    status.dataset.previewCreditsStatus = '';
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
+    const results = document.createElement('ul');
+    results.className = 'ywh-osf-preview-results';
+    results.dataset.previewCreditsResults = '';
+    section.appendChild(results);
+    return section;
+  }
+
   function createManagementSection() {
     const section = document.createElement('section');
     section.className = 'ywh-osf-management';
@@ -1978,6 +2153,7 @@
       counts.appendChild(row);
     }
     expandedContent.appendChild(counts);
+    expandedContent.appendChild(createPreviewCreditsSection());
     expandedContent.appendChild(createManagementSection());
     document.body.appendChild(panel);
     setPanelExpanded(false);
@@ -2010,6 +2186,13 @@
     return mutation.target === panel || panel.contains?.(mutation.target);
   }
 
+  function onRuntimeMessage(message) {
+    if (message?.type !== 'PREVIEW_VIDEO_CREDITS_PROGRESS' || !state.previewRunning) return;
+    state.previewProcessed = Number(message.processed) || state.previewProcessed;
+    state.previewTotal = Number(message.total) || state.previewTotal;
+    renderPanelState();
+  }
+
   function onMutation(mutations) {
     if (!isSearchPage()) {
       cleanupSearchPage();
@@ -2032,6 +2215,7 @@
       onNavigateFinish
     );
     globalThis.chrome?.storage?.onChanged?.removeListener?.(onStorageChanged);
+    globalThis.chrome?.runtime?.onMessage?.removeListener?.(onRuntimeMessage);
     cleanupSearchPage();
 
     if (globalThis._ywhOfficialSearchFilter === controller) {
@@ -2061,4 +2245,5 @@
     onNavigateFinish
   );
   globalThis.chrome?.storage?.onChanged?.addListener?.(onStorageChanged);
+  globalThis.chrome?.runtime?.onMessage?.addListener?.(onRuntimeMessage);
 })();
