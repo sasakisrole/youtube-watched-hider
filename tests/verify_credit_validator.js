@@ -92,6 +92,53 @@ async function verifyDbBoundary() {
   check('DB keeps existing source when no role was updated', record.creditsSource === 'topic');
 }
 
+async function verifyMisSaveGuards(parseCreditsFromDescription) {
+  async function attempt(description, title) {
+    const record = {
+      videoId: 'guarded-save',
+      title,
+      composer: '',
+      lyricist: '',
+      arranger: '',
+      creditsRaw: '',
+    };
+    const dbSource = fs.readFileSync(path.join(ROOT, 'db.js'), 'utf8');
+    const fakeGlobal = { CreditTarget: CT };
+    const watchedDb = new Function('indexedDB', 'globalThis', `${dbSource}\nreturn WatchedDB;`)(makeFakeIndexedDb(record), fakeGlobal);
+    const updated = await watchedDb.updateCredits('guarded-save', parseCreditsFromDescription(description, title), false, 'general');
+    return { record, updated };
+  }
+
+  async function attemptCredits(credits, title) {
+    const record = { videoId: 'direct-save', title, composer: '', lyricist: '', arranger: '', creditsRaw: '' };
+    const dbSource = fs.readFileSync(path.join(ROOT, 'db.js'), 'utf8');
+    const watchedDb = new Function('indexedDB', 'globalThis', `${dbSource}\nreturn WatchedDB;`)(
+      makeFakeIndexedDb(record), { CreditTarget: CT });
+    const updated = await watchedDb.updateCredits('direct-save', credits, false, 'general');
+    return { record, updated };
+  }
+
+  let result = await attemptCredits({ composer: 'Song Title' }, 'Song Title');
+  check('DB independently rejects a composer equal to its stored title',
+    result.updated === false && result.record.composer === '');
+
+  result = await attempt('Composer: Song Title', 'Song Title');
+  check('title-equal composer is not saved', result.updated === false && result.record.composer === '');
+
+  result = await attempt('Lyrics: Vocal: Alice', 'Different Song');
+  check('unknown Vocal label is not swallowed or saved', result.updated === false && result.record.lyricist === '');
+
+  result = await attempt('Lyrics: Mix: Bob', 'Different Song');
+  check('unknown Mix label is not swallowed or saved', result.updated === false && result.record.lyricist === '');
+
+  result = await attempt('Composer: BGM', 'Different Song');
+  check('BGM placeholder is not saved', result.updated === false && result.record.composer === '');
+
+  result = await attempt('Composer: 山田太郎\n編曲：佐藤花子、鈴木次郎', 'Different Song');
+  check('normal and multi-person credits still save', result.updated === true
+    && result.record.composer === '山田太郎' && result.record.arranger === '佐藤花子、鈴木次郎');
+}
+
 async function run() {
   console.log('isValidCreditValue');
   const rejected = [
@@ -107,6 +154,7 @@ async function run() {
     'Copyright Control',
     'Copyright Control, toe',
     'All Rights Reserved',
+    'BGM',
     '中恵 光城 Compose/Arrange：RD-Sounds',
     'Lyrics: Alice',
     'Reboot"',
@@ -117,9 +165,12 @@ async function run() {
     { name: 'Alice' },
   ];
   rejected.forEach((value) => check(`reject ${JSON.stringify(value)}`, CT.isValidCreditValue(value) === false));
-  ['Alice', 'RD-Sounds', 'Calliope Mori', '織田あすか (Elements Garden)', '藤永龍太郎'].forEach((value) => {
+  ['Alice', 'RD-Sounds', 'Calliope Mori', '織田あすか (Elements Garden)', '藤永龍太郎', 'BGM Records'].forEach((value) => {
     check(`accept ${JSON.stringify(value)}`, CT.isValidCreditValue(value) === true);
   });
+  check('reject exact video title when supplied', CT.isValidCreditValue('Song Title', 'Song Title') === false);
+  check('title comparison normalizes width and whitespace', CT.isValidCreditValue('Ｓｏｎｇ   Title', 'Song Title') === false);
+  check('same value is accepted when no video title is available', CT.isValidCreditValue('Song Title') === true);
 
   console.log('Topic channel helpers');
   check('English Topic is recognized case-insensitively', CT.isTopicChannelName('  Artist - tOpIc  ') === true);
@@ -149,6 +200,14 @@ async function run() {
   check('作編曲 fills two roles', parsed.composer === 'X' && parsed.arranger === 'X');
   parsed = parseCreditsFromDescription('Compose & Arrange: X');
   check('Compose & Arrange fills two roles', parsed.composer === 'X' && parsed.arranger === 'X');
+  parsed = parseCreditsFromDescription('Composer: Song Title', 'Song Title');
+  check('parser rejects a value equal to the video title', parsed.composer === '');
+  parsed = parseCreditsFromDescription('Lyrics: Vocal: Alice');
+  check('parser stops before unknown Vocal label', parsed.lyricist === '');
+  parsed = parseCreditsFromDescription('Lyrics: Mix: Bob');
+  check('parser stops before unknown Mix label', parsed.lyricist === '');
+  parsed = parseCreditsFromDescription('Lyrics: Alice Mix: Bob');
+  check('parser keeps a valid value before unknown label', parsed.lyricist === 'Alice');
 
   const pollutedLines = [
     'Composer: //bit.ly/credit',
@@ -204,14 +263,15 @@ async function run() {
   const backgroundSource = fs.readFileSync(path.join(ROOT, 'background.js'), 'utf8');
   const dbSource = fs.readFileSync(path.join(ROOT, 'db.js'), 'utf8');
   const analyzerSource = fs.readFileSync(path.join(ROOT, 'analyzer.js'), 'utf8');
-  check('parser calls shared validator', backgroundSource.includes('self.CreditTarget.isValidCreditValue(valuePart)'));
-  check('DB calls shared validator', dbSource.includes('globalThis.CreditTarget.isValidCreditValue(v)'));
+  check('parser passes video title to shared validator', backgroundSource.includes('self.CreditTarget.isValidCreditValue(valuePart, videoTitle)'));
+  check('DB passes stored video title to shared validator', dbSource.includes('globalThis.CreditTarget.isValidCreditValue(v, existing.title)'));
   check('Analyzer calls shared validator', analyzerSource.includes('window.CreditTarget.isValidCreditValue(name)'));
   check('service worker loads shared utility', backgroundSource.includes("importScripts('credit_target.js')"));
   const offscreenSource = fs.readFileSync(path.join(ROOT, 'offscreen.html'), 'utf8');
   check('offscreen loads shared utility before DB', offscreenSource.indexOf('credit_target.js') < offscreenSource.indexOf('db.js'));
 
   await verifyDbBoundary();
+  await verifyMisSaveGuards(parseCreditsFromDescription);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

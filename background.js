@@ -1696,6 +1696,10 @@ const CREDIT_ROLE_KEYWORDS = {
 };
 
 const CREDIT_LABEL_TOKEN_RE = /(?:^|[\s/／|｜;；]\s*)((?:作曲\s*[・&＆/／]\s*編曲|作編曲|words\s*(?:&|and)\s*music|compose(?:r)?\s*(?:&|and|\/|／)\s*arrange(?:r)?|composer\s*[,，]?\s*(?:writer|lyricist)|composer\s+lyricist|composers?|composed\s+by|composition|compose|music\s+by|original\s+music|music\s+composer|lyricists?|lyrics\s+by|written\s+by|lyrics?|songwriters?|words|arrangers?|arranged\s+by|arrangement|recording\s+arranger|arrange|作詞家|作詞者|作詞|作詩|作曲家|作曲者|作曲|編曲家|編曲者|編曲))\s*[:：]/giu;
+// A single ASCII label token followed by a colon is also a segment boundary,
+// even when it is not one of the credit roles above (for example Vocal: or
+// Mix:). It is a boundary only; unknown labels never create role values.
+const CREDIT_UNKNOWN_LABEL_BOUNDARY_RE = /(?:^|[\s/／|｜;；])(?=[A-Za-z][A-Za-z0-9_-]*\s*[:：])/gu;
 
 function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1733,10 +1737,14 @@ function extractCreditSegments(line) {
   while ((match = CREDIT_LABEL_TOKEN_RE.exec(line))) {
     matches.push({ index: match.index, valueStart: CREDIT_LABEL_TOKEN_RE.lastIndex, label: match[1] });
   }
-  return matches.map((item, index) => ({
-    roles: rolesForCreditLabel(item.label),
-    value: line.slice(item.valueStart, index + 1 < matches.length ? matches[index + 1].index : line.length),
-  }));
+  return matches.map((item, index) => {
+    const recognizedEnd = index + 1 < matches.length ? matches[index + 1].index : line.length;
+    let value = line.slice(item.valueStart, recognizedEnd);
+    CREDIT_UNKNOWN_LABEL_BOUNDARY_RE.lastIndex = 0;
+    const unknownBoundary = CREDIT_UNKNOWN_LABEL_BOUNDARY_RE.exec(value);
+    if (unknownBoundary) value = value.slice(0, unknownBoundary.index);
+    return { roles: rolesForCreditLabel(item.label), value };
+  });
 }
 
 // Find the first non-empty line after "Provided to YouTube by ...". This is
@@ -1756,7 +1764,7 @@ function findTopicCreditsLine(desc) {
   return null;
 }
 
-function parseCreditsFromDescription(desc) {
+function parseCreditsFromDescription(desc, videoTitle) {
   if (!desc) return { composer: '', lyricist: '', arranger: '', creditsRaw: '' };
 
   // Phase A: tokenize every recognized "<role>: <name>" segment. A value ends
@@ -1767,7 +1775,7 @@ function parseCreditsFromDescription(desc) {
   for (const line of lines) {
     for (const segment of extractCreditSegments(line)) {
       const valuePart = cleanCreditLine(segment.value);
-      if (!self.CreditTarget.isValidCreditValue(valuePart)) continue;
+      if (!self.CreditTarget.isValidCreditValue(valuePart, videoTitle)) continue;
       for (const role of segment.roles) {
         if (!found[role].includes(valuePart)) found[role].push(valuePart);
       }
@@ -1775,7 +1783,7 @@ function parseCreditsFromDescription(desc) {
   }
   const joinValidRoleValues = values => {
     const joined = values.join(', ');
-    return self.CreditTarget.isValidCreditValue(joined) ? joined : '';
+    return self.CreditTarget.isValidCreditValue(joined, videoTitle) ? joined : '';
   };
   const composer = joinValidRoleValues(found.composer);
   const lyricist = joinValidRoleValues(found.lyricist);
@@ -1824,10 +1832,12 @@ async function fetchCreditsFromWatch(videoId, abortSignal) {
     const vdStart = html.indexOf('"videoDetails":{');
     if (vdStart === -1) return { videoId, ok: false, reason: 'no-videoDetails' };
     const slice = html.slice(vdStart, vdStart + 100000);
+    const titleMatch = slice.match(/"title":"((?:\\.|[^"\\])*)"/);
     const descMatch = slice.match(/"shortDescription":"((?:\\.|[^"\\])*)"/);
     if (!descMatch) return { videoId, ok: false, reason: 'no-description' };
+    const title = titleMatch ? decodeJsonStringLiteral(titleMatch[1]) : '';
     const desc = decodeJsonStringLiteral(descMatch[1]);
-    const credits = parseCreditsFromDescription(desc);
+    const credits = parseCreditsFromDescription(desc, title);
     const hasAny = credits.composer || credits.lyricist || credits.arranger || credits.creditsRaw;
     if (!hasAny) return { videoId, ok: true, credits, hasAny: false, reason: 'no-credits' };
     return { videoId, ok: true, credits, hasAny: true };

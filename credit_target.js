@@ -31,6 +31,9 @@
   var TOPIC_SUFFIX_RE = /\s*-\s*(?:topic|トピック)\s*$/i;
   var CREDIT_ROLE_TEXT_RE = /(?:作詞(?:家|者)?|作詩|作曲(?:家|者)?|編曲(?:家|者)?|作編曲|lyrics?(?:\s+by)?|lyricists?|written\s+by|songwriters?|words\s*(?:&|and)\s*music|compos(?:e|ed\s+by|er|ers|ition)|arrang(?:e|ed\s+by|er|ers|ement))/iu;
   var DOMAIN_LIKE_RE = /(?:^|[\s([{'"<>])(?:www\.)?(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|net|org|jp|co|io|ly|tv|me|info|biz|app|dev)(?=$|[\s/\\:?#)\]}'"<>])/iu;
+  // Exact whole-value placeholders only. Keep this deliberately narrow: a
+  // broad vocabulary risks rejecting real artist names.
+  var NON_PERSON_CREDIT_VALUES = new Set(['BGM']);
 
   function creditIsBlank(value) {
     return value == null || String(value).trim() === '';
@@ -75,12 +78,20 @@
   // Conservative save boundary for composer / lyricist / arranger values.
   // Ambiguous evidence stays in creditsRaw instead of becoming a sticky,
   // non-empty role value that normal enrichment can no longer repair.
-  function isValidCreditValue(value) {
+  function normalizeComparableCreditText(value) {
+    return String(value == null ? '' : value).normalize('NFKC').trim().replace(/\s+/gu, ' ');
+  }
+
+  function isValidCreditValue(value, videoTitle) {
     if (typeof value !== 'string') return false;
     var raw = value.normalize('NFKC');
     if (/[\u0000-\u001f\u007f-\u009f]/u.test(raw)) return false;
     var normalized = raw.trim();
     if (!normalized || Array.from(normalized).length > 60) return false;
+    var comparable = normalizeComparableCreditText(normalized);
+    if (NON_PERSON_CREDIT_VALUES.has(comparable.toUpperCase())) return false;
+    var comparableTitle = normalizeComparableCreditText(videoTitle);
+    if (comparableTitle && comparable === comparableTitle) return false;
     if (/(?:https?:)?\/\//iu.test(normalized) || /(?:^|\s)www\./iu.test(normalized)) return false;
     if (/(?:^|[\s([{'"<>])(?:bit\.ly|t\.co|music\.apple\.com|youtube\.com)(?=$|[\s/\\:?#)\]}'"<>])/iu.test(normalized)) return false;
     if (DOMAIN_LIKE_RE.test(normalized)) return false;

@@ -253,7 +253,7 @@ if (typeof WatchedDB === 'undefined') {
           const writtenRoles = [];
           for (const k of [...CREDIT_ROLES, 'creditsRaw']) {
             const v = credits && credits[k];
-            const valid = k === 'creditsRaw' || globalThis.CreditTarget.isValidCreditValue(v);
+            const valid = k === 'creditsRaw' || globalThis.CreditTarget.isValidCreditValue(v, existing.title);
             const canWrite = k === 'creditsRaw' ? (force || !existing[k]) : !existing[k];
             if (v && valid && canWrite) {
               existing[k] = v;
