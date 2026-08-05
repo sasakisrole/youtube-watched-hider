@@ -325,22 +325,22 @@
     const mySeq = ++loadLikedMetaSeq;
     return new Promise((resolve) => {
       let done = false;
-      const finish = () => { if (!done) { done = true; resolve(); } };
-      const timer = setTimeout(finish, 3000); // never hang the analyzer
+      const finish = (loaded = false) => { if (!done) { done = true; resolve(loaded); } };
+      const timer = setTimeout(() => finish(false), 3000); // never hang the analyzer
       try {
         chrome.runtime.sendMessage({ type: 'GET_LIKED_META' }, (resp) => {
           const late = done; // response arrived after the 3s timeout already resolved
           clearTimeout(timer);
           // Same generation guard as loadLiked: a superseded response must not
           // clobber newer meta.
-          if (mySeq !== loadLikedMetaSeq) { finish(); return; }
+          if (mySeq !== loadLikedMetaSeq) { finish(false); return; }
           likedMeta = (resp && resp.meta) || null;
-          finish();
+          finish(true);
           // M1/l1cm: a slow GET_LIKED_META can land after the timeout. Re-render so
           // the meta row and the copied prompt reflect the freshly-loaded partial flag.
           if (late && typeof onLate === 'function') { try { onLate(); } catch (_) {} }
         });
-      } catch (_e) { clearTimeout(timer); finish(); }
+      } catch (_e) { clearTimeout(timer); finish(false); }
     });
   }
   // M2: monotonic generation id. Each loadLiked() call bumps it; a response is
@@ -354,23 +354,23 @@
     const mySeq = ++loadLikedSeq;
     return new Promise((resolve) => {
       let done = false;
-      const finish = () => { if (!done) { done = true; resolve(); } };
+      const finish = (loaded = false) => { if (!done) { done = true; resolve(loaded); } };
       // Hard timeout so the analyzer never hangs even if no YouTube tab is open.
-      const timer = setTimeout(finish, 3000);
+      const timer = setTimeout(() => finish(false), 3000);
       try {
         chrome.runtime.sendMessage({ type: 'GET_LIKED' }, (resp) => {
           const late = done; // response arrived after the 3s timeout already resolved
           clearTimeout(timer);
           // M2: a superseded request must never clobber a newer load's data or
           // trigger a stale re-render.
-          if (mySeq !== loadLikedSeq) { finish(); return; }
+          if (mySeq !== loadLikedSeq) { finish(false); return; }
           likedRecords = (resp && resp.success && resp.rows) ? resp.rows : [];
-          finish();
+          finish(true);
           // L2: a slow GET_LIKED (large liked set) can land after the timeout.
           // Re-render so the analyzer doesn't keep showing stale/empty liked data.
           if (late && typeof onLate === 'function') { try { onLate(); } catch (_) {} }
         });
-      } catch (_e) { clearTimeout(timer); finish(); }
+      } catch (_e) { clearTimeout(timer); finish(false); }
     });
   }
 
@@ -382,6 +382,43 @@
     const d = (typeof allData !== 'undefined' && allData) ? allData : [];
     renderLikedPanel();
     renderPrompt(d, buildChannelCount(d));
+  }
+
+  function setPromptCopyStale(stale) {
+    const button = document.getElementById('azCopyPrompt');
+    const message = document.getElementById('azCopyMsg');
+    if (button) {
+      button.disabled = stale;
+      button.title = stale ? '高評価データを再読込中です' : '';
+    }
+    if (message) {
+      if (stale) message.textContent = '高評価データを再読込中のため、コピーできません';
+      else if (message.textContent === '高評価データを再読込中のため、コピーできません') message.textContent = '';
+    }
+  }
+
+  // Keep the exported prompt unavailable until both post-sync responses have
+  // actually arrived. A loader timeout unblocks the analyzer, but does not make
+  // the currently-rendered prompt fresh; its existing late callback clears the
+  // corresponding pending flag when the response eventually lands.
+  async function reloadLikedAfterSync() {
+    setPromptCopyStale(true);
+    const pending = { rows: true, meta: true };
+    const arrivedLate = { rows: false, meta: false };
+    const onLate = (key) => () => {
+      arrivedLate[key] = true;
+      pending[key] = false;
+      refreshLikedViews();
+      if (!pending.rows && !pending.meta) setPromptCopyStale(false);
+    };
+    const [rowsLoaded, metaLoaded] = await Promise.all([
+      loadLiked(onLate('rows')),
+      loadLikedMeta(onLate('meta')),
+    ]);
+    pending.rows = !rowsLoaded && !arrivedLate.rows;
+    pending.meta = !metaLoaded && !arrivedLate.meta;
+    refreshLikedViews();
+    setPromptCopyStale(pending.rows || pending.meta);
   }
 
   function buildLikedArtistCount() {
@@ -574,13 +611,21 @@
     arrangers.forEach(([name, v], i) => lines.push(`${i + 1}. ${name} (${v.count}回)`));
     lines.push('');
     const liked = topLikedArtists(30);
-    if (liked.length) {
+    const promptNotes = likedPromptNotes(likedMeta);
+    if (liked.length || promptNotes.length) {
       lines.push('## 高評価Top30アーティスト（YouTubeで高評価した動画のチャンネル別集計）');
       // M1 / v1.42.12 (M2): warn in-prompt when the liked data is a partial sync OR was
       // saved under a weak identity (name-only / unknown-confirmed), so the model (and
       // reader) knows the ranking may be incomplete or account-ambiguous rather than
       // treating it as the complete, cleanly-attributed liked set. See likedPromptNotes.
-      likedPromptNotes(likedMeta).forEach((n) => lines.push(n));
+      promptNotes.forEach((n) => lines.push(n));
+      if (!liked.length) {
+        const metaCount = likedMeta && typeof likedMeta.count === 'number'
+          && Number.isFinite(likedMeta.count) ? likedMeta.count : null;
+        lines.push(metaCount === 0
+          ? '高評価動画は同期メタ情報上0件です。'
+          : `⚠️ 高評価動画一覧はまだ読み込まれていません${metaCount === null ? '' : `（同期メタ情報では${metaCount.toLocaleString()}件）`}。`);
+      }
       liked.forEach(([k, v], i) => lines.push(`${i + 1}. ${window.CreditTarget.stripTopicChannelSuffix(k)} (${v}回)`));
       lines.push('');
     }
@@ -971,13 +1016,10 @@
         }
         if (resp.errors && resp.errors.length) console.warn('[liked-sync errors]', resp.errors);
         if (resp.diagnostics) console.info('[liked-sync diagnostics]', resp.diagnostics);
-        // M2b: refresh meta too, so the freshly-saved partial flag reaches both the
-        // meta row and the recommendation prompt in this same render pass.
-        // l1cm: pass refreshLikedViews as the late callback to both loaders — if a
-        // GET_LIKED response arrives after the 3s timeout, the panel and the copied
-        // prompt re-render instead of keeping the pre-sync (stale) likedRecords.
-        await Promise.all([loadLiked(refreshLikedViews), loadLikedMeta(refreshLikedViews)]);
-        refreshLikedViews();
+        // Refresh rows and meta together. If either loader times out, its existing
+        // late callback still re-renders the views; copying stays disabled until
+        // both responses have actually arrived.
+        await reloadLikedAfterSync();
       } catch (e) {
         msg.textContent = '同期エラー: ' + e.message;
       } finally {
