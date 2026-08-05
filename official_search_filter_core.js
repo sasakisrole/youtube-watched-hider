@@ -15,6 +15,200 @@
     ALL: 'all',
   });
 
+
+  const PREVIEW_CREDITS_MAX_VIDEOS = 20;
+  const PREVIEW_CREDITS_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+  const PREVIEW_CREDITS_STOP_REASONS = Object.freeze([
+    'sorry-redirect',
+    'consent-redirect',
+  ]);
+
+  function sanitizePreviewVideoIds(videoIds) {
+    const unique = [];
+    const seen = new Set();
+    for (const value of Array.isArray(videoIds) ? videoIds : []) {
+      const videoId = String(value ?? '').trim();
+      if (!videoId || seen.has(videoId)) continue;
+      seen.add(videoId);
+      unique.push(videoId);
+      if (unique.length >= PREVIEW_CREDITS_MAX_VIDEOS) break;
+    }
+    return unique;
+  }
+
+  function emptyPreviewCredits() {
+    return { composer: '', lyricist: '', arranger: '', creditsRaw: '' };
+  }
+
+  function normalizePreviewCredits(value) {
+    const normalized = emptyPreviewCredits();
+    for (const role of Object.keys(normalized)) {
+      normalized[role] = String(value?.[role] ?? '').trim();
+    }
+    return normalized;
+  }
+
+  function previewEvidence(source, credits) {
+    const labels = {
+      composer: 'composer',
+      lyricist: 'lyricist',
+      arranger: 'arranger',
+      creditsRaw: 'unassigned',
+    };
+    return Object.keys(labels)
+      .filter((role) => credits[role])
+      .map((role) => ({
+        source,
+        role,
+        value: credits[role],
+        rawLine: `${labels[role]}: ${credits[role]}`,
+      }));
+  }
+
+  function mergePreviewCredits(primary, fallback) {
+    const merged = normalizePreviewCredits(primary);
+    for (const role of ['composer', 'lyricist', 'arranger']) {
+      if (!merged[role]) merged[role] = String(fallback?.[role] ?? '').trim();
+    }
+    return merged;
+  }
+
+  function createPreviewCreditsService({
+    fetchYouTubeCredits,
+    lookupMusicBrainz,
+    readCache = async () => ({}),
+    writeCache = async () => {},
+    now = () => Date.now(),
+    cacheTtlMs = PREVIEW_CREDITS_CACHE_TTL_MS,
+  } = {}) {
+    if (typeof fetchYouTubeCredits !== 'function') {
+      throw new TypeError('fetchYouTubeCredits is required');
+    }
+
+    let activeJob = null;
+
+    function cancel() {
+      if (!activeJob) return false;
+      activeJob.abortSignal.aborted = true;
+      return true;
+    }
+
+    async function start({
+      videoIds,
+      options = {},
+      explicitUserAction = false,
+      onProgress,
+    } = {}) {
+      if (explicitUserAction !== true) {
+        return { ok: false, reason: 'explicit-user-action-required' };
+      }
+      if (activeJob) return { ok: false, reason: 'already-running' };
+
+      const limitedVideoIds = sanitizePreviewVideoIds(videoIds);
+      const abortSignal = { aborted: false };
+      const job = { abortSignal };
+      activeJob = job;
+      const results = {};
+      let processed = 0;
+      let autoStopped = false;
+      let cache = {};
+
+      try {
+        const loaded = await readCache();
+        cache = loaded && typeof loaded === 'object' && !Array.isArray(loaded)
+          ? { ...loaded }
+          : {};
+
+        for (const videoId of limitedVideoIds) {
+          if (abortSignal.aborted || autoStopped) break;
+          const cached = cache[videoId];
+          if (
+            cached &&
+            Number(cached.checkedAt) > 0 &&
+            now() - Number(cached.checkedAt) < cacheTtlMs &&
+            cached.result
+          ) {
+            results[videoId] = { ...cached.result, cached: true };
+            const cachedErrorKind = String(cached.result?.error?.kind || '');
+            if (PREVIEW_CREDITS_STOP_REASONS.includes(cachedErrorKind)) autoStopped = true;
+          } else {
+            const youtube = await fetchYouTubeCredits(videoId, abortSignal);
+            if (youtube?.aborted || abortSignal.aborted) break;
+
+            let result;
+            if (!youtube?.ok) {
+              const reason = String(youtube?.reason || 'fetch-error');
+              result = {
+                status: 'error',
+                credits: emptyPreviewCredits(),
+                evidence: [],
+                error: { kind: reason, message: String(youtube?.error || '') },
+              };
+              if (PREVIEW_CREDITS_STOP_REASONS.includes(reason)) autoStopped = true;
+            } else {
+              const youtubeCredits = normalizePreviewCredits(youtube.credits);
+              let credits = youtubeCredits;
+              let evidence = previewEvidence('youtube', youtubeCredits);
+              let mbReason = '';
+              if (
+                Array.isArray(options.sources) &&
+                options.sources.includes('musicbrainz') &&
+                typeof lookupMusicBrainz === 'function' &&
+                youtube.artist && youtube.title &&
+                ['composer', 'lyricist', 'arranger'].some((role) => !credits[role])
+              ) {
+                try {
+                  const mb = await lookupMusicBrainz(youtube.artist, youtube.title);
+                  if (abortSignal.aborted) break;
+                  if (mb?.success && mb.candidate) {
+                    const mbCredits = normalizePreviewCredits(mb.candidate);
+                    credits = mergePreviewCredits(credits, mbCredits);
+                    evidence = evidence.concat(previewEvidence('musicbrainz', mbCredits));
+                  } else {
+                    mbReason = String(mb?.reason || 'no-result');
+                  }
+                } catch (_error) {
+                  mbReason = 'fetch-error';
+                }
+              }
+              const roleCount = ['composer', 'lyricist', 'arranger']
+                .filter((role) => credits[role]).length;
+              result = {
+                status: roleCount === 3 ? 'complete' : (evidence.length ? 'partial' : 'not-found'),
+                credits,
+                evidence,
+                ...(mbReason ? { error: { kind: mbReason, source: 'musicbrainz' } } : {}),
+              };
+            }
+
+            results[videoId] = result;
+            cache[videoId] = { checkedAt: now(), result };
+            await writeCache(cache);
+          }
+
+          processed += 1;
+          if (typeof onProgress === 'function') {
+            onProgress({ videoId, processed, total: limitedVideoIds.length, result: results[videoId] });
+          }
+        }
+
+        return {
+          ok: true,
+          results,
+          total: limitedVideoIds.length,
+          processed,
+          aborted: abortSignal.aborted,
+          autoStopped,
+          persistToHistory: false,
+        };
+      } finally {
+        if (activeJob === job) activeJob = null;
+      }
+    }
+
+    return Object.freeze({ start, cancel, isRunning: () => Boolean(activeJob) });
+  }
+
   function normalizeText(value) {
     return String(value ?? '')
       .normalize('NFKC')
@@ -366,6 +560,11 @@
   const api = Object.freeze({
     CATEGORY,
     MODE,
+    PREVIEW_CREDITS_MAX_VIDEOS,
+    PREVIEW_CREDITS_CACHE_TTL_MS,
+    PREVIEW_CREDITS_STOP_REASONS,
+    sanitizePreviewVideoIds,
+    createPreviewCreditsService,
     normalizeText,
     normalizeCreditAliases,
     matchCreditAliases,
