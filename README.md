@@ -64,6 +64,7 @@ Historyビューアーの「Analyze」ボタンから起動する音楽傾向分
   - **YouTube oEmbed API**（`https://www.youtube.com/oembed`）：タイトル/チャンネル名の補完
   - **YouTube watchページHTML取得**：埋め込み禁止動画のメタデータ抽出フォールバック、動画長（`lengthSeconds`）の補完
   - **YouTube playlist / Innertube browse API**：ユーザー操作時の高評価プレイリスト同期
+  - **MusicBrainz API**（`https://musicbrainz.org/ws/2/...`）：「Fix Credits」または検索フィルターの「他Topic ◯件をクレジット確認」を押したときだけ、作曲/作詞/編曲クレジット候補を照会。送信するのはアーティスト名・曲タイトル由来の検索文字列のみで、CookieやYouTube認証情報は送信しません
   - 認証が必要な高評価同期では、YouTubeページ上のcontent scriptからYouTube自身へ同一オリジン通信します。認証ヘッダは外部サーバーには送信・保存しません
 - Analyzeの「プロンプトコピー」は**ローカルのクリップボードに書き込むだけ**。自動送信はしません
 
@@ -77,6 +78,7 @@ Historyビューアーの「Analyze」ボタンから起動する音楽傾向分
 | `contextMenus` | 動画リンク右クリックメニュー（キューに追加 / 後で見る）の追加 |
 | `offscreen` | IndexedDB操作と大容量JSONバックアップ用Blob URLの生成 |
 | `*://*.youtube.com/*` | YouTube内DOMの操作とYouTube公式エンドポイントへのアクセス |
+| `https://musicbrainz.org/*` | クレジット補完のためのMusicBrainz照会（ユーザーが明示的に実行したときのみ） |
 
 ## 技術的な注意
 

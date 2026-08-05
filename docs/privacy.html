@@ -60,7 +60,7 @@
   <li><code>https://www.youtube.com/oembed</code> — 動画タイトル / チャンネル名の補完取得</li>
   <li><code>https://www.youtube.com/watch?v=...</code> — 埋め込み禁止動画のメタデータ取得フォールバック、作曲/作詞/編曲クレジット、動画長（<code>lengthSeconds</code>）の補完</li>
   <li><code>https://www.youtube.com/playlist?list=LL</code> および <code>https://www.youtube.com/youtubei/v1/browse</code> — ユーザー操作時の高評価プレイリスト同期</li>
-  <li><code>https://musicbrainz.org/ws/2/...</code> — ユーザーが「Fix Credits」を実行したときのみ、作曲/作詞/編曲クレジット候補を補完するための照会。送信するのはアーティスト名・曲タイトル由来の検索文字列のみで、Cookie や YouTube 認証情報は送信せず、開発者サーバーを経由しません。</li>
+  <li><code>https://musicbrainz.org/ws/2/...</code> — ユーザーが「Fix Credits」または検索フィルターの「他Topic ◯件をクレジット確認」を明示的に実行したときのみ、作曲/作詞/編曲クレジット候補を補完するための照会。送信するのはアーティスト名・曲タイトル由来の検索文字列のみで、Cookie や YouTube 認証情報は送信せず、開発者サーバーを経由しません。</li>
 </ul>
 <p>YouTubeページ上で実行される content script から YouTube 自身へ同一オリジン通信する場合、ブラウザが YouTube の Cookie または認証ヘッダを付与することがあります。これらは YouTube 以外の外部サーバー、本拡張の開発者、第三者には送信・保存されません。</p>
 
