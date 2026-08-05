@@ -156,6 +156,9 @@ async function main() {
   const ROOT = path.join(__dirname, '..');
   const html = fs.readFileSync(path.join(ROOT, 'history.html'), 'utf8');
   const analyzerSrc = fs.readFileSync(path.join(ROOT, 'analyzer.js'), 'utf8');
+  check('Analyze UI reports both repair success and repair failure',
+    analyzerSrc.includes('旧形式のチャンネルIDを正しい形式へ復元しました。') &&
+    analyzerSrc.includes('チャンネルIDを復元できませんでした。'));
   const tabKeys = [...html.matchAll(/data-aztab="([^"]+)"/g)].map((m) => m[1]);
   const mapSrc = analyzerSrc.match(/const map = \{([^}]*)\};/);
   const mapKeys = mapSrc ? [...mapSrc[1].matchAll(/(\w+):\s*'([^']+)'/g)] : [];
@@ -229,6 +232,29 @@ async function main() {
     profile.channels[0].enabled === true);
   check('query binding remains off by default',
     Object.keys(settings.queryBindings).length === 0);
+
+  const boundRegistration = storeApi.mutateConfirmedRegistration(
+    storeApi.createDefaultSettings(),
+    {
+      profileName: 'Bound Artist',
+      channel: {
+        channelId: 'UC_BOUND',
+        canonicalPath: '/channel/UC_BOUND',
+        displayName: 'Bound Artist',
+        sourceChannelName: 'Bound Artist - Topic',
+      },
+      confirmed: true,
+      bindQuery: true,
+      query: 'Bound Artist',
+    }
+  );
+  const boundProfile = boundRegistration.settings.profiles[boundRegistration.profileId];
+  check('new registration still creates a profile, adds its channel, and binds an optional query',
+    boundRegistration.changed === true &&
+    boundRegistration.createdProfile === true &&
+    boundProfile.channels.length === 1 &&
+    boundProfile.channels[0].sourceChannelName === 'Bound Artist - Topic' &&
+    boundRegistration.settings.queryBindings['bound artist'] === boundRegistration.profileId);
 
   console.log('candidate list state (registered / excluded / duplicate guard)');
   const baseChannel = {
@@ -325,6 +351,66 @@ async function main() {
     parts.registered.length === 1 &&
     parts.excluded.length === 1);
 
+  const repairId = 'UCuAXFkgsw1L7xaCfnd5JJOw';
+  const repairSettings = {
+    schemaVersion: 1,
+    activeProfileId: null,
+    globalMode: 'all',
+    hideOtherGlobal: false,
+    queryBindings: {},
+    candidateExclusions: [],
+    profiles: {
+      repair: {
+        id: 'repair',
+        displayName: 'Repair Artist',
+        aliases: [],
+        mode: 'all',
+        channels: [{
+          channelId: repairId.toLowerCase(),
+          canonicalPath: `/channel/${repairId.toLowerCase()}`,
+          displayName: 'Repair Artist - Topic',
+          channelIdMigration: storeApi.CHANNEL_ID_MIGRATION_UNRESOLVED,
+          enabled: true,
+        }],
+      },
+      current: {
+        id: 'current',
+        displayName: 'Current Artist',
+        aliases: [],
+        mode: 'all',
+        channels: [{
+          channelId: 'UC0123456789012345678901',
+          canonicalPath: '/channel/UC0123456789012345678901',
+          displayName: 'Current Artist - Topic',
+          enabled: true,
+        }],
+      },
+    },
+  };
+  const repairParts = analyze.partitionCandidates([
+    { channelName: 'Repair Artist - Topic', profileName: 'Repair Artist', kind: 'topic' },
+    { channelName: 'Current Artist - Topic', profileName: 'Current Artist', kind: 'topic' },
+  ], repairSettings, storeApi);
+  check('unresolved registered candidate is placed in needsRepair instead of registered',
+    repairParts.needsRepair.length === 1 &&
+    repairParts.needsRepair[0].channelName === 'Repair Artist - Topic' &&
+    repairParts.registered.every((candidate) =>
+      candidate.channelName !== 'Repair Artist - Topic'));
+  check('registered candidate without an unresolved marker stays hidden as registered',
+    repairParts.registered.length === 1 &&
+    repairParts.registered[0].channelName === 'Current Artist - Topic');
+
+  const repairDoc = new FakeDocument();
+  const repairContainer = repairDoc.createElement('div');
+  analyze.renderCandidateRows(
+    repairContainer,
+    repairParts.needsRepair,
+    { onReview: () => {}, onExclude: () => {} },
+    { needsRepairCount: repairParts.needsRepair.length }
+  );
+  check('needsRepair row renders a distinct repair label',
+    repairContainer.textContent.includes('要修復: 旧形式のチャンネルIDです'));
+
   const stateDoc = new FakeDocument();
   const stateContainer = stateDoc.createElement('div');
   let excludedArg = null;
@@ -343,8 +429,9 @@ async function main() {
 
   const emptyContainer = stateDoc.createElement('div');
   analyze.renderCandidateRows(emptyContainer, [], { onReview: () => {} },
-    { registeredCount: 1, excludedCount: 1 });
-  check('the empty state explains what is hidden instead of claiming none exist',
+    { registeredCount: 1, excludedCount: 1, needsRepairCount: 2 });
+  check('the empty state reports repair, registered, and excluded counts',
+    emptyContainer.textContent.includes('要修復 2 件') &&
     emptyContainer.textContent.includes('登録済み 1 件') &&
     emptyContainer.textContent.includes('除外 1 件'));
 

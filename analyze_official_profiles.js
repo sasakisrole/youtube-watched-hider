@@ -139,23 +139,65 @@
     const exclusions = new Set(
       (settings?.candidateExclusions || []).map((name) => String(name).trim())
     );
-    const isRegistered = typeof storeApi?.findRegisteredProfileId === 'function'
-      ? (candidate) => Boolean(storeApi.findRegisteredProfileId(settings, candidate))
-      : () => false;
+    const registeredProfileId = typeof storeApi?.findRegisteredProfileId === 'function'
+      ? (candidate) => storeApi.findRegisteredProfileId(settings, candidate)
+      : () => null;
+    const normalizeText = (value) => String(value ?? '')
+      .normalize('NFKC')
+      .toLowerCase()
+      .trim();
+    const profileNeedsRepair = (profileId, candidate) => {
+      const profile = settings?.profiles?.[profileId];
+      const channels = Array.isArray(profile?.channels) ? profile.channels : [];
+      const unresolved = channels.filter((channel) =>
+        channel.channelIdMigration === 'unresolved-lowercase'
+      );
+      if (!unresolved.length) return false;
+
+      const channelKey = normalizeText(candidate?.channelName);
+      const sourceMatches = channels.filter((channel) =>
+        channelKey && normalizeText(channel.sourceChannelName) === channelKey
+      );
+      if (sourceMatches.length) {
+        return sourceMatches.some((channel) =>
+          channel.channelIdMigration === 'unresolved-lowercase'
+        );
+      }
+      const displayMatches = channels.filter((channel) =>
+        channelKey && normalizeText(channel.displayName) === channelKey
+      );
+      if (displayMatches.length) {
+        return displayMatches.some((channel) =>
+          channel.channelIdMigration === 'unresolved-lowercase'
+        );
+      }
+
+      // v1.43.7 以前の単一チャンネル profile は sourceChannelName を持たない。
+      // profile 表示名による登録済み判定と同じ場合に限り、その1件を対応先とみなす。
+      return channels.length === 1 &&
+        normalizeText(profile?.displayName) === normalizeText(candidate?.profileName) &&
+        unresolved[0] === channels[0];
+    };
 
     const visible = [];
     const registered = [];
     const excluded = [];
+    const needsRepair = [];
     for (const candidate of list) {
       if (exclusions.has(String(candidate.channelName).trim())) {
         excluded.push(candidate);
-      } else if (isRegistered(candidate)) {
-        registered.push(candidate);
       } else {
-        visible.push(candidate);
+        const profileId = registeredProfileId(candidate);
+        if (profileId && profileNeedsRepair(profileId, candidate)) {
+          needsRepair.push({ ...candidate, needsRepair: true });
+        } else if (profileId) {
+          registered.push(candidate);
+        } else {
+          visible.push(candidate);
+        }
       }
     }
-    return { visible, registered, excluded };
+    return { visible, registered, excluded, needsRepair };
   }
 
   function renderCandidateRows(container, candidates, handlers, summary) {
@@ -165,12 +207,13 @@
     if (!candidates.length) {
       const hiddenCount =
         (summary?.registeredCount || 0) + (summary?.excludedCount || 0);
+      const repairCount = summary?.needsRepairCount || 0;
       appendText(
         container,
         'p',
         'az-official-empty',
-        hiddenCount
-          ? `未登録の候補はありません（登録済み ${summary?.registeredCount || 0} 件・除外 ${summary?.excludedCount || 0} 件は非表示）。`
+        hiddenCount || repairCount
+          ? `未登録の候補はありません（要修復 ${repairCount} 件、登録済み ${summary?.registeredCount || 0} 件・除外 ${summary?.excludedCount || 0} 件は非表示）。`
           : '現在の集計には公式プロファイル候補がありません。'
       );
       return 0;
@@ -188,6 +231,14 @@
         'az-official-badge',
         candidate.kind === 'topic' ? 'Topic候補' : '公式候補'
       );
+      if (candidate.needsRepair === true) {
+        appendText(
+          summary,
+          'span',
+          'az-official-badge',
+          '要修復: 旧形式のチャンネルIDです'
+        );
+      }
       appendText(
         summary,
         'span',

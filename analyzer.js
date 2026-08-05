@@ -743,7 +743,7 @@
       const parts = api.partitionCandidates(allCandidates, settings, store);
       api.renderCandidateRows(
         container,
-        parts.visible,
+        [...parts.needsRepair, ...parts.visible],
         {
           onReview: (candidate) => void openOfficialCandidateReview(candidate),
           onExclude: (candidate) => void excludeCandidate(candidate),
@@ -751,6 +751,7 @@
         {
           registeredCount: parts.registered.length,
           excludedCount: parts.excluded.length,
+          needsRepairCount: parts.needsRepair.length,
         }
       );
       renderExcludedFooter(parts);
@@ -862,6 +863,13 @@
           query,
           bindQuery,
         });
+        if (!result.saved && result.reason === 'channel-id-repair-failed') {
+          setOfficialRegistrationStatus(
+            'チャンネルIDを復元できませんでした。候補チャンネルのURLが正しいか確認してください。',
+            true
+          );
+          return;
+        }
         if (!result.saved && result.reason === 'already-registered') {
           document.getElementById('azOfficialConfirmed').checked = false;
           document.getElementById('azOfficialBindQuery').checked = false;
@@ -878,7 +886,11 @@
         const review = document.getElementById('azOfficialReview');
         if (review) review.hidden = true;
         currentOfficialCandidate = null;
-        setOfficialRegistrationStatus('プロフィールとチャンネルを登録しました。');
+        setOfficialRegistrationStatus(
+          result.reason === 'channel-id-repaired'
+            ? '旧形式のチャンネルIDを正しい形式へ復元しました。'
+            : 'プロフィールとチャンネルを登録しました。'
+        );
         await paint();
       } catch (error) {
         setOfficialRegistrationStatus(`保存できませんでした: ${error.message}`, true);
