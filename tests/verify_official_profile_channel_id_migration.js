@@ -147,18 +147,59 @@ async function main() {
   const repair = await store.registerConfirmed(repairRegistration, repairStorage);
   const repaired = repairStorage.state[store.STORAGE_KEY]
     .profiles['profile-0'].channels[0];
-  check('user-confirmed exact URL repairs storage without duplicating the profile',
-    repair.saved === false &&
-    repair.reason === 'already-registered' &&
+  check('user-confirmed exact URL reports and persists a channel-id repair',
+    repair.saved === true &&
+    repair.changed === true &&
+    repair.reason === 'channel-id-repaired' &&
+    repair.recoveredCount === 1 &&
     repairStorage.setCount === 1 &&
     repaired.channelId === RECOVERED_ID &&
+    repaired.canonicalPath === `/channel/${RECOVERED_ID}` &&
+    !Object.hasOwn(repaired, 'channelIdMigration') &&
     channelCount(repairStorage.state[store.STORAGE_KEY]) === 1);
 
   const repeatRepair = await store.registerConfirmed(repairRegistration, repairStorage);
   check('repeating confirmed repair performs no second migration write',
     repeatRepair.saved === false &&
+    repeatRepair.changed === false &&
     repeatRepair.reason === 'already-registered' &&
     repairStorage.setCount === 1);
+
+  console.log('ambiguous Analyze repair is reported without changing identity');
+  const ambiguousStored = settingsWithChannels([
+    {
+      ...brokenChannel(ambiguousLower, 'Ambiguous'),
+      channelIdMigration: store.CHANNEL_ID_MIGRATION_UNRESOLVED,
+    },
+    brokenChannel('UCAbcdefghijklmnopqrstuv', 'Evidence A'),
+    brokenChannel('UCaBcdefghijklmnopqrstuv', 'Evidence B'),
+  ]);
+  const ambiguousBefore = JSON.stringify(ambiguousStored);
+  const ambiguousStorage = createStorageStub(ambiguousStored);
+  const ambiguousRegistration = await store.registerConfirmed(
+    {
+      profileName: 'Profile 0',
+      channel: {
+        channelId: 'UCabCdefghijklmnopqrstuv',
+        canonicalPath: '/channel/UCabCdefghijklmnopqrstuv',
+        displayName: 'Ambiguous',
+      },
+      confirmed: true,
+    },
+    ambiguousStorage
+  );
+  const ambiguousAfter = ambiguousStorage.state[store.STORAGE_KEY];
+  const stillAmbiguous = ambiguousAfter.profiles['profile-0'].channels[0];
+  check('conflicting repair evidence returns a visible failure without mutating identity',
+    ambiguousRegistration.saved === false &&
+    ambiguousRegistration.changed === false &&
+    ambiguousRegistration.reason === 'channel-id-repair-failed' &&
+    ambiguousStorage.setCount === 0 &&
+    stillAmbiguous.channelId === ambiguousLower &&
+    stillAmbiguous.canonicalPath === `/channel/${ambiguousLower}` &&
+    stillAmbiguous.channelIdMigration === store.CHANNEL_ID_MIGRATION_UNRESOLVED &&
+    channelCount(ambiguousAfter) === 3 &&
+    JSON.stringify(ambiguousAfter) === ambiguousBefore);
 
   console.log('automatic unresolved marker persistence');
   const unresolvedStorage = createStorageStub(settingsWithChannels([

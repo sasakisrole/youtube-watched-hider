@@ -386,23 +386,54 @@
       return { changed: false, settings, reason: 'invalid-target' };
     }
 
-    // 二重登録の防止。同じチャンネルが既にどれかのプロフィールに入っているなら
-    // 新しいプロフィールを作らない（従来は createProfile が毎回走り、同名でも
-    // id に -2 が付いた別プロフィールが増えていた）。
-    for (const existing of Object.values(settings.profiles)) {
-      if (duplicateChannelIndex(existing.channels, channel) >= 0) {
-        return {
-          changed: false,
-          settings,
-          reason: 'already-registered',
-          profileId: existing.id,
-        };
-      }
-    }
+    // 確認済みの実URLを、旧小文字IDを直すための復元証拠として使う。
+    // migrateLowercaseChannelIds の「証拠が1件のときだけ復元」は変更しない。
+    const recovery = migrateLowercaseChannelIds(settings, [channel]);
+    settings = recovery.settings;
+    const repaired = recovery.recoveredCount > 0;
+    const unresolvedMatches = (profile) => {
+      const targetId = String(channel.channelId ?? '').trim().toLowerCase();
+      const sourceKey = normalizeText(channel.sourceChannelName);
+      const displayKey = normalizeText(channel.displayName);
+      return profile?.channels?.some((existing) => {
+        if (existing.channelIdMigration !== CHANNEL_ID_MIGRATION_UNRESOLVED) {
+          return false;
+        }
+        const existingId = String(existing.channelId ?? '').trim().toLowerCase();
+        return Boolean(
+          (targetId && existingId === targetId) ||
+          (sourceKey && normalizeText(existing.sourceChannelName) === sourceKey) ||
+          (displayKey && normalizeText(existing.displayName) === displayKey)
+        );
+      });
+    };
+
     const alreadyBySource = findRegisteredProfileId(settings, {
       channelName: channel.sourceChannelName,
       profileName,
     });
+    if (alreadyBySource && unresolvedMatches(settings.profiles[alreadyBySource])) {
+      return {
+        changed: false,
+        settings,
+        reason: 'channel-id-repair-failed',
+        profileId: alreadyBySource,
+      };
+    }
+
+    // 二重登録の防止。同じチャンネルがすでにどれかのプロフィールに入っているなら
+    // 新しいプロフィールを作らない。今回の証拠で復元できた場合だけ変更として返す。
+    for (const existing of Object.values(settings.profiles)) {
+      if (duplicateChannelIndex(existing.channels, channel) >= 0) {
+        return {
+          changed: repaired,
+          settings,
+          reason: repaired ? 'channel-id-repaired' : 'already-registered',
+          profileId: existing.id,
+          ...(repaired ? { recoveredCount: recovery.recoveredCount } : {}),
+        };
+      }
+    }
     if (alreadyBySource) {
       return {
         changed: false,
@@ -524,24 +555,28 @@
     if (!area) return { saved: false, reason: 'storage-unavailable' };
 
     const stored = await storageGet(area);
-    const migration = migrateLowercaseChannelIds(
-      stored[STORAGE_KEY],
-      [registration.channel]
-    );
     const result = mutateConfirmedRegistration(
-      migration.settings,
+      stored[STORAGE_KEY],
       registration
     );
     if (!result.changed) {
-      if (migration.changed) await storageSet(area, result.settings);
-      return { saved: false, reason: result.reason || 'unchanged' };
+      return {
+        saved: false,
+        changed: false,
+        reason: result.reason || 'unchanged',
+        settings: result.settings,
+        profileId: result.profileId,
+      };
     }
     await storageSet(area, result.settings);
     return {
       saved: true,
+      changed: true,
+      reason: result.reason,
       settings: result.settings,
       profileId: result.profileId,
       createdProfile: result.createdProfile,
+      recoveredCount: result.recoveredCount,
     };
   }
 
