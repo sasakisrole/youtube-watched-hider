@@ -149,10 +149,164 @@ function testLikedMetaStructural() {
   check('liked meta structural: popup warning stays wired', popupSource.includes('likedMetaStructural'));
 }
 
+async function testWatchedOptionalFieldTolerance() {
+  const badOptional = {
+    videoId: 'optional-bad',
+    title: 7,
+    channel: {},
+    source: false,
+    composer: [],
+    lyricist: 1,
+    arranger: {},
+    creditsSource: true,
+    creditsRaw: [],
+    creditsFetchFailReason: 9,
+    durationFetchFailed: {},
+    category: false,
+    watchedAt: Infinity,
+    firstWatchedAt: NaN,
+    playCount: Infinity,
+    durationSec: NaN,
+    creditsCheckedAt: Infinity,
+    creditsFetchAttemptedAt: NaN,
+  };
+  const { idb, stores } = makeFake([], []);
+  const WatchedDB = loadWatchedDb(idb);
+  const parsed = WatchedDB.parseImportData({
+    schemaVersion: 2,
+    watchedVideos: [badOptional],
+    likedVideos: [],
+  });
+  check('REQ-1 optional field mismatches are retained by parsing',
+    parsed.watchedVideos.length === 1 && parsed.droppedWatched === 0);
+
+  const imported = await WatchedDB.importData(parsed.watchedVideos);
+  const normalized = stores.watchedVideos.get('optional-bad');
+  check('REQ-1 optional field mismatches are normalized and retained',
+    imported === 1
+      && normalized
+      && normalized.title === ''
+      && normalized.channel === ''
+      && normalized.source === 'unknown'
+      && Number.isFinite(normalized.watchedAt)
+      && Number.isFinite(normalized.firstWatchedAt)
+      && normalized.playCount === 0
+      && normalized.durationSec === null
+      && normalized.creditsCheckedAt === 0
+      && normalized.creditsFetchAttemptedAt === 0);
+
+  const merged = await WatchedDB.mergeImport([{ ...badOptional, videoId: 'optional-merge' }]);
+  check('REQ-1 mergeImport retains optional field mismatches',
+    merged.total === 1 && merged.dropped === 0 && stores.watchedVideos.has('optional-merge'));
+
+  const replaced = await WatchedDB.replaceRecords([], [], [{ ...badOptional, videoId: 'optional-replace' }], []);
+  check('REQ-1 replaceRecords retains optional field mismatches',
+    replaced.importedWatched === 1 && stores.watchedVideos.has('optional-replace'));
+}
+
+async function testWatchedRequiredVideoId() {
+  const invalid = [null, {}, { videoId: '' }, { videoId: 42 }];
+  const { idb } = makeFake([], []);
+  const WatchedDB = loadWatchedDb(idb);
+  const parsed = WatchedDB.parseImportData({
+    schemaVersion: 2,
+    watchedVideos: [...invalid, { videoId: 'valid' }],
+    likedVideos: [],
+  });
+  check('REQ-1 invalid videoId records remain dropped',
+    parsed.watchedVideos.length === 1 && parsed.droppedWatched === invalid.length);
+
+  const imported = await WatchedDB.importData(invalid);
+  const merged = await WatchedDB.mergeImport(invalid);
+  const replaced = await WatchedDB.replaceRecords([], [], invalid, []);
+  check('REQ-1 direct callers still reject invalid videoId records',
+    imported === 0 && merged.total === 0 && merged.dropped === invalid.length && replaced.importedWatched === 0);
+}
+
+function testLikedStructuralWarning() {
+  const WatchedDB = loadWatchedDb({});
+  let parsed = null;
+  let threw = false;
+  try {
+    parsed = WatchedDB.parseImportData({
+      schemaVersion: 2,
+      watchedVideos: [{ videoId: 'watched-ok' }],
+      likedVideos: { broken: true },
+    });
+  } catch (_) {
+    threw = true;
+  }
+  check('REQ-2 non-array likedVideos warns without throwing',
+    !threw
+      && parsed.watchedVideos.length === 1
+      && parsed.likedVideos.length === 0
+      && parsed.likedStructuralError === true
+      && parsed.droppedWatched === 0
+      && parsed.droppedLiked === 0);
+
+  const popupSource = fs.readFileSync(path.join(ROOT, 'popup.js'), 'utf8');
+  const renderStart = popupSource.indexOf('function renderImportDiff');
+  const renderEnd = popupSource.indexOf('function formatImportResult', renderStart);
+  const renderSnippet = popupSource.slice(renderStart, renderEnd);
+  const renderImportDiff = new Function(renderSnippet + '; return renderImportDiff;')();
+  const warning = renderImportDiff(WatchedDB.diffImport(parsed, [], []));
+  check('REQ-2 popup renders liked structural warning',
+    warning.includes('高評価データの形式が不正'));
+}
+
+async function testPartialSuccessDisplay() {
+  const offscreenSource = fs.readFileSync(path.join(ROOT, 'offscreen.js'), 'utf8');
+  const importStart = offscreenSource.indexOf('async function importPayload');
+  const importEnd = offscreenSource.indexOf('// u1ps §7.3: read-only dry-run diff', importStart);
+  const importSnippet = offscreenSource.slice(importStart, importEnd);
+  let watchedCalls = 0;
+  const WatchedDB = {
+    parseImportData: () => ({
+      watchedVideos: [{ videoId: 'watched-ok' }],
+      likedVideos: [{ videoId: 'liked-fails' }],
+      likedSyncMeta: null,
+      droppedWatched: 0,
+      droppedLiked: 0,
+      likedStructuralError: false,
+      likedMetaStructuralError: false,
+    }),
+    importData: async () => { watchedCalls++; return 1; },
+    importLikedData: async () => { throw new Error('liked write failed'); },
+  };
+  const importPayload = new Function('WatchedDB', importSnippet + '; return importPayload;')(WatchedDB);
+  const response = await importPayload({ data: {} }, false);
+  check('REQ-3 liked failure returns partial success after watched import',
+    watchedCalls === 1
+      && response.count === 1
+      && response.partialSuccess === true
+      && response.liked.failed === true
+      && response.liked.error === 'liked write failed');
+
+  const popupSource = fs.readFileSync(path.join(ROOT, 'popup.js'), 'utf8');
+  const formatStart = popupSource.indexOf('function formatImportResult');
+  const formatEnd = popupSource.indexOf('function handleImportResponse', formatStart);
+  const formatSnippet = popupSource.slice(formatStart, formatEnd);
+  const formatImportResult = new Function(formatSnippet + '; return formatImportResult;')();
+  const rendered = formatImportResult({ ...response, success: true }, 'バックアップ優先で統合');
+  check('REQ-3 popup renders partial success warning',
+    rendered.warning === true
+      && rendered.text.includes('一部成功')
+      && rendered.text.includes('高評価の復元に失敗')
+      && rendered.text.includes('1 records'));
+
+  const backgroundSource = fs.readFileSync(path.join(ROOT, 'background.js'), 'utf8');
+  check('REQ-3 failed liked import does not store liked metadata',
+    (backgroundSource.match(/if \(!\(result\.liked && result\.liked\.failed\)\)/g) || []).length === 2);
+}
+
 async function main() {
   await testReplace();
   await testMergeLiked();
   testLikedMetaStructural();
+  await testWatchedOptionalFieldTolerance();
+  await testWatchedRequiredVideoId();
+  testLikedStructuralWarning();
+  await testPartialSuccessDisplay();
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail > 0) process.exit(1);
 }

@@ -467,19 +467,31 @@ function renderImportDiff(diff) {
   return lines.join('\n');
 }
 
+function formatImportResult(response, label) {
+  const likedFailed = !!(response.liked && response.liked.failed);
+  const liked = likedFailed
+    ? ' / 高評価の復元に失敗'
+    : (response.liked && typeof response.liked.imported === 'number' ? ` / ${response.liked.imported} liked` : '');
+  const droppedN = response.dropped ? ((response.dropped.watched || 0) + (response.dropped.liked || 0)) : 0;
+  const structural = !!(response.dropped && response.dropped.likedStructural);
+  const metaStructural = !!(response.dropped && response.dropped.likedMetaStructural);
+  const removed = response.removed ? `, ${(response.removed.watched || 0) + (response.removed.liked || 0)}件削除` : '';
+  const notes = [];
+  if (droppedN) notes.push(`${droppedN}件スキップ`);
+  if (structural) notes.push('高評価データ形式不正');
+  if (metaStructural) notes.push('高評価アカウント情報の形式不正');
+  const note = notes.length ? `（${notes.join(' / ')}）` : '';
+  const resultLabel = likedFailed ? `${label}（一部成功）` : label;
+  return {
+    text: `${resultLabel}: ${response.count} records${liked}${removed}${note}`,
+    warning: likedFailed || droppedN > 0 || structural || metaStructural,
+  };
+}
+
 function handleImportResponse(response, label) {
   if (response && response.success) {
-    const liked = response.liked && typeof response.liked.imported === 'number' ? ` / ${response.liked.imported} liked` : '';
-    const droppedN = response.dropped ? ((response.dropped.watched || 0) + (response.dropped.liked || 0)) : 0;
-    const structural = !!(response.dropped && response.dropped.likedStructural);
-    const metaStructural = !!(response.dropped && response.dropped.likedMetaStructural);
-    const removed = response.removed ? `, ${(response.removed.watched || 0) + (response.removed.liked || 0)}件削除` : '';
-    const droppedNotes = [];
-    if (droppedN) droppedNotes.push(`${droppedN}件スキップ`);
-    if (structural) droppedNotes.push('高評価データ形式不正');
-    if (metaStructural) droppedNotes.push('高評価アカウント情報の形式不正');
-    const droppedNote = droppedNotes.length ? `（${droppedNotes.join(' / ')}）` : '';
-    showStatus(`${label}: ${response.count} records${liked}${removed}${droppedNote}`, false, droppedN > 0 || structural || metaStructural);
+    const result = formatImportResult(response, label);
+    showStatus(result.text, false, result.warning);
     loadStats();
     if (historyPanel.style.display !== 'none') loadHistory();
   } else if (response && response.reason === 'backup_failed') {
