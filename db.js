@@ -717,16 +717,10 @@ if (typeof WatchedDB === 'undefined') {
 
     // Validate and normalize a record
     function isValidRecord(record) {
-      if (!record || typeof record !== 'object' || typeof record.videoId !== 'string' || record.videoId.length === 0) return false;
-      const stringFields = ['title', 'channel', 'source', 'composer', 'lyricist', 'arranger', 'creditsSource', 'creditsRaw', 'creditsFetchFailReason', 'durationFetchFailed', 'category'];
-      const numberFields = ['watchedAt', 'firstWatchedAt', 'playCount', 'durationSec', 'creditsCheckedAt', 'creditsFetchAttemptedAt'];
-      for (const field of stringFields) {
-        if (record[field] != null && typeof record[field] !== 'string') return false;
-      }
-      for (const field of numberFields) {
-        if (record[field] != null && (typeof record[field] !== 'number' || !Number.isFinite(record[field]))) return false;
-      }
-      return true;
+      return !!record
+        && typeof record === 'object'
+        && typeof record.videoId === 'string'
+        && record.videoId.length > 0;
     }
 
     function sanitizeCreditRoleSources(value) {
@@ -848,9 +842,11 @@ if (typeof WatchedDB === 'undefined') {
         videoId: String(record.videoId),
         title: typeof record.title === 'string' ? record.title : '',
         channel: typeof record.channel === 'string' ? record.channel : '',
-        watchedAt: typeof record.watchedAt === 'number' && record.watchedAt > 0 ? record.watchedAt : Date.now(),
-        firstWatchedAt: typeof record.firstWatchedAt === 'number' && record.firstWatchedAt > 0 ? record.firstWatchedAt : (typeof record.watchedAt === 'number' ? record.watchedAt : Date.now()),
-        playCount: typeof record.playCount === 'number' && record.playCount >= 0 ? record.playCount : 0,
+        watchedAt: typeof record.watchedAt === 'number' && Number.isFinite(record.watchedAt) && record.watchedAt > 0 ? record.watchedAt : Date.now(),
+        firstWatchedAt: typeof record.firstWatchedAt === 'number' && Number.isFinite(record.firstWatchedAt) && record.firstWatchedAt > 0
+          ? record.firstWatchedAt
+          : (typeof record.watchedAt === 'number' && Number.isFinite(record.watchedAt) && record.watchedAt > 0 ? record.watchedAt : Date.now()),
+        playCount: typeof record.playCount === 'number' && Number.isFinite(record.playCount) && record.playCount >= 0 ? record.playCount : 0,
         source: typeof record.source === 'string' ? record.source : 'unknown',
         durationSec: typeof record.durationSec === 'number' && Number.isFinite(record.durationSec)
           ? (record.durationSec === -1 || record.durationSec > 0 ? Math.round(record.durationSec) : null)
@@ -858,12 +854,12 @@ if (typeof WatchedDB === 'undefined') {
         composer: typeof record.composer === 'string' ? record.composer : '',
         lyricist: typeof record.lyricist === 'string' ? record.lyricist : '',
         arranger: typeof record.arranger === 'string' ? record.arranger : '',
-        creditsCheckedAt: typeof record.creditsCheckedAt === 'number' && record.creditsCheckedAt > 0 ? record.creditsCheckedAt : 0,
+        creditsCheckedAt: typeof record.creditsCheckedAt === 'number' && Number.isFinite(record.creditsCheckedAt) && record.creditsCheckedAt > 0 ? record.creditsCheckedAt : 0,
         creditsSource: typeof record.creditsSource === 'string' ? record.creditsSource : '',
         creditRoleSources: sanitizeCreditRoleSources(record.creditRoleSources),
         creditsRaw: typeof record.creditsRaw === 'string' ? record.creditsRaw : '',
         creditsFetchFailReason: typeof record.creditsFetchFailReason === 'string' ? record.creditsFetchFailReason : '',
-        creditsFetchAttemptedAt: typeof record.creditsFetchAttemptedAt === 'number' && record.creditsFetchAttemptedAt > 0 ? record.creditsFetchAttemptedAt : 0,
+        creditsFetchAttemptedAt: typeof record.creditsFetchAttemptedAt === 'number' && Number.isFinite(record.creditsFetchAttemptedAt) && record.creditsFetchAttemptedAt > 0 ? record.creditsFetchAttemptedAt : 0,
         durationFetchFailed: typeof record.durationFetchFailed === 'string' ? record.durationFetchFailed : '',
         category: typeof record.category === 'string' ? record.category : '',
       };

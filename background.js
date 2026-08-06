@@ -1118,7 +1118,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'IMPORT_DATA') {
     sendToOffscreenDb('IMPORT_DATA', { data: message.data })
       .then(async (result) => {
-        await storeImportedMeta(result);
+        if (!(result.liked && result.liked.failed)) await storeImportedMeta(result);
         const addedIds = Array.isArray(result.watchedIds) ? result.watchedIds : [];
         broadcastCacheInvalidated({
           reason: 'import',
@@ -1135,7 +1135,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // "安全に統合" (current-priority): keep current meta, fill only if absent.
     sendToOffscreenDb('MERGE_IMPORT', { data: message.data })
       .then(async (result) => {
-        await storeImportedMetaIfAbsent(result);
+        if (!(result.liked && result.liked.failed)) await storeImportedMetaIfAbsent(result);
         broadcastCacheInvalidated({ reason: 'merge-import', mode: 'reload' });
         sendResponse({ success: true, ...result });
       })

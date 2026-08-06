@@ -50,11 +50,18 @@ async function importPayload(message, merge) {
   // u1ps §7.3 (Codex B2 VERIFY blocker 1): "安全に統合" (merge) must keep current
   // liked records (add-only); "backup優先で統合" (non-merge) overwrites (put).
   let likedCount = 0;
+  let likedError = null;
   if (parsed.likedVideos.length) {
-    if (merge) {
-      likedCount = (await WatchedDB.mergeLikedData(parsed.likedVideos)).added;
-    } else {
-      likedCount = await WatchedDB.importLikedData(parsed.likedVideos);
+    try {
+      if (merge) {
+        likedCount = (await WatchedDB.mergeLikedData(parsed.likedVideos)).added;
+      } else {
+        likedCount = await WatchedDB.importLikedData(parsed.likedVideos);
+      }
+    } catch (error) {
+      // Watched records have already committed. Report a visible partial success
+      // instead of turning the whole response into an apparently total failure.
+      likedError = error && error.message ? error.message : String(error);
     }
   }
   return {
@@ -72,7 +79,8 @@ async function importPayload(message, merge) {
     },
     watchedIds,
     watched,
-    liked: { imported: likedCount },
+    partialSuccess: likedError !== null,
+    liked: { imported: likedCount, failed: likedError !== null, error: likedError || undefined },
     likedSyncMeta: parsed.likedSyncMeta,
   };
 }
