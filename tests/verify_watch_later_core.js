@@ -194,7 +194,53 @@ eq('a candidate with no setVideoId is refused',
     { ...scanOk, candidates: [{ videoId: 'vAAA', setVideoId: '' }] }, confirm1, T0).status,
   'no-set-video-id');
 
-console.log('\n[6] source pins (guards that cannot be expressed as pure calls)');
+console.log('\n[6] Round D pre-work: measuring whether an edit reassigns setVideoId');
+const beforeRows = Core.normalizeRows([
+  { videoId: 'v1', setVideoId: 'S1' },
+  { videoId: 'v2', setVideoId: 'S2' },
+  { videoId: 'v3', setVideoId: 'S3' },
+]);
+const sameRows = Core.normalizeRows([
+  { videoId: 'v1', setVideoId: 'S1' },
+  { videoId: 'v3', setVideoId: 'S3' },
+]);
+// v2 was deleted; v1/v3 kept their ids -> "an edit does not reassign".
+eq('unchanged ids are counted as compared', Core.compareSetVideoIds(beforeRows, sameRows).compared, 2);
+eq('unchanged ids report no drift', Core.compareSetVideoIds(beforeRows, sameRows).changed, 0);
+const movedRows = Core.normalizeRows([
+  { videoId: 'v1', setVideoId: 'S1' },
+  { videoId: 'v3', setVideoId: 'S9' },
+]);
+eq('a reassigned id is detected', Core.compareSetVideoIds(beforeRows, movedRows).changed, 1);
+// Rows that vanished, and rows that are new, carry no information about drift.
+eq('a removed row is not compared', Core.compareSetVideoIds(beforeRows, sameRows).compared, 2);
+const withNew = Core.normalizeRows([
+  { videoId: 'v1', setVideoId: 'S1' },
+  { videoId: 'v9', setVideoId: 'S9' },
+]);
+eq('a newly added row is not compared', Core.compareSetVideoIds(beforeRows, withNew).compared, 1);
+// A video present twice has two rows and no way to say which one "kept" its id.
+const dupBefore = Core.normalizeRows([
+  { videoId: 'v1', setVideoId: 'S1' },
+  { videoId: 'v1', setVideoId: 'S2' },
+  { videoId: 'v2', setVideoId: 'S3' },
+]);
+const dupAfter = Core.normalizeRows([
+  { videoId: 'v1', setVideoId: 'S1' },
+  { videoId: 'v1', setVideoId: 'S2' },
+  { videoId: 'v2', setVideoId: 'S3' },
+]);
+eq('a duplicated video is excluded from the comparison',
+  Core.compareSetVideoIds(dupBefore, dupAfter).compared, 1);
+// A row with no setVideoId has nothing to compare.
+eq('a row with no setVideoId is excluded',
+  Core.compareSetVideoIds(
+    Core.normalizeRows([{ videoId: 'v1', setVideoId: '' }, { videoId: 'v2', setVideoId: 'S2' }]),
+    Core.normalizeRows([{ videoId: 'v1', setVideoId: 'S1' }, { videoId: 'v2', setVideoId: 'S2' }])
+  ).compared, 1);
+eq('empty input compares nothing', Core.compareSetVideoIds([], beforeRows).compared, 0);
+
+console.log('\n[7] source pins (guards that cannot be expressed as pure calls)');
 const contentSrc = fs.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
 check('background.js loads watch_later_core.js',
   /importScripts\('watch_later_core\.js'\)/.test(src));
@@ -250,6 +296,17 @@ check('it treats an unconfirmed response as failure',
 // must be dropped — this is what keeps Round C to exactly one row per scan.
 check('it discards the scan after a successful delete',
   /lastWatchLaterScan = null;/.test(removeBodySrc));
+// ...but NOT the fingerprint: it is the only thing that survives to tell the next
+// scan whether this delete reassigned anybody else's setVideoId.
+check('it keeps the fingerprint so the next scan can measure drift',
+  !/lastWatchLaterFingerprint = null;/.test(removeBodySrc));
+check('the scan compares drift before overwriting the fingerprint',
+  /Core\.compareSetVideoIds\(prevFingerprint, rows\)[\s\S]{0,200}?writeWatchLaterFingerprint\(rows\.map\(/.test(scanBody));
+// The measurement spans two scans with a delete between them, so it must survive an
+// MV3 service worker eviction — and it must not be written to disk.
+check('the fingerprint is mirrored into storage.session, not storage.local',
+  /chrome\.storage\.session\.set\(\{ \[WL_FINGERPRINT_KEY\]/.test(src)
+  && !/storage\.local[\s\S]{0,80}WL_FINGERPRINT_KEY/.test(src));
 
 // The shared extractor now emits setVideoId; the liked path must strip it so a
 // Watch-Later-only field never lands in the liked store.

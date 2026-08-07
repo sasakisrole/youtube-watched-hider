@@ -162,6 +162,40 @@
     return { status: 'ok', row };
   }
 
+  // ---- Round D pre-work: does an edit reassign the other rows' setVideoId? ----
+  //
+  // The handoff asserts that YouTube reassigns setVideoId whenever the list is edited
+  // (I-057 / I-081), and Round C is built defensively around that: one delete discards
+  // the whole scan. But the claim was inherited, never measured — and it decides the
+  // shape of a bulk delete. If the ids survive an edit, one scan can drive many
+  // deletions; if they do not, every deletion needs a fresh scan of the whole list.
+  //
+  // This is measurement only: nothing acts on the result yet.
+  //
+  // Only videoIds appearing exactly once in BOTH scans are compared. For a video added
+  // twice there is no way to say which of its two rows "kept" its id, so counting it
+  // either way would invent a result.
+  function compareSetVideoIds(before, after) {
+    const uniqueMap = (rows) => {
+      const counts = countByVideoId(rows);
+      const m = new Map();
+      for (const r of rows || []) {
+        if (r && r.setVideoId && (counts.get(r.videoId) || 0) === 1) m.set(r.videoId, r.setVideoId);
+      }
+      return m;
+    };
+    const a = uniqueMap(before);
+    const b = uniqueMap(after);
+    let compared = 0;
+    let changed = 0;
+    for (const [videoId, setVideoId] of a) {
+      if (!b.has(videoId)) continue;
+      compared += 1;
+      if (b.get(videoId) !== setVideoId) changed += 1;
+    }
+    return { compared, changed };
+  }
+
   const api = {
     WL_PLAYLIST_ID,
     WL_BROWSE_ID,
@@ -175,6 +209,7 @@
     buildRemoveOneBody,
     isEditPlaylistSuccess,
     selectConfirmedCandidate,
+    compareSetVideoIds,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

@@ -3073,6 +3073,32 @@ async function syncLikedPlaylist({ confirmAccountChange, confirmUnknownAccount, 
 // list" rule — because a scan that silently wandered into a recommendation shelf
 // would later hand those unrelated videos to a delete action.
 let lastWatchLaterScan = null;
+// Deliberately NOT cleared by a delete (unlike lastWatchLaterScan), so the next scan
+// can report whether the edit reassigned any setVideoId. Read-only diagnostic for the
+// Round D design question — nothing acts on it.
+let lastWatchLaterFingerprint = null;
+const WL_FINGERPRINT_KEY = 'watchLaterFingerprint';
+
+// Mirrored into chrome.storage.session because the measurement spans two scans with a
+// delete in between, and an MV3 service worker can be evicted in that gap — an
+// in-memory-only fingerprint would just silently never report. `session` (not `local`)
+// is deliberate: this is a list of the user's video ids, so it stays in memory and
+// dies with the browser session rather than being written to disk.
+async function readWatchLaterFingerprint() {
+  if (lastWatchLaterFingerprint) return lastWatchLaterFingerprint;
+  try {
+    const got = await chrome.storage.session.get(WL_FINGERPRINT_KEY);
+    const rows = got && got[WL_FINGERPRINT_KEY];
+    return Array.isArray(rows) && rows.length ? rows : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+async function writeWatchLaterFingerprint(rows) {
+  lastWatchLaterFingerprint = rows;
+  try { await chrome.storage.session.set({ [WL_FINGERPRINT_KEY]: rows }); } catch (_e) {}
+}
 
 async function scanWatchLater({ maxPages } = {}) {
   const Core = globalThis.WatchLaterCore;
@@ -3287,6 +3313,11 @@ async function scanWatchLater({ maxPages } = {}) {
   }
 
   const plan = Core.buildRemovalPlan(rows, watchedMap || {});
+  // Compare against the previous completed scan BEFORE overwriting the fingerprint.
+  // A failed scan never gets here, so the fingerprint only ever holds real rows.
+  const prevFingerprint = await readWatchLaterFingerprint();
+  const drift = prevFingerprint ? Core.compareSetVideoIds(prevFingerprint, rows) : null;
+  await writeWatchLaterFingerprint(rows.map((r) => ({ videoId: r.videoId, setVideoId: r.setVideoId })));
   lastWatchLaterScan = {
     syncSessionId,
     tabId: syncSession.tabId,
@@ -3310,6 +3341,7 @@ async function scanWatchLater({ maxPages } = {}) {
     pages: page,
     errors,
     counts: plan.counts,
+    drift,
     // Capped preview only: the full candidate list stays in the service worker for
     // the deletion step instead of being copied into every UI message.
     preview: plan.candidates.slice(0, 200).map((c) => ({

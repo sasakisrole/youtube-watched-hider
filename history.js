@@ -364,6 +364,11 @@ if (scanWatchLaterBtn) {
       if (c.noSetVideoId) parts.push(`削除ID未取得 ${c.noSetVideoId}件`);
       if (c.duplicateVideoId) parts.push(`重複登録 ${c.duplicateVideoId}件`);
       if (res.partial) parts.push('※全件を取得しきれていません');
+      // Round D の設計判断用の実測値。前回の照合が残っているときだけ出る。
+      // 「削除ID変化 0件」が続けば、1回の照合で複数件消せる設計にできる。
+      if (res.drift && res.drift.compared) {
+        parts.push(`前回比 残存${res.drift.compared}件/削除ID変化${res.drift.changed}件`);
+      }
       fixStatus.textContent = parts.join(' / ');
       armWatchLaterRemoval(res);
     });
