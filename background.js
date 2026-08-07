@@ -1331,6 +1331,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'REMOVE_ONE_WATCH_LATER') {
+    removeOneWatchLaterRow({ syncSessionId: message.syncSessionId, videoId: message.videoId })
+      .then(sendResponse)
+      .catch((e) => sendResponse({ success: false, error: e.message }));
+    return true;
+  }
+
   if (message.type === 'GET_LIKED') {
     sendToOffscreenDb('GET_LIKED')
       .then((rows) => sendResponse({ success: true, rows }))
@@ -3289,6 +3296,10 @@ async function scanWatchLater({ maxPages } = {}) {
     rows,
     candidates: plan.candidates,
     partial,
+    // Kept so the deletion step does not have to re-fetch the playlist HTML just to
+    // rebuild the Innertube context — and so it provably uses the context from the
+    // same pinned session that produced these setVideoIds.
+    innertube: { apiKey: ytcfg.apiKey, clientVersion: ytcfg.clientVersion, context: baseContext },
   };
 
   return {
@@ -3307,6 +3318,69 @@ async function scanWatchLater({ maxPages } = {}) {
     })),
     previewTruncated: plan.candidates.length > 200,
   };
+}
+
+// Round C: remove exactly ONE row from Watch Later.
+//
+// Every check here exists because the operation cannot be undone:
+//   - the row must come from the last scan's candidate list (never from the page),
+//   - it must be the row the user confirmed by name (`videoId` handshake),
+//   - the scan must be recent (setVideoId goes stale when the list changes),
+//   - the account/tab must still be the one that produced the scan,
+//   - and success must be stated by YouTube, not inferred from a 200.
+async function removeOneWatchLaterRow({ syncSessionId, videoId } = {}) {
+  const Core = globalThis.WatchLaterCore;
+  const scan = lastWatchLaterScan;
+  const pick = Core.selectConfirmedCandidate(scan, { syncSessionId, videoId }, Date.now());
+  if (pick.status !== 'ok') return { success: false, reason: pick.status };
+
+  // Re-pin on the ORIGINAL tab. The scan already checked this, but an account switch
+  // between "scan" and "delete" is exactly the state in which a delete lands on the
+  // wrong list, so it is paid for twice.
+  let ctx;
+  try {
+    ctx = await sendToYouTubeTab(
+      { type: 'GET_YOUTUBE_SYNC_CONTEXT', syncSessionId: scan.syncSessionId }, scan.tabId);
+  } catch (_e) {
+    return { success: false, reason: 'sync-tab-unavailable' };
+  }
+  const ctxAuthUser = String(ctx && ctx.authUser == null ? '' : ctx.authUser);
+  const ctxAccountKey = String((ctx && ctx.accountId) || '');
+  if (!ctx || !ctx.success || ctxAuthUser !== scan.authUser
+      || (scan.accountKey && ctxAccountKey !== scan.accountKey)) {
+    return { success: false, reason: 'sync-session-changed' };
+  }
+
+  const it = scan.innertube || {};
+  let resp;
+  try {
+    resp = await sendToYouTubeTab({
+      type: 'FETCH_INNERTUBE_EDIT_PLAYLIST',
+      syncSessionId: scan.syncSessionId,
+      authUser: scan.authUser,
+      apiKey: it.apiKey,
+      clientVersion: it.clientVersion,
+      body: Core.buildRemoveOneBody(it.context, pick.row.setVideoId),
+    }, scan.tabId);
+  } catch (_e) {
+    return { success: false, reason: 'sync-tab-unavailable' };
+  }
+  if (!resp || !resp.success) {
+    return { success: false, reason: (resp && resp.reason) || 'edit-failed' };
+  }
+  if (!Core.isEditPlaylistSuccess(resp.data)) {
+    // Ambiguous outcome: the row may or may not be gone. Say so instead of guessing.
+    return { success: false, reason: 'edit-not-confirmed',
+      status: String((resp.data && resp.data.status) || '') };
+  }
+
+  // One successful edit invalidates every OTHER setVideoId we are holding: YouTube
+  // reassigns them when the list changes. Dropping the whole scan forces a re-scan
+  // before anything else can be removed — that is what makes this "exactly one row"
+  // rather than "the first of many against increasingly stale ids".
+  const removed = { videoId: pick.row.videoId, title: pick.row.title, channel: pick.row.channel };
+  lastWatchLaterScan = null;
+  return { success: true, removed };
 }
 
 // Streaming variant via chrome.runtime.Port — emits progress events.

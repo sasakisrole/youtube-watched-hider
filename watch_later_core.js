@@ -101,13 +101,80 @@
     return { status: 'unique', row: matches[0], matches: 1 };
   }
 
+  // ---- Round C: removing exactly one row -------------------------------------
+  //
+  // Shape observed on the real request (2026-08-08, DevTools capture):
+  //   POST /youtubei/v1/browse/edit_playlist?prettyPrint=false
+  //   { context, playlistId: 'WL', params: 'CAFAAQ%3D%3D',
+  //     actions: [{ setVideoId, action: 'ACTION_REMOVE_VIDEO' }] }
+  //   -> { status: 'STATUS_SUCCEEDED', ... }
+  //
+  // `params` was NOT in the design assumption and would have been missing had the
+  // payload been guessed. YouTube sends it percent-encoded inside the JSON body, so
+  // the literal is stored already-encoded: do not decode or re-encode it.
+  const EDIT_PLAYLIST_PARAMS = 'CAFAAQ%3D%3D';
+  const REMOVE_ACTION = 'ACTION_REMOVE_VIDEO';
+  const EDIT_PLAYLIST_STATUS_OK = 'STATUS_SUCCEEDED';
+
+  // A scan older than this is refused: YouTube reassigns setVideoId when the list
+  // changes, so an old id may now name a different row.
+  const SCAN_MAX_AGE_MS = 10 * 60 * 1000;
+
+  function buildRemoveOneBody(context, setVideoId) {
+    if (!setVideoId) throw new Error('setVideoId is required');
+    return {
+      context: context || {},
+      playlistId: WL_PLAYLIST_ID,
+      params: EDIT_PLAYLIST_PARAMS,
+      actions: [{ setVideoId, action: REMOVE_ACTION }],
+    };
+  }
+
+  // Strict on purpose. A 200 with no status, an unknown status, or a shape we have
+  // not seen must read as "the delete did not happen". Claiming a delete that did
+  // not occur is the worse error: the user can re-scan and see a failure that was
+  // actually a success, but cannot recover a row we wrongly reported as gone.
+  function isEditPlaylistSuccess(data) {
+    return !!data && data.status === EDIT_PLAYLIST_STATUS_OK;
+  }
+
+  // The UI shows the user ONE video by name and asks them to confirm it. This gate
+  // re-checks, inside the worker, that the row still first in the candidate list is
+  // the same video the user approved — the worker never accepts a setVideoId from
+  // the page, and never falls back to "some other candidate" if the list moved.
+  function selectConfirmedCandidate(scan, expected, now) {
+    const exp = expected || {};
+    if (!scan || !Array.isArray(scan.candidates) || !scan.candidates.length) {
+      return { status: 'no-scan', row: null };
+    }
+    const age = now - scan.scannedAt;
+    if (typeof scan.scannedAt !== 'number' || !(age >= 0) || age > SCAN_MAX_AGE_MS) {
+      return { status: 'scan-expired', row: null };
+    }
+    if (!exp.syncSessionId || exp.syncSessionId !== scan.syncSessionId) {
+      return { status: 'stale-scan', row: null };
+    }
+    const row = scan.candidates[0];
+    if (!row || !row.setVideoId) return { status: 'no-set-video-id', row: null };
+    if (!exp.videoId || exp.videoId !== row.videoId) {
+      return { status: 'confirmation-mismatch', row: null };
+    }
+    return { status: 'ok', row };
+  }
+
   const api = {
     WL_PLAYLIST_ID,
     WL_BROWSE_ID,
+    EDIT_PLAYLIST_PARAMS,
+    REMOVE_ACTION,
+    SCAN_MAX_AGE_MS,
     normalizeRows,
     countByVideoId,
     buildRemovalPlan,
     findUniqueRowByVideoId,
+    buildRemoveOneBody,
+    isEditPlaylistSuccess,
+    selectConfirmedCandidate,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

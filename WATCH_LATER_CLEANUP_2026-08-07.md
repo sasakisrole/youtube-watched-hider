@@ -63,21 +63,98 @@ zipから落ちて、パッケージ版だけ service worker が起動時に丸�
 （開発版=フォルダ読み込みでは再現しない）。`importScripts()` を辿るようにして解消。
 dry-run のホワイトリストは 28件 → 29件。
 
-## まだ確定していないこと（Round Cの前に必要）
+## 実機スモーク結果（2026-08-08・非破壊）
 
-1. **fixtureは合成**。2026年の実 `VLWL` レスポンスの renderer 構造・`setVideoId` の実際の
-   位置は未確認（I-093）。実機で1回キャプチャして `tests/fixtures/watch_later_browse.json`
-   を差し替えるまで、テストが守っているのは「決めたルール」であって「実レスポンスとの整合」ではない。
-2. **`/youtubei/v1/browse/edit_playlist` の実ヘッダ・payload 未確認**（I-094）。外部スクリプトの
-   決め打ちを採用せず、実通信を見てから確定する。
-3. **UIの置き場**。いまは history.html のメンテナンス行に最小構成で置いた。削除対象一覧を
+`照合` ボタンの実行結果（けんとさんの実アカウントで実施・削除なし）:
+
+```text
+後で見る 582件 / 視聴済み一致 45件 / 未視聴 537件
+```
+
+読み方（`history.js` は 0件のカウンタを表示しない＝出ていない項目は 0 を意味する）:
+
+| 観測 | 導かれること |
+|---|---|
+| 45 + 537 = 582 | 内訳が閉じている |
+| `削除ID未取得` の表示なし → `counts.noSetVideoId === 0` | **582行すべてで `setVideoId` を抽出できた**＝実 `VLWL` レスポンスに対して抽出器が通用している |
+| `判定不能` の表示なし → `counts.indeterminate === 0` | 582件すべてに視聴済みDBが三値で答えた（DBエラーの「未視聴」化なし） |
+| `※全件を取得しきれていません` の表示なし → `partial === false` | `hasMore` が偽、かつ `html` / `init-browse` / `page-N` 系のエラーがゼロ＝全ページ取得しきった |
+
+これで「まだ確定していないこと」1（fixtureが合成で実レスポンスとの整合が未確認）は、
+**削除に必要な範囲では解消**した。fixture 差し替え自体は未実施だが、実レスポンス側で
+`setVideoId` と継続トークンが期待どおり取れることは実測で確認済み。
+
+⚠️ 未確認のまま残る点: YouTube の画面が表示する本数と 582 が一致するかの目視突合。
+
+## Round C 実装（2026-08-08）— 1件だけ削除
+
+### 実通信の観測結果（I-094 解消）
+
+DevTools で YouTube 自身のUIから1本削除したときの通信（けんとさん実測）:
+
+```text
+POST https://www.youtube.com/youtubei/v1/browse/edit_playlist?prettyPrint=false
+{ context: {...}, playlistId: "WL", params: "CAFAAQ%3D%3D",
+  actions: [{ setVideoId: "…", action: "ACTION_REMOVE_VIDEO" }] }
+→ { "status": "STATUS_SUCCEEDED", … }
+```
+
+⚠️ **`params` は設計時の想定に無かった**。決め打ちで書いていれば抜け落ちていたフィールドで、
+「外部スクリプトの決め打ちを採用しない」という当初方針がそのまま効いた箇所。
+YouTube は `params` を **JSONボディの中でパーセントエンコード済みの文字列として**送るので、
+`watch_later_core.js` はその形のまま保持する（デコード・再エンコードしない）。
+
+### 埋め込んだ安全ルール（テストで固定済み）
+
+- **削除できるのは「直前の照合で候補の先頭にある行」だけ**。UI は setVideoId を一切持たず、
+  利用者が確認した `videoId` を service worker へ送り返すだけ。worker 側が「先頭候補が本当に
+  その動画か」を照合して、違えば何もしない（`confirmation-mismatch`）。
+- **照合から10分を超えたら拒否**。setVideoId は他端末での編集で振り直されるため、古い照合の
+  IDは別の行を指しうる。
+- **削除直前にアカウントを取り直して再照合**。照合時にも確認しているが、照合→削除の間の
+  アカウント切替が「別のリストを消す」唯一の経路なので二重に払う。
+- **成功は YouTube が明言したときだけ**。`status === 'STATUS_SUCCEEDED'` 以外（200でstatus無し・
+  未知のstatus）はすべて「消えたか分からない」として扱う。消えていないのに消えたと報告する方が
+  害が大きいため（利用者は再照合で真偽を確認できるが、誤って消したと報告された行は戻せない）。
+- **1回成功したら照合結果ごと破棄**。残りの setVideoId も振り直されうるので、次を消すには
+  必ず再照合が要る。これが「Round C＝厳密に1件」の実体。
+- **通信口は1箇所・パス固定**。`content.js` の `FETCH_INNERTUBE_EDIT_PLAYLIST` だけが
+  edit_playlist を叩ける。ボディも再検証し、`playlistId === 'WL'` かつ
+  単一の `ACTION_REMOVE_VIDEO` 以外は `refused-unexpected-edit` で拒否する。呼び出し側の
+  バグで一括削除・別プレイリストへ広がらないようにするため。
+
+### 変更したファイル
+
+| ファイル | 変更 |
+|---|---|
+| `watch_later_core.js` | `buildRemoveOneBody` / `isEditPlaylistSuccess` / `selectConfirmedCandidate` を追加 |
+| `content.js` | `FETCH_INNERTUBE_EDIT_PLAYLIST`（パス固定・ボディ再検証つきプロキシ） |
+| `background.js` | `removeOneWatchLaterRow()` と `REMOVE_ONE_WATCH_LATER`／照合時に Innertube context を保持 |
+| `history.html` / `history.js` | 「1件だけ削除」ボタン（既定は無効・照合成功で有効化・動画名を出して確認） |
+| `tests/verify_watch_later_core.js` | 43 → **75 チェック**（Round B の「削除は一切しない」ピンを Round C 用に差し替え） |
+| `tests/verify_watched_tristate.js` | プロキシ本数のドリフト検査を 3 → 4 に更新 |
+
+テストは `tests/verify_*.js` **全25本 PASS**。dist ホワイトリストは 29件で変化なし。
+
+## まだ確定していないこと
+
+1. ~~fixtureは合成~~ → 実機スモークで実レスポンス整合を確認（2026-08-08）。fixture ファイル自体の
+   実データ差し替えは未実施だが、実データをそのまま置くと視聴履歴が混入するため、置くなら
+   題名・チャンネル名・サムネイルを落としてからにする。
+2. ~~`edit_playlist` の実ヘッダ・payload 未確認~~ → 上記のとおり観測して確定（2026-08-08）。
+3. **実機での1件削除は未実施**。コードは書けているが、実際に消して `STATUS_SUCCEEDED` を
+   受け取り、再照合で件数が1減ることまでは確認していない。
+4. **UIの置き場**。いまは history.html のメンテナンス行に最小構成で置いた。削除対象一覧を
    出す画面（I-044）は未着手。
 
 ## 次の手順
 
-1. **実機スモーク（非破壊）**: 後で見るに3〜5本入れた状態で `照合` を押し、件数が実際と
-   合うか確認する。ここで数が合わなければ fixture を実レスポンスで差し替える。
-2. Round C: 1件削除（`setVideoId` 指定）。**破壊操作なので着手前にけんとの承認が必要**。
+1. ~~**実機スモーク（非破壊）**~~ → 2026-08-08 実施・通過（上記「実機スモーク結果」）。
+   残: 582 と YouTube 画面表示の本数の目視突合。
+2. ~~Round C: 1件削除の実装~~ → 2026-08-08 実装・テスト完了（上記「Round C 実装」）。
+   残: **実機で実際に1件消す確認**。手順は 拡張を更新 → YouTubeタブを開く → 履歴ページで
+   `照合` → `1件だけ削除` → 確認ダイアログの動画名を見て OK。削除の承認は、この
+   ダイアログでけんとさん本人が名前を見て押す形にしてある。
 3. Round D: 削除直前の再照合・古い `setVideoId` の再取得・曖昧時停止。
 4. Round E/F: 中止・通信失敗・他端末変更、実機スモークとprivacy説明の更新。
 

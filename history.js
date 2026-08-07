@@ -365,6 +365,75 @@ if (scanWatchLaterBtn) {
       if (c.duplicateVideoId) parts.push(`重複登録 ${c.duplicateVideoId}件`);
       if (res.partial) parts.push('※全件を取得しきれていません');
       fixStatus.textContent = parts.join(' / ');
+      armWatchLaterRemoval(res);
+    });
+  });
+}
+
+// --- Watch Later 1件削除（Round C・取り消せない） ---
+// 「削除できるものを全部消す」ではなく、照合の先頭1件だけを名指しで消す。1件消すと
+// 残りの setVideoId は YouTube 側で振り直されうるので、service worker 側は成功時に
+// 照合結果ごと破棄する。つまりこのボタンは押すたびに照合が要る。
+const removeOneWatchLaterBtn = document.getElementById('removeOneWatchLater');
+let armedWatchLaterTarget = null;
+
+function armWatchLaterRemoval(res) {
+  const first = res && Array.isArray(res.preview) ? res.preview[0] : null;
+  armedWatchLaterTarget = (first && res.syncSessionId)
+    ? { syncSessionId: res.syncSessionId, videoId: first.videoId, title: first.title, channel: first.channel }
+    : null;
+  if (removeOneWatchLaterBtn) removeOneWatchLaterBtn.disabled = !armedWatchLaterTarget;
+}
+
+function describeWatchLaterRemovalFailure(res) {
+  const reason = (res && (res.reason || res.error)) || 'unknown';
+  const known = {
+    'no-scan': '先に「照合」を実行してください',
+    'scan-expired': '照合から時間が経ちました。もう一度「照合」してから実行してください',
+    'stale-scan': '照合結果が新しくなっています。もう一度「照合」してください',
+    'confirmation-mismatch': '確認した動画と削除対象が一致しないため中止しました',
+    'no-set-video-id': '削除に必要なIDが取れていないため中止しました',
+    'sync-session-changed': 'YouTubeのタブまたはアカウントが変わったため中止しました',
+    'sync-tab-unavailable': '開始時のYouTubeタブが閉じたか応答しないため中止しました',
+    'edit-not-confirmed': 'YouTubeが成功を返さなかったため、消えたかどうか不明です。照合し直して確認してください',
+  };
+  return known[reason] || ('失敗: ' + reason);
+}
+
+if (removeOneWatchLaterBtn) {
+  removeOneWatchLaterBtn.addEventListener('click', () => {
+    const target = armedWatchLaterTarget;
+    if (!target) {
+      fixStatus.textContent = '先に「照合」を実行してください';
+      return;
+    }
+    const label = target.title || target.videoId;
+    const by = target.channel ? `\n${target.channel}` : '';
+    if (!confirm(`次の1本を「後で見る」から削除します。取り消せません。\n\n${label}${by}`)) return;
+    if (!beginMaintenance('scanWatchLater', { activeText: '削除中…' })) {
+      fixStatus.textContent = '他のメンテナンス処理が実行中';
+      return;
+    }
+    removeOneWatchLaterBtn.disabled = true;
+    chrome.runtime.sendMessage({
+      type: 'REMOVE_ONE_WATCH_LATER',
+      syncSessionId: target.syncSessionId,
+      videoId: target.videoId,
+    }, (res) => {
+      endMaintenance('scanWatchLater');
+      // 成否にかかわらず武装解除する。失敗理由が「消えたか不明」のときに再クリックで
+      // 二重削除を試みられるのが一番まずいので、必ず照合からやり直させる。
+      armedWatchLaterTarget = null;
+      if (chrome.runtime.lastError) {
+        fixStatus.textContent = '失敗: ' + chrome.runtime.lastError.message;
+        return;
+      }
+      if (!res || !res.success) {
+        fixStatus.textContent = describeWatchLaterRemovalFailure(res);
+        return;
+      }
+      const removed = res.removed || {};
+      fixStatus.textContent = `削除しました: ${removed.title || removed.videoId} / 残りを消すにはもう一度「照合」`;
     });
   });
 }

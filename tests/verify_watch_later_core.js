@@ -130,13 +130,83 @@ eq('duplicated videoId is ambiguous', Core.findUniqueRowByVideoId(rows, 'vAAA').
 check('ambiguous returns no row', Core.findUniqueRowByVideoId(rows, 'vAAA').row === null);
 eq('already-removed videoId', Core.findUniqueRowByVideoId(rows, 'vZZZ').status, 'not-found');
 
-console.log('\n[5] source pins (guards that cannot be expressed as pure calls)');
+console.log('\n[5] Round C: the removal request and its confirmation handshake');
+// The payload below is pinned to a real capture (2026-08-08). `params` in particular
+// was absent from the design assumption; if these literals drift from what YouTube
+// accepts, the delete silently no-ops rather than failing loudly.
+const removeBody = Core.buildRemoveOneBody({ client: { clientName: 'WEB' } }, 'SET1');
+eq('body targets Watch Later', removeBody.playlistId, 'WL');
+eq('body carries the observed params literal', removeBody.params, 'CAFAAQ%3D%3D');
+eq('body carries exactly one action', removeBody.actions.length, 1);
+eq('the action is a removal', removeBody.actions[0].action, 'ACTION_REMOVE_VIDEO');
+eq('the action names the row, not the video', removeBody.actions[0].setVideoId, 'SET1');
+check('params is stored already percent-encoded (must not be re-encoded)',
+  /%3D%3D$/.test(Core.EDIT_PLAYLIST_PARAMS));
+let threw = false;
+try { Core.buildRemoveOneBody({}, ''); } catch (_e) { threw = true; }
+check('refuses to build a body without a setVideoId', threw);
+
+// Success must be stated, never inferred. Everything that is not an explicit
+// STATUS_SUCCEEDED reads as "we do not know that it happened".
+check('STATUS_SUCCEEDED is success', Core.isEditPlaylistSuccess({ status: 'STATUS_SUCCEEDED' }));
+check('a 200 with no status is not success', !Core.isEditPlaylistSuccess({}));
+check('an unknown status is not success', !Core.isEditPlaylistSuccess({ status: 'STATUS_FAILED' }));
+check('null is not success', !Core.isEditPlaylistSuccess(null));
+
+const T0 = 1000000;
+const scanOk = {
+  syncSessionId: 'sess-1',
+  scannedAt: T0,
+  candidates: [
+    { videoId: 'vAAA', setVideoId: 'SET1', title: 'first' },
+    { videoId: 'vBBB', setVideoId: 'SET2', title: 'second' },
+  ],
+};
+const confirm1 = { syncSessionId: 'sess-1', videoId: 'vAAA' };
+eq('confirmed first candidate is accepted',
+  Core.selectConfirmedCandidate(scanOk, confirm1, T0).status, 'ok');
+eq('accepted row is the one that was confirmed',
+  Core.selectConfirmedCandidate(scanOk, confirm1, T0).row.setVideoId, 'SET1');
+// The UI only ever confirms the head of the list; naming any other row means the
+// list moved under the user, so nothing is deleted.
+eq('a non-head candidate cannot be targeted',
+  Core.selectConfirmedCandidate(scanOk, { syncSessionId: 'sess-1', videoId: 'vBBB' }, T0).status,
+  'confirmation-mismatch');
+eq('an unconfirmed request is refused',
+  Core.selectConfirmedCandidate(scanOk, { syncSessionId: 'sess-1' }, T0).status,
+  'confirmation-mismatch');
+eq('no scan at all', Core.selectConfirmedCandidate(null, confirm1, T0).status, 'no-scan');
+eq('a scan with no candidates',
+  Core.selectConfirmedCandidate({ ...scanOk, candidates: [] }, confirm1, T0).status, 'no-scan');
+// setVideoId goes stale when the list changes elsewhere, so age is a hard gate.
+eq('a scan past the age limit is refused',
+  Core.selectConfirmedCandidate(scanOk, confirm1, T0 + Core.SCAN_MAX_AGE_MS + 1).status,
+  'scan-expired');
+eq('a scan exactly at the age limit still works',
+  Core.selectConfirmedCandidate(scanOk, confirm1, T0 + Core.SCAN_MAX_AGE_MS).status, 'ok');
+eq('a confirmation from a different scan is refused',
+  Core.selectConfirmedCandidate(scanOk, { syncSessionId: 'other', videoId: 'vAAA' }, T0).status,
+  'stale-scan');
+eq('a confirmation with no scan id is refused',
+  Core.selectConfirmedCandidate(scanOk, { videoId: 'vAAA' }, T0).status, 'stale-scan');
+eq('a candidate with no setVideoId is refused',
+  Core.selectConfirmedCandidate(
+    { ...scanOk, candidates: [{ videoId: 'vAAA', setVideoId: '' }] }, confirm1, T0).status,
+  'no-set-video-id');
+
+console.log('\n[6] source pins (guards that cannot be expressed as pure calls)');
+const contentSrc = fs.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
 check('background.js loads watch_later_core.js',
   /importScripts\('watch_later_core\.js'\)/.test(src));
 // The scan must not reuse the liked-sync habit of collapsing rows by videoId.
 const scanStart = src.indexOf('async function scanWatchLater(');
-const scanBody = scanStart === -1 ? '' : src.slice(scanStart, src.indexOf('\n// Streaming variant', scanStart));
+// Slice to the removal function, not to the streaming section: the delete lives
+// between them, and folding it into `scanBody` would make the read-only pin below
+// assert nothing.
+const scanEnd = src.indexOf('\n// Round C: remove exactly ONE row', scanStart);
+const scanBody = scanStart === -1 || scanEnd === -1 ? '' : src.slice(scanStart, scanEnd);
 check('scanWatchLater exists', scanStart !== -1);
+check('scanWatchLater is followed by the Round C section', scanEnd !== -1);
 check('scanWatchLater does not dedup rows by videoId',
   scanBody.length > 0 && !/seenFinal/.test(scanBody));
 check('scanWatchLater pages with the Watch Later browse id',
@@ -145,12 +215,42 @@ check('scanWatchLater aborts instead of guessing when the DB check fails',
   /db-check-failed/.test(scanBody));
 check('scanWatchLater re-checks the pinned account before reporting',
   /sync-session-changed/.test(scanBody));
-// Round B is read-only: no edit_playlist call may exist yet. Comment lines are
-// stripped first — the guard is about executable code, and the scan's own comments
-// necessarily talk about the deletion step it deliberately does not perform.
+// The scan itself stays read-only even now that a delete exists in the same file.
+check('scanWatchLater issues no playlist edit',
+  scanBody.length > 0 && !/EDIT_PLAYLIST|buildRemoveOneBody/.test(scanBody));
+
+// Comment lines are stripped first — these guards are about executable code, and
+// the surrounding comments necessarily name the very things being restricted.
 const codeOnly = src.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
-check('no playlist edit action is issued anywhere yet (Round B is read-only)',
-  !/edit_playlist|ACTION_REMOVE_VIDEO/.test(codeOnly));
+const contentCodeOnly = contentSrc.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+// The irreversible endpoint exists in exactly one place, with a fixed path.
+check('content.js owns the edit_playlist endpoint, hardcoded',
+  /youtubei\/v1\/browse\/edit_playlist\?prettyPrint=false/.test(contentCodeOnly));
+check('background.js never builds the edit_playlist URL itself',
+  !/edit_playlist\?/.test(codeOnly));
+check('background.js never hardcodes the removal action (it goes through core)',
+  !/ACTION_REMOVE_VIDEO/.test(codeOnly));
+// The proxy re-validates the body, so a caller bug cannot widen it into a batch
+// delete, a different playlist, or a different action.
+check('the proxy refuses anything but one removal from WL',
+  /refused-unexpected-edit/.test(contentCodeOnly)
+  && /body\.playlistId !== 'WL'/.test(contentCodeOnly)
+  && /actions\.length !== 1/.test(contentCodeOnly));
+
+const removeStart = src.indexOf('async function removeOneWatchLaterRow(');
+const removeBodySrc = removeStart === -1 ? '' : src.slice(removeStart, src.indexOf('\n// Streaming variant', removeStart));
+check('removeOneWatchLaterRow exists', removeStart !== -1);
+check('it only ever deletes a confirmed candidate',
+  /Core\.selectConfirmedCandidate\(/.test(removeBodySrc));
+check('it re-pins the account before deleting',
+  /sync-session-changed/.test(removeBodySrc));
+check('it treats an unconfirmed response as failure',
+  /Core\.isEditPlaylistSuccess\(/.test(removeBodySrc) && /edit-not-confirmed/.test(removeBodySrc));
+// After one delete the remaining setVideoIds may have been reassigned, so the scan
+// must be dropped — this is what keeps Round C to exactly one row per scan.
+check('it discards the scan after a successful delete',
+  /lastWatchLaterScan = null;/.test(removeBodySrc));
+
 // The shared extractor now emits setVideoId; the liked path must strip it so a
 // Watch-Later-only field never lands in the liked store.
 check('liked sync strips setVideoId before persisting',
