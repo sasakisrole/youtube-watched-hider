@@ -383,11 +383,13 @@ const removeOneWatchLaterBtn = document.getElementById('removeOneWatchLater');
 let armedWatchLaterTarget = null;
 
 function armWatchLaterRemoval(res) {
-  const first = res && Array.isArray(res.preview) ? res.preview[0] : null;
+  const preview = res && Array.isArray(res.preview) ? res.preview : [];
+  const first = preview[0] || null;
   armedWatchLaterTarget = (first && res.syncSessionId)
     ? { syncSessionId: res.syncSessionId, videoId: first.videoId, title: first.title, channel: first.channel }
     : null;
   if (removeOneWatchLaterBtn) removeOneWatchLaterBtn.disabled = !armedWatchLaterTarget;
+  armWatchLaterBatch(res && res.syncSessionId ? res : null, preview);
 }
 
 function describeWatchLaterRemovalFailure(res) {
@@ -440,6 +442,144 @@ if (removeOneWatchLaterBtn) {
       const removed = res.removed || {};
       fixStatus.textContent = `削除しました: ${removed.title || removed.videoId} / 残りを消すにはもう一度「照合」`;
     });
+  });
+}
+
+// --- Watch Later まとめて削除（Round D・取り消せない） ---
+// 取り消せない操作を10件超まとめて行うので、実行前に対象を全件画面に出して確認してもらう。
+// 削除できるのはここに出した動画だけで、実行中に新しく視聴済みになった動画は入らない。
+const bulkRemoveWatchLaterBtn = document.getElementById('bulkRemoveWatchLater');
+const wlPanel = document.getElementById('wlPanel');
+const wlPanelNote = document.getElementById('wlPanelNote');
+const wlPanelList = document.getElementById('wlPanelList');
+const wlPanelLimit = document.getElementById('wlPanelLimit');
+const wlPanelRun = document.getElementById('wlPanelRun');
+const wlPanelCancel = document.getElementById('wlPanelCancel');
+const wlPanelStatus = document.getElementById('wlPanelStatus');
+let armedWatchLaterBatch = null;
+
+function armWatchLaterBatch(res, preview) {
+  armedWatchLaterBatch = (res && preview && preview.length)
+    ? { syncSessionId: res.syncSessionId, rows: preview, truncated: !!res.previewTruncated }
+    : null;
+  if (bulkRemoveWatchLaterBtn) bulkRemoveWatchLaterBtn.disabled = !armedWatchLaterBatch;
+  if (wlPanel && !armedWatchLaterBatch) wlPanel.hidden = true;
+}
+
+function closeWatchLaterPanel() {
+  if (wlPanel) wlPanel.hidden = true;
+  if (wlPanelStatus) wlPanelStatus.textContent = '';
+}
+
+function openWatchLaterPanel() {
+  if (!armedWatchLaterBatch || !wlPanel) return;
+  const rows = armedWatchLaterBatch.rows;
+  wlPanelList.textContent = '';
+  rows.forEach((row, i) => {
+    const li = document.createElement('li');
+    const idx = document.createElement('span');
+    idx.className = 'wl-idx';
+    idx.textContent = String(i + 1);
+    const title = document.createElement('span');
+    title.className = 'wl-title';
+    title.textContent = row.title || row.videoId;
+    const channel = document.createElement('span');
+    channel.className = 'wl-channel';
+    channel.textContent = row.channel || '';
+    li.append(idx, title, channel);
+    wlPanelList.appendChild(li);
+  });
+  const truncNote = armedWatchLaterBatch.truncated
+    ? '（候補が多いため先頭200件のみ表示・削除できるのもこの200件まで）'
+    : '';
+  wlPanelNote.textContent =
+    `視聴済みとして記録がある${rows.length}件です${truncNote}。上から順に削除します。取り消せません。`;
+  wlPanelLimit.max = String(rows.length);
+  wlPanelLimit.value = String(Math.min(5, rows.length));
+  wlPanelStatus.textContent = '';
+  wlPanel.hidden = false;
+  wlPanelLimit.focus();
+}
+
+function describeBatchStop(stopped) {
+  const known = {
+    'setvideoid-reassigned': '削除IDが振り直されたため中止しました（想定外の変化です）',
+    'rescan-failed': '途中の再照合に失敗したため中止しました',
+    'scan-expired': '照合から時間が経ったため中止しました',
+    'sync-session-changed': 'YouTubeのタブまたはアカウントが変わったため中止しました',
+    'sync-tab-unavailable': 'YouTubeのタブが閉じたか応答しないため中止しました',
+    'edit-not-confirmed': 'YouTubeが成功を返さなかったため中止しました。照合し直して確認してください',
+    'no-targets': '削除できる対象がありませんでした',
+    'no-scan': '照合結果が失われたため中止しました',
+  };
+  return known[stopped] || ('中止: ' + stopped);
+}
+
+if (bulkRemoveWatchLaterBtn) {
+  bulkRemoveWatchLaterBtn.addEventListener('click', openWatchLaterPanel);
+}
+if (wlPanelCancel) wlPanelCancel.addEventListener('click', closeWatchLaterPanel);
+
+if (wlPanelRun) {
+  wlPanelRun.addEventListener('click', () => {
+    const armed = armedWatchLaterBatch;
+    if (!armed) {
+      wlPanelStatus.textContent = '先に「照合」を実行してください';
+      return;
+    }
+    const rows = armed.rows;
+    const limit = Math.max(1, Math.min(Number(wlPanelLimit.value) || 0, rows.length));
+    const head = rows.slice(0, limit).map(r => r.title || r.videoId);
+    const shown = head.slice(0, 5).join('\n');
+    const more = head.length > 5 ? `\n… ほか${head.length - 5}件` : '';
+    if (!confirm(`「後で見る」から${limit}件を削除します。取り消せません。\n\n${shown}${more}`)) return;
+    if (!beginMaintenance('scanWatchLater', { activeText: '削除中…' })) {
+      wlPanelStatus.textContent = '他のメンテナンス処理が実行中';
+      return;
+    }
+    // 押し直しによる二重実行を防ぐ。武装解除は完了時にまとめて行う。
+    wlPanelRun.disabled = true;
+    if (bulkRemoveWatchLaterBtn) bulkRemoveWatchLaterBtn.disabled = true;
+    if (removeOneWatchLaterBtn) removeOneWatchLaterBtn.disabled = true;
+    wlPanelStatus.textContent = '削除中…';
+
+    const port = chrome.runtime.connect({ name: 'watch-later-batch' });
+    let settled = false;
+    const finish = (text) => {
+      if (settled) return;
+      settled = true;
+      endMaintenance('scanWatchLater');
+      wlPanelRun.disabled = false;
+      armedWatchLaterTarget = null;
+      armWatchLaterBatch(null, null);
+      fixStatus.textContent = text;
+      wlPanelStatus.textContent = '';
+      closeWatchLaterPanel();
+    };
+    port.onMessage.addListener((msg) => {
+      if (msg.type === 'PROGRESS') {
+        wlPanelStatus.textContent = `${msg.done} / ${msg.total} 件目: ${msg.title}`;
+        return;
+      }
+      if (msg.type === 'ERROR') {
+        finish('失敗: ' + (msg.error || 'unknown'));
+        return;
+      }
+      if (msg.type !== 'DONE') return;
+      if (!msg.success) {
+        finish(describeBatchStop(msg.reason));
+        return;
+      }
+      const parts = [`${msg.removed.length}件を削除しました`];
+      if (msg.stopped) parts.push(describeBatchStop(msg.stopped));
+      const c = msg.counts;
+      if (c) parts.push(`残り: 後で見る ${c.total}件 / 視聴済み一致 ${c.candidates}件 / 未視聴 ${c.notWatched}件`);
+      if (msg.drift && msg.drift.changed) parts.push(`⚠ 削除ID変化 ${msg.drift.changed}件`);
+      if (msg.finalScanFailed) parts.push('※削除後の再照合に失敗したため、件数は未確認です');
+      finish(parts.join(' / '));
+    });
+    // service worker が落ちた場合、DONE が来ないまま切断される。
+    port.onDisconnect.addListener(() => finish('中断しました。照合し直して結果を確認してください'));
   });
 }
 

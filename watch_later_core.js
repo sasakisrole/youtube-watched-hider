@@ -196,9 +196,43 @@
     return { compared, changed };
   }
 
+  // How many rows a batch removes before re-scanning. The measurement above says our
+  // own deletes do NOT reassign anybody else's setVideoId, so a batch may reuse one
+  // scan — but that was measured for our deletes, not for an edit made on another
+  // device mid-batch. Re-scanning every chunk bounds how many rows a wrong assumption
+  // could reach, at a cost of one scan per chunk instead of one per row.
+  const BATCH_CHUNK = 10;
+
+  // A batch may only delete videos the user approved by name. Re-scans during a batch
+  // exist to refresh setVideoId, NOT to widen the target set: a video that became
+  // "watched" while the batch was running was never shown to the user.
+  //
+  // A videoId sitting in two rows is skipped entirely. The user approved "this video",
+  // which does not say which of its two entries they meant.
+  function selectBatchTargets(candidates, approvedVideoIds, alreadyRemoved) {
+    const approved = new Set(approvedVideoIds || []);
+    const done = new Set(alreadyRemoved || []);
+    const counts = countByVideoId(candidates || []);
+    const targets = [];
+    const skipped = { ambiguous: [], noSetVideoId: [] };
+    for (const c of candidates || []) {
+      if (!approved.has(c.videoId) || done.has(c.videoId)) continue;
+      if ((counts.get(c.videoId) || 0) > 1) { skipped.ambiguous.push(c); continue; }
+      if (!c.setVideoId) { skipped.noSetVideoId.push(c); continue; }
+      targets.push(c);
+    }
+    return { targets, skipped };
+  }
+
+  // A batch stops the moment the list stops behaving the way it was measured to.
+  function batchShouldStop(drift) {
+    return !!drift && drift.compared > 0 && drift.changed > 0;
+  }
+
   const api = {
     WL_PLAYLIST_ID,
     WL_BROWSE_ID,
+    BATCH_CHUNK,
     EDIT_PLAYLIST_PARAMS,
     REMOVE_ACTION,
     SCAN_MAX_AGE_MS,
@@ -210,6 +244,8 @@
     isEditPlaylistSuccess,
     selectConfirmedCandidate,
     compareSetVideoIds,
+    selectBatchTargets,
+    batchShouldStop,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

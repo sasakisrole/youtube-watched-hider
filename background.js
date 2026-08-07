@@ -3352,35 +3352,27 @@ async function scanWatchLater({ maxPages } = {}) {
   };
 }
 
-// Round C: remove exactly ONE row from Watch Later.
-//
-// Every check here exists because the operation cannot be undone:
-//   - the row must come from the last scan's candidate list (never from the page),
-//   - it must be the row the user confirmed by name (`videoId` handshake),
-//   - the scan must be recent (setVideoId goes stale when the list changes),
-//   - the account/tab must still be the one that produced the scan,
-//   - and success must be stated by YouTube, not inferred from a 200.
-async function removeOneWatchLaterRow({ syncSessionId, videoId } = {}) {
-  const Core = globalThis.WatchLaterCore;
-  const scan = lastWatchLaterScan;
-  const pick = Core.selectConfirmedCandidate(scan, { syncSessionId, videoId }, Date.now());
-  if (pick.status !== 'ok') return { success: false, reason: pick.status };
+// ---- Watch Later deletion (Round C / D) ----
 
-  // Re-pin on the ORIGINAL tab. The scan already checked this, but an account switch
-  // between "scan" and "delete" is exactly the state in which a delete lands on the
-  // wrong list, so it is paid for twice.
+// The one irreversible request, shared by the single-row and batch paths. Everything
+// checkable before sending is checked here: an account switch between "scan" and
+// "delete" is exactly the state in which a delete lands on the wrong list, so the
+// pinned account is verified again even though the scan already did it. Success is
+// whatever YouTube states, never inferred from a 200.
+async function sendWatchLaterRemoval(scan, row) {
+  const Core = globalThis.WatchLaterCore;
   let ctx;
   try {
     ctx = await sendToYouTubeTab(
       { type: 'GET_YOUTUBE_SYNC_CONTEXT', syncSessionId: scan.syncSessionId }, scan.tabId);
   } catch (_e) {
-    return { success: false, reason: 'sync-tab-unavailable' };
+    return { ok: false, reason: 'sync-tab-unavailable' };
   }
   const ctxAuthUser = String(ctx && ctx.authUser == null ? '' : ctx.authUser);
   const ctxAccountKey = String((ctx && ctx.accountId) || '');
   if (!ctx || !ctx.success || ctxAuthUser !== scan.authUser
       || (scan.accountKey && ctxAccountKey !== scan.accountKey)) {
-    return { success: false, reason: 'sync-session-changed' };
+    return { ok: false, reason: 'sync-session-changed' };
   }
 
   const it = scan.innertube || {};
@@ -3392,28 +3384,126 @@ async function removeOneWatchLaterRow({ syncSessionId, videoId } = {}) {
       authUser: scan.authUser,
       apiKey: it.apiKey,
       clientVersion: it.clientVersion,
-      body: Core.buildRemoveOneBody(it.context, pick.row.setVideoId),
+      body: Core.buildRemoveOneBody(it.context, row.setVideoId),
     }, scan.tabId);
   } catch (_e) {
-    return { success: false, reason: 'sync-tab-unavailable' };
+    return { ok: false, reason: 'sync-tab-unavailable' };
   }
-  if (!resp || !resp.success) {
-    return { success: false, reason: (resp && resp.reason) || 'edit-failed' };
-  }
+  if (!resp || !resp.success) return { ok: false, reason: (resp && resp.reason) || 'edit-failed' };
   if (!Core.isEditPlaylistSuccess(resp.data)) {
     // Ambiguous outcome: the row may or may not be gone. Say so instead of guessing.
-    return { success: false, reason: 'edit-not-confirmed',
+    return { ok: false, reason: 'edit-not-confirmed',
       status: String((resp.data && resp.data.status) || '') };
   }
+  return { ok: true };
+}
 
-  // One successful edit invalidates every OTHER setVideoId we are holding: YouTube
-  // reassigns them when the list changes. Dropping the whole scan forces a re-scan
-  // before anything else can be removed — that is what makes this "exactly one row"
-  // rather than "the first of many against increasingly stale ids".
+// Round C: remove exactly ONE row, named by the user.
+async function removeOneWatchLaterRow({ syncSessionId, videoId } = {}) {
+  const Core = globalThis.WatchLaterCore;
+  const scan = lastWatchLaterScan;
+  const pick = Core.selectConfirmedCandidate(scan, { syncSessionId, videoId }, Date.now());
+  if (pick.status !== 'ok') return { success: false, reason: pick.status };
+
+  const sent = await sendWatchLaterRemoval(scan, pick.row);
+  if (!sent.ok) return { success: false, reason: sent.reason, status: sent.status };
+
+  // The scan is dropped rather than patched: its candidate list still contains the row
+  // that is now gone, and the single-row path exists to be the simple one. Rebuilding
+  // a list mid-run is the batch path's job.
   const removed = { videoId: pick.row.videoId, title: pick.row.title, channel: pick.row.channel };
   lastWatchLaterScan = null;
   return { success: true, removed };
 }
+
+// Round D: remove several rows that the user approved as a named list.
+//
+// Runs in chunks driven by re-scans rather than one scan for the whole run. The
+// 2026-08-08 measurement showed our own deletes do not reassign other rows'
+// setVideoId — that is what makes a chunk safe. Re-scanning between chunks bounds
+// what a change made on another device mid-run could reach.
+async function runWatchLaterBatch({ syncSessionId, videoIds, limit } = {}, onProgress) {
+  const Core = globalThis.WatchLaterCore;
+  const report = (p) => { try { if (onProgress) onProgress(p); } catch (_e) {} };
+  const approved = Array.isArray(videoIds) ? videoIds.filter(Boolean) : [];
+  if (!approved.length) return { success: false, reason: 'no-targets' };
+
+  let scan = lastWatchLaterScan;
+  if (!scan || scan.syncSessionId !== syncSessionId) return { success: false, reason: 'stale-scan' };
+
+  const max = Number.isInteger(limit) && limit > 0 ? Math.min(limit, approved.length) : approved.length;
+  const removed = [];
+  const removedIds = [];
+  let stopped = null;
+  let sinceRescan = 0;
+
+  while (removed.length < max) {
+    if (!scan) { stopped = 'no-scan'; break; }
+    const row = Core.selectBatchTargets(scan.candidates, approved, removedIds).targets[0];
+    if (!row) { stopped = removed.length ? null : 'no-targets'; break; }
+
+    // Re-run the single-row gate for every row, so a long batch cannot drift past the
+    // scan age limit or onto a row the user never approved.
+    const gate = Core.selectConfirmedCandidate(
+      { ...scan, candidates: [row] },
+      { syncSessionId: scan.syncSessionId, videoId: row.videoId },
+      Date.now());
+    if (gate.status !== 'ok') { stopped = gate.status; break; }
+
+    const sent = await sendWatchLaterRemoval(scan, row);
+    if (!sent.ok) { stopped = sent.reason; break; }
+
+    removed.push({ videoId: row.videoId, title: row.title, channel: row.channel });
+    removedIds.push(row.videoId);
+    sinceRescan += 1;
+    report({ done: removed.length, total: max, title: row.title || row.videoId });
+    if (removed.length >= max) break;
+
+    if (sinceRescan >= Core.BATCH_CHUNK) {
+      const rescan = await scanWatchLater({});
+      if (!rescan || !rescan.success) { stopped = 'rescan-failed'; break; }
+      // The list stopped behaving the way it was measured to — stop rather than keep
+      // deleting against ids we can no longer trust.
+      if (Core.batchShouldStop(rescan.drift)) { stopped = 'setvideoid-reassigned'; break; }
+      scan = lastWatchLaterScan;
+      sinceRescan = 0;
+    } else {
+      scan = { ...scan, candidates: scan.candidates.filter((c) => c.videoId !== row.videoId) };
+    }
+  }
+
+  // Always finish on a fresh scan: whatever the caller does next must not run against
+  // the list as it looked before the batch, and this is where drift would surface.
+  const finalScan = await scanWatchLater({});
+  const finalOk = !!(finalScan && finalScan.success);
+  return {
+    success: true,
+    removed,
+    stopped,
+    counts: finalOk ? finalScan.counts : null,
+    drift: finalOk ? finalScan.drift : null,
+    finalScanFailed: !finalOk,
+  };
+}
+
+// A batch can run for a minute; a Port keeps the progress visible instead of leaving
+// the page silent while rows are being deleted.
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'watch-later-batch') return;
+
+  port.onMessage.addListener(async (msg) => {
+    if (msg.type !== 'START') return;
+    try {
+      const result = await runWatchLaterBatch(msg, (progress) => {
+        try { port.postMessage({ type: 'PROGRESS', ...progress }); } catch (_e) {}
+      });
+      try { port.postMessage({ type: 'DONE', ...result }); } catch (_e) {}
+    } catch (e) {
+      try { port.postMessage({ type: 'ERROR', error: e.message }); } catch (_e) {}
+    }
+    try { port.disconnect(); } catch (_e) {}
+  });
+});
 
 // Streaming variant via chrome.runtime.Port — emits progress events.
 chrome.runtime.onConnect.addListener((port) => {

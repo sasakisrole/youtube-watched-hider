@@ -240,19 +240,56 @@ eq('a row with no setVideoId is excluded',
   ).compared, 1);
 eq('empty input compares nothing', Core.compareSetVideoIds([], beforeRows).compared, 0);
 
+// Batch targeting: the approved list is the user's confirmation and is never widened.
+const batchCandidates = Core.normalizeRows([
+  { videoId: 'b1', setVideoId: 'T1' },
+  { videoId: 'b2', setVideoId: 'T2' },
+  { videoId: 'b3', setVideoId: 'T3' },
+]);
+eq('only approved videos are targeted',
+  Core.selectBatchTargets(batchCandidates, ['b1', 'b3'], []).targets.length, 2);
+eq('targets keep the scan order',
+  Core.selectBatchTargets(batchCandidates, ['b1', 'b3'], []).targets[0].videoId, 'b1');
+// A video that became watched mid-batch was never shown to the user.
+eq('a candidate the user never approved is not targeted',
+  Core.selectBatchTargets(batchCandidates, ['b1'], []).targets.some((t) => t.videoId === 'b2'), false);
+eq('an already-removed video is not targeted twice',
+  Core.selectBatchTargets(batchCandidates, ['b1', 'b2'], ['b1']).targets.length, 1);
+// "This video" does not say which of its two entries the user meant.
+const dupCandidates = Core.normalizeRows([
+  { videoId: 'd1', setVideoId: 'T1' },
+  { videoId: 'd1', setVideoId: 'T2' },
+  { videoId: 'd2', setVideoId: 'T3' },
+]);
+eq('a duplicated video is never batch-deleted',
+  Core.selectBatchTargets(dupCandidates, ['d1', 'd2'], []).targets.length, 1);
+eq('the duplicated rows are reported as skipped',
+  Core.selectBatchTargets(dupCandidates, ['d1', 'd2'], []).skipped.ambiguous.length, 2);
+eq('a row with no setVideoId is skipped',
+  Core.selectBatchTargets(
+    Core.normalizeRows([{ videoId: 'e1', setVideoId: '' }]), ['e1'], []).skipped.noSetVideoId.length, 1);
+
+check('a batch stops when ids were reassigned', Core.batchShouldStop({ compared: 10, changed: 1 }));
+check('a batch continues when nothing drifted', !Core.batchShouldStop({ compared: 10, changed: 0 }));
+// Nothing compared is "no evidence", not "evidence of stability".
+check('a drift report with nothing compared does not stop the batch',
+  !Core.batchShouldStop({ compared: 0, changed: 0 }));
+check('a missing drift report does not stop the batch', !Core.batchShouldStop(null));
+
 console.log('\n[7] source pins (guards that cannot be expressed as pure calls)');
 const contentSrc = fs.readFileSync(path.join(__dirname, '..', 'content.js'), 'utf8');
 check('background.js loads watch_later_core.js',
   /importScripts\('watch_later_core\.js'\)/.test(src));
 // The scan must not reuse the liked-sync habit of collapsing rows by videoId.
 const scanStart = src.indexOf('async function scanWatchLater(');
-// Slice to the removal function, not to the streaming section: the delete lives
-// between them, and folding it into `scanBody` would make the read-only pin below
+// Slice to the deletion section, not to the streaming section: the deletes live
+// between them, and folding them into `scanBody` would make the read-only pin below
 // assert nothing.
-const scanEnd = src.indexOf('\n// Round C: remove exactly ONE row', scanStart);
+const DELETE_SECTION = '\n// ---- Watch Later deletion (Round C / D) ----';
+const scanEnd = src.indexOf(DELETE_SECTION, scanStart);
 const scanBody = scanStart === -1 || scanEnd === -1 ? '' : src.slice(scanStart, scanEnd);
 check('scanWatchLater exists', scanStart !== -1);
-check('scanWatchLater is followed by the Round C section', scanEnd !== -1);
+check('scanWatchLater is followed by the deletion section', scanEnd !== -1);
 check('scanWatchLater does not dedup rows by videoId',
   scanBody.length > 0 && !/seenFinal/.test(scanBody));
 check('scanWatchLater pages with the Watch Later browse id',
@@ -283,15 +320,21 @@ check('the proxy refuses anything but one removal from WL',
   && /body\.playlistId !== 'WL'/.test(contentCodeOnly)
   && /actions\.length !== 1/.test(contentCodeOnly));
 
+// The single irreversible request is shared, so its guards are pinned once.
+const sendStart = src.indexOf('async function sendWatchLaterRemoval(');
+const sendBodySrc = sendStart === -1 ? '' : src.slice(sendStart, src.indexOf('\n// Round C:', sendStart));
+check('sendWatchLaterRemoval exists', sendStart !== -1);
+check('it re-pins the account before deleting', /sync-session-changed/.test(sendBodySrc));
+check('it treats an unconfirmed response as failure',
+  /Core\.isEditPlaylistSuccess\(/.test(sendBodySrc) && /edit-not-confirmed/.test(sendBodySrc));
+check('every delete in the file goes through that one helper',
+  (codeOnly.match(/FETCH_INNERTUBE_EDIT_PLAYLIST/g) || []).length === 1);
+
 const removeStart = src.indexOf('async function removeOneWatchLaterRow(');
-const removeBodySrc = removeStart === -1 ? '' : src.slice(removeStart, src.indexOf('\n// Streaming variant', removeStart));
+const removeBodySrc = removeStart === -1 ? '' : src.slice(removeStart, src.indexOf('\n// Round D:', removeStart));
 check('removeOneWatchLaterRow exists', removeStart !== -1);
 check('it only ever deletes a confirmed candidate',
   /Core\.selectConfirmedCandidate\(/.test(removeBodySrc));
-check('it re-pins the account before deleting',
-  /sync-session-changed/.test(removeBodySrc));
-check('it treats an unconfirmed response as failure',
-  /Core\.isEditPlaylistSuccess\(/.test(removeBodySrc) && /edit-not-confirmed/.test(removeBodySrc));
 // After one delete the remaining setVideoIds may have been reassigned, so the scan
 // must be dropped — this is what keeps Round C to exactly one row per scan.
 check('it discards the scan after a successful delete',
@@ -307,6 +350,26 @@ check('the scan compares drift before overwriting the fingerprint',
 check('the fingerprint is mirrored into storage.session, not storage.local',
   /chrome\.storage\.session\.set\(\{ \[WL_FINGERPRINT_KEY\]/.test(src)
   && !/storage\.local[\s\S]{0,80}WL_FINGERPRINT_KEY/.test(src));
+
+const batchStart = src.indexOf('async function runWatchLaterBatch(');
+const batchBodySrc = batchStart === -1 ? '' : src.slice(batchStart, src.indexOf('\n// A batch can run', batchStart));
+check('runWatchLaterBatch exists', batchStart !== -1);
+// The approved list is the user's confirmation. Re-scans inside a batch refresh
+// setVideoIds; they must never widen what may be deleted.
+check('the batch only targets rows the user approved',
+  /Core\.selectBatchTargets\(scan\.candidates, approved, removedIds\)/.test(batchBodySrc));
+// Every row is re-gated, so a long run cannot drift past the scan age limit.
+check('the batch re-runs the single-row gate for every row',
+  /Core\.selectConfirmedCandidate\(/.test(batchBodySrc));
+check('the batch stops on the first failed delete',
+  /if \(!sent\.ok\) \{ stopped = sent\.reason; break; \}/.test(batchBodySrc));
+// The measured premise (our deletes do not reassign ids) is re-checked at every
+// chunk boundary rather than assumed to hold for the whole run.
+check('the batch re-scans every chunk and stops if ids were reassigned',
+  /sinceRescan >= Core\.BATCH_CHUNK/.test(batchBodySrc)
+  && /Core\.batchShouldStop\(rescan\.drift\)/.test(batchBodySrc));
+check('the batch always ends on a fresh scan',
+  /const finalScan = await scanWatchLater\(\{\}\);/.test(batchBodySrc));
 
 // The shared extractor now emits setVideoId; the liked path must strip it so a
 // Watch-Later-only field never lands in the liked store.
