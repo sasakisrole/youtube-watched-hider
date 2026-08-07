@@ -1,0 +1,151 @@
+{
+  "_comment": "SYNTHETIC VLWL browse response. Shapes follow the renderers the extractor already handles for LL (playlistVideoRenderer / lockupViewModel), NOT a capture of a real 2026 Watch Later response. The real renderer layout / setVideoId location must still be captured from the live account and this file replaced (HANDOFF I-093). Rows: vAAA appears twice with different setVideoIds (duplicate entry), vBBB carries its setVideoId inside a lockup menu, vDDD has no setVideoId at all, and vREC lives in a sibling recommendation shelf that must never be harvested.",
+  "contents": {
+    "twoColumnBrowseResultsRenderer": {
+      "tabs": [
+        {
+          "tabRenderer": {
+            "content": {
+              "sectionListRenderer": {
+                "contents": [
+                  {
+                    "itemSectionRenderer": {
+                      "contents": [
+                        {
+                          "playlistVideoListRenderer": {
+                            "playlistId": "WL",
+                            "contents": [
+                              {
+                                "playlistVideoRenderer": {
+                                  "videoId": "vAAA",
+                                  "setVideoId": "setA",
+                                  "index": { "simpleText": "1" },
+                                  "title": { "runs": [{ "text": "Alpha" }] },
+                                  "shortBylineText": { "runs": [{ "text": "Channel A" }] }
+                                }
+                              },
+                              {
+                                "lockupViewModel": {
+                                  "contentType": "LOCKUP_CONTENT_TYPE_VIDEO",
+                                  "contentId": "vBBB",
+                                  "metadata": {
+                                    "lockupMetadataViewModel": {
+                                      "title": { "content": "Bravo" },
+                                      "metadata": {
+                                        "contentMetadataViewModel": {
+                                          "metadataRows": [
+                                            {
+                                              "metadataParts": [
+                                                {
+                                                  "text": {
+                                                    "content": "Channel B",
+                                                    "commandRuns": [
+                                                      {
+                                                        "onTap": {
+                                                          "innertubeCommand": {
+                                                            "browseEndpoint": { "browseId": "UCbbbbbbbbbbbbbbbbbbbbbb" }
+                                                          }
+                                                        }
+                                                      }
+                                                    ]
+                                                  }
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "menuButton": {
+                                        "playlistEditEndpoint": {
+                                          "playlistId": "WL",
+                                          "actions": [
+                                            { "action": "ACTION_REMOVE_VIDEO", "setVideoId": "setB" }
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "playlistVideoRenderer": {
+                                  "videoId": "vAAA",
+                                  "setVideoId": "setC",
+                                  "index": { "simpleText": "3" },
+                                  "title": { "runs": [{ "text": "Alpha" }] },
+                                  "shortBylineText": { "runs": [{ "text": "Channel A" }] }
+                                }
+                              },
+                              {
+                                "playlistVideoRenderer": {
+                                  "videoId": "vDDD",
+                                  "index": { "simpleText": "4" },
+                                  "title": { "runs": [{ "text": "Delta" }] },
+                                  "shortBylineText": { "runs": [{ "text": "Channel D" }] }
+                                }
+                              },
+                              {
+                                "continuationItemRenderer": {
+                                  "continuationEndpoint": {
+                                    "continuationCommand": { "token": "WL_TOKEN" }
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "itemSectionRenderer": {
+                      "contents": [
+                        {
+                          "shelfRenderer": {
+                            "title": { "simpleText": "You might also like" },
+                            "content": {
+                              "horizontalListRenderer": {
+                                "items": [
+                                  {
+                                    "lockupViewModel": {
+                                      "contentType": "LOCKUP_CONTENT_TYPE_VIDEO",
+                                      "contentId": "vREC",
+                                      "metadata": {
+                                        "lockupMetadataViewModel": {
+                                          "title": { "content": "Recommended" },
+                                          "menuButton": {
+                                            "playlistEditEndpoint": {
+                                              "playlistId": "WL",
+                                              "actions": [
+                                                { "action": "ACTION_REMOVE_VIDEO", "setVideoId": "setREC" }
+                                              ]
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "continuationItemRenderer": {
+                                      "continuationEndpoint": {
+                                        "continuationCommand": { "token": "REC_TOKEN" }
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

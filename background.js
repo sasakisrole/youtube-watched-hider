@@ -3,6 +3,7 @@
 
 importScripts('credit_target.js');
 importScripts('official_search_filter_core.js');
+importScripts('watch_later_core.js');
 
 // Extract video ID from YouTube URL
 function extractVideoId(url) {
@@ -1323,6 +1324,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'SCAN_WATCH_LATER') {
+    scanWatchLater({ maxPages: message.maxPages })
+      .then(sendResponse)
+      .catch((e) => sendResponse({ success: false, error: e.message }));
+    return true;
+  }
+
   if (message.type === 'GET_LIKED') {
     sendToOffscreenDb('GET_LIKED')
       .then((rows) => sendResponse({ success: true, rows }))
@@ -2162,6 +2170,25 @@ function findFirstContinuationToken(node) {
   return null;
 }
 
+// Watch Later rows are removed by `setVideoId` — the id of THIS entry in THIS
+// playlist — so it has to be harvested from the same node the videoId came from.
+// playlistVideoRenderer exposes it directly; the newer lockupViewModel hides it
+// inside its menu's playlist-edit command, so this walker is used as a fallback.
+// It is always called on a SINGLE item node (never the whole response), which is
+// what keeps a neighbouring row's setVideoId from being attached to this video.
+// Liked sync ignores the field; only the Watch Later scan reads it.
+function findFirstSetVideoId(node, depth) {
+  const d = depth || 0;
+  if (!node || typeof node !== 'object' || d > 12) return '';
+  if (typeof node.setVideoId === 'string' && node.setVideoId) return node.setVideoId;
+  if (Array.isArray(node)) {
+    for (const v of node) { const s = findFirstSetVideoId(v, d + 1); if (s) return s; }
+    return '';
+  }
+  for (const k in node) { const s = findFirstSetVideoId(node[k], d + 1); if (s) return s; }
+  return '';
+}
+
 // v1.42.9 (H1 refinement, Codex 2026-07-10): container names split into two roles.
 //
 // LL_PRIMARY_RENDERERS = playlist-SPECIFIC renderers. Their name IS real evidence of
@@ -2259,7 +2286,8 @@ function extractItemsAndContinuation(data) {
           // than risk storing a non-channel string (view count, upload date,
           // etc.) that would pollute liked-artist aggregation. Analyzer treats
           // empty channel as "channel unknown".
-          rawItems.push({ videoId, title, channel, playlistIndex: 0, cid, named });
+          rawItems.push({ videoId, title, channel, playlistIndex: 0,
+            setVideoId: findFirstSetVideoId(lv), cid, named });
         }
       }
       return;
@@ -2277,7 +2305,8 @@ function extractItemsAndContinuation(data) {
         }
         const indexStr = (r.index && r.index.simpleText) || '';
         const playlistIndex = parseInt(indexStr, 10) || 0;
-        rawItems.push({ videoId, title, channel, playlistIndex, cid, named });
+        rawItems.push({ videoId, title, channel, playlistIndex,
+          setVideoId: r.setVideoId || findFirstSetVideoId(r), cid, named });
       }
       return;
     }
@@ -2942,10 +2971,11 @@ async function syncLikedPlaylist({ confirmAccountChange, confirmUnknownAccount, 
   }
 
   // Approximate likedAt: assume newest-first ordering; assign decreasing offsets.
-  // Strip the transient `source` tag (H1 scoping metadata) so it never lands in
-  // the persisted liked record.
+  // Strip the transient `source` tag (H1 scoping metadata) and `setVideoId` (a
+  // Watch-Later-only playlist-entry id harvested by the shared extractor) so
+  // neither lands in the persisted liked record.
   const now = Date.now();
-  const enriched = uniqueItems.map(({ source, ...it }, idx) => ({ ...it, likedAt: now - idx * 1000 }));
+  const enriched = uniqueItems.map(({ source, setVideoId, ...it }, idx) => ({ ...it, likedAt: now - idx * 1000 }));
 
   let upsertResp;
   try {
@@ -3021,6 +3051,261 @@ async function syncLikedPlaylist({ confirmAccountChange, confirmUnknownAccount, 
     ownerName,
     ownerHandle,
     ownerChannelId,
+  };
+}
+
+// --- Watch Later scan (WL = 後で見る) ---
+//
+// Round B: READ-ONLY. This function fetches the whole Watch Later list and reports
+// how many of its entries are already in the watched DB. It never sends an
+// edit_playlist action, never writes to the DB and never touches storage. The
+// deletion step (Round C) is built on top of the rows recorded here.
+//
+// It deliberately mirrors syncLikedPlaylist's safety model — the same fixed tab +
+// pinned account session, the same "only paginate a token proven to belong to this
+// list" rule — because a scan that silently wandered into a recommendation shelf
+// would later hand those unrelated videos to a delete action.
+let lastWatchLaterScan = null;
+
+async function scanWatchLater({ maxPages } = {}) {
+  const Core = globalThis.WatchLaterCore;
+  const syncSessionId = (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function')
+    ? globalThis.crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  let sessionStart;
+  try {
+    sessionStart = await sendToYouTubeTab({ type: 'GET_YOUTUBE_SYNC_CONTEXT', syncSessionId });
+  } catch (_e) {
+    return { success: false, reason: 'no-youtube-tab', syncSessionId };
+  }
+  if (!sessionStart || !sessionStart.success || !Number.isInteger(sessionStart.tabId)
+      || !/^\d+$/.test(String(sessionStart.authUser == null ? '' : sessionStart.authUser))) {
+    return { success: false, reason: 'sync-account-unavailable', syncSessionId,
+      errors: ['YouTubeタブの認証アカウントを確認できないため、中止しました'] };
+  }
+
+  const syncSession = {
+    syncSessionId,
+    tabId: sessionStart.tabId,
+    authUser: String(sessionStart.authUser),
+    accountKey: String(sessionStart.accountId || ''),
+  };
+  let syncTabFailed = false;
+  const sendInSyncSession = async (message) => {
+    try {
+      const result = await sendToYouTubeTab({
+        ...message,
+        syncSessionId: syncSession.syncSessionId,
+        authUser: syncSession.authUser,
+      }, syncSession.tabId);
+      if (!result || result.reason === 'timeout' || result.reason === 'invalid-auth-user') {
+        syncTabFailed = true;
+      }
+      return result;
+    } catch (e) {
+      syncTabFailed = true;
+      throw e;
+    }
+  };
+
+  let resp;
+  try {
+    resp = await sendInSyncSession({ type: 'FETCH_PLAYLIST_HTML', listId: Core.WL_PLAYLIST_ID });
+  } catch (_e) {
+    return { success: false, reason: 'sync-tab-unavailable', syncSessionId,
+      errors: ['開始時のYouTubeタブが閉じたか応答しないため、中止しました'] };
+  }
+  if (!resp || !resp.success) {
+    return { success: false, reason: (resp && resp.reason) || 'fetch-failed', syncSessionId };
+  }
+
+  const html = resp.html || '';
+  const ytcfg = extractYtcfg(html);
+  if (ytcfg.authUser && String(ytcfg.authUser) !== syncSession.authUser) {
+    return { success: false, reason: 'sync-session-changed', syncSessionId,
+      errors: ['開始時からYouTubeの認証アカウントが変わったため、中止しました'] };
+  }
+
+  const errors = [];
+  const rawRows = [];
+  // Watch Later, unlike the liked list, legitimately contains the SAME video twice.
+  // Nothing in this function may deduplicate by videoId (see watch_later_core.js).
+  const pushItems = (items) => {
+    for (const it of items) rawRows.push({ ...it, playlistIndex: it.playlistIndex || rawRows.length + 1 });
+  };
+  const selectProven = (ext, label) => {
+    if (ext.primaryUncertain) { errors.push(label + ': primary-uncertain'); return null; }
+    return (ext.items || []).filter((it) => it.source !== 'loose');
+  };
+
+  const ytInitial = extractYtInitialData(html);
+  let continuation = '';
+  if (ytInitial.data) {
+    const ext = extractItemsAndContinuation(ytInitial.data);
+    const usable = selectProven(ext, 'html');
+    if (usable) pushItems(usable);
+    if (ext.continuationScoped) continuation = ext.continuation;
+  } else {
+    errors.push('html: ' + (ytInitial.matched ? 'parse-failed' : 'no-ytInitialData'));
+  }
+
+  const baseContext = ytcfg.context
+    || { client: { clientName: ytcfg.clientName, clientVersion: ytcfg.clientVersion, hl: 'ja', gl: 'JP' } };
+
+  // The static HTML usually ships no items for a private list; the authenticated
+  // VLWL browse is the authoritative source for both the rows and the first token.
+  if (!continuation || !rawRows.length) {
+    try {
+      const initResp = await sendInSyncSession({
+        type: 'FETCH_INNERTUBE_BROWSE',
+        apiKey: ytcfg.apiKey,
+        clientVersion: ytcfg.clientVersion,
+        body: { context: baseContext, browseId: Core.WL_BROWSE_ID },
+      });
+      if (initResp && initResp.success && initResp.data) {
+        const ext0 = extractItemsAndContinuation(initResp.data);
+        const usable0 = selectProven(ext0, 'init-browse');
+        if (usable0) {
+          // The browse response repeats whatever the HTML already gave us. Replace
+          // rather than merge: merging would double every row, and row identity here
+          // is (videoId, setVideoId), not videoId, so a videoId-keyed dedup is not
+          // available as a repair.
+          rawRows.length = 0;
+          pushItems(usable0);
+        }
+        if (ext0.continuationScoped) {
+          continuation = ext0.continuation;
+        } else {
+          continuation = '';
+          if (ext0.continuation || ext0.rejectedTokenCount) errors.push('init-browse: unproven-continuation');
+        }
+      } else if (initResp && !initResp.success) {
+        errors.push('init-browse: ' + (initResp.reason || 'unknown'));
+      }
+    } catch (e) {
+      errors.push('init-browse: ' + e.message);
+    }
+  }
+
+  const cap = typeof maxPages === 'number' ? maxPages : 50;
+  let page = 1;
+  // Loop guard: a diverged/looping token returns rows we already hold. Duplicate
+  // videoIds are legal here, so the guard keys on setVideoId (the per-entry id) and
+  // falls back to videoId only for rows YouTube gave us no setVideoId for.
+  const seenKeys = new Set(rawRows.map((r) => r.setVideoId || ('v:' + r.videoId)));
+  while (continuation && page < cap) {
+    page++;
+    let contResp;
+    try {
+      contResp = await sendInSyncSession({
+        type: 'FETCH_INNERTUBE_BROWSE',
+        apiKey: ytcfg.apiKey,
+        clientVersion: ytcfg.clientVersion,
+        body: { context: baseContext, continuation },
+      });
+    } catch (e) {
+      errors.push('page-' + page + ': ' + e.message);
+      break;
+    }
+    if (!contResp || !contResp.success) {
+      errors.push('page-' + page + ': ' + ((contResp && contResp.reason) || 'unknown'));
+      break;
+    }
+    const ext = extractItemsAndContinuation(contResp.data);
+    if (!ext.items.length) { errors.push('page-' + page + ': empty-page'); break; }
+    const usable = selectProven(ext, 'page-' + page);
+    if (usable === null) { continuation = ''; break; }
+    if (!usable.length) { errors.push('page-' + page + ': no-scoped-items'); break; }
+
+    let newOnPage = 0;
+    for (const it of usable) {
+      const key = it.setVideoId || ('v:' + it.videoId);
+      if (!seenKeys.has(key)) { seenKeys.add(key); newOnPage++; }
+    }
+    pushItems(usable);
+    if (newOnPage === 0) { errors.push('page-' + page + ': all-duplicate'); break; }
+
+    if (ext.continuationScoped) {
+      continuation = ext.continuation;
+    } else {
+      if (ext.continuation || ext.rejectedTokenCount) errors.push('page-' + page + ': unproven-continuation');
+      continuation = '';
+    }
+  }
+
+  if (syncTabFailed) {
+    return { success: false, reason: 'sync-tab-unavailable', syncSessionId,
+      errors: ['開始時のYouTubeタブが閉じたか応答しないため、中止しました'] };
+  }
+
+  const hasMore = !!continuation;
+  const partial = hasMore || errors.some((e) => /^(page-\d+|init-browse|html)/.test(e));
+  const rows = Core.normalizeRows(rawRows);
+  if (!rows.length) {
+    return { success: false, reason: 'no-items', partial, hasMore, pages: page, errors, syncSessionId };
+  }
+
+  // Re-check the pinned tab/account before reporting a result the user may act on.
+  // A count produced under account A must never be presented while account B is
+  // selected — that is the state in which a later delete would hit the wrong list.
+  let sessionEnd;
+  try {
+    sessionEnd = await sendInSyncSession({ type: 'GET_YOUTUBE_SYNC_CONTEXT' });
+  } catch (_e) {
+    return { success: false, reason: 'sync-tab-unavailable', syncSessionId, fetched: rows.length,
+      errors: ['開始時のYouTubeタブが閉じたか応答しないため、中止しました'] };
+  }
+  const endAuthUser = String(sessionEnd && sessionEnd.authUser == null ? '' : sessionEnd.authUser);
+  const endAccountKey = String((sessionEnd && sessionEnd.accountId) || '');
+  const accountKeyChanged = !!syncSession.accountKey && endAccountKey !== syncSession.accountKey;
+  if (!sessionEnd || !sessionEnd.success || endAuthUser !== syncSession.authUser || accountKeyChanged) {
+    return {
+      success: false,
+      reason: 'sync-session-changed',
+      syncSessionId,
+      fetched: rows.length,
+      errors: [...errors, '取得中にYouTubeのタブまたは認証アカウントが変わったため、結果を破棄しました'],
+    };
+  }
+
+  // Watched lookup. A DB failure is NOT "not watched": bail out instead of reporting
+  // a candidate count computed from a failed lookup (HANDOFF_2026-07-12.md §8.3).
+  let watchedMap;
+  try {
+    watchedMap = await sendToOffscreenDb('DB_CHECK_MULTIPLE', { videoIds: rows.map((r) => r.videoId) });
+  } catch (e) {
+    return { success: false, reason: 'db-check-failed', syncSessionId, fetched: rows.length,
+      errors: [...errors, '視聴済みデータベースを確認できないため、対象件数を出さずに中止しました: ' + e.message] };
+  }
+
+  const plan = Core.buildRemovalPlan(rows, watchedMap || {});
+  lastWatchLaterScan = {
+    syncSessionId,
+    tabId: syncSession.tabId,
+    authUser: syncSession.authUser,
+    accountKey: syncSession.accountKey,
+    scannedAt: Date.now(),
+    rows,
+    candidates: plan.candidates,
+    partial,
+  };
+
+  return {
+    success: true,
+    syncSessionId,
+    partial,
+    hasMore,
+    pages: page,
+    errors,
+    counts: plan.counts,
+    // Capped preview only: the full candidate list stays in the service worker for
+    // the deletion step instead of being copied into every UI message.
+    preview: plan.candidates.slice(0, 200).map((c) => ({
+      videoId: c.videoId, title: c.title, channel: c.channel,
+      playlistIndex: c.playlistIndex, duplicateVideoId: c.duplicateVideoId,
+    })),
+    previewTruncated: plan.candidates.length > 200,
   };
 }
 

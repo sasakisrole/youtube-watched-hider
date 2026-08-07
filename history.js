@@ -257,6 +257,7 @@ const maintenanceButtons = [
   { key: 'fixCredits', el: document.getElementById('fixCredits') },
   { key: 'enrichCredits', el: document.getElementById('enrichCredits') },
   { key: 'fixDurations', el: document.getElementById('fixDurations') },
+  { key: 'scanWatchLater', el: document.getElementById('scanWatchLater') },
 ].filter(item => item.el).map(item => ({
   ...item,
   defaultText: item.el.textContent,
@@ -311,6 +312,61 @@ function endMaintenance(key) {
   runningMaintenanceActiveText = '実行中…';
   runningMaintenanceAllowAbort = false;
   updateMaintenanceButtons();
+}
+
+// --- Watch Later 照合（読み取り専用） ---
+// 後で見るを全件取得して視聴済みDBと突き合わせ、件数だけを出す。ここでは何も削除しない。
+// 長時間ジョブの持ち主を service worker ではなくこの画面側にしているのは、MV3 の
+// service worker が待機中に停止しうるため（削除段階でも同じ置き場を使う）。
+const scanWatchLaterBtn = document.getElementById('scanWatchLater');
+
+function describeWatchLaterFailure(res) {
+  if (res && Array.isArray(res.errors) && res.errors.length) {
+    const jp = res.errors.find(e => /[^\x00-\x7F]/.test(e));
+    if (jp) return jp;
+  }
+  const reason = (res && (res.reason || res.error)) || 'unknown';
+  const known = {
+    'no-youtube-tab': 'YouTubeのタブを開いた状態で実行してください',
+    'no-items': '後で見るに動画が見つかりません（ログイン状態を確認してください）',
+    'db-check-failed': '視聴済みデータベースを確認できないため中止しました',
+    'fetch-failed': '後で見るのページを取得できませんでした',
+  };
+  return known[reason] || ('失敗: ' + reason);
+}
+
+if (scanWatchLaterBtn) {
+  scanWatchLaterBtn.addEventListener('click', () => {
+    if (!beginMaintenance('scanWatchLater', { activeText: '照合中…' })) {
+      fixStatus.textContent = '他のメンテナンス処理が実行中';
+      return;
+    }
+    fixStatus.textContent = '後で見るを取得中…';
+    chrome.runtime.sendMessage({ type: 'SCAN_WATCH_LATER' }, (res) => {
+      endMaintenance('scanWatchLater');
+      if (chrome.runtime.lastError) {
+        fixStatus.textContent = '失敗: ' + chrome.runtime.lastError.message;
+        return;
+      }
+      if (!res || !res.success) {
+        fixStatus.textContent = describeWatchLaterFailure(res);
+        return;
+      }
+      const c = res.counts || {};
+      const parts = [
+        `後で見る ${c.total || 0}件`,
+        `視聴済み一致 ${c.candidates || 0}件`,
+        `未視聴 ${c.notWatched || 0}件`,
+      ];
+      // 判定不能・削除IDなしは0件でも黙らせない。ここを黙って落とすと「一致0件」が
+      // 「本当に0件」なのか「DBを読めなかった」のか利用者から区別できなくなる。
+      if (c.indeterminate) parts.push(`判定不能 ${c.indeterminate}件`);
+      if (c.noSetVideoId) parts.push(`削除ID未取得 ${c.noSetVideoId}件`);
+      if (c.duplicateVideoId) parts.push(`重複登録 ${c.duplicateVideoId}件`);
+      if (res.partial) parts.push('※全件を取得しきれていません');
+      fixStatus.textContent = parts.join(' / ');
+    });
+  });
 }
 
 function runFix(videoIds, force, label) {
