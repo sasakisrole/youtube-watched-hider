@@ -580,6 +580,30 @@ if (wlPanelRun) {
     });
     // service worker が落ちた場合、DONE が来ないまま切断される。
     port.onDisconnect.addListener(() => finish('中断しました。照合し直して結果を確認してください'));
+
+    // 応答が完全に途絶えたときに「削除中…」のまま固まらないための保険。
+    // 削除が進んでいる間は PROGRESS ごとに延長するので、通常の実行では発火しない。
+    // 発火時は「消えたか不明」なので、成功とも失敗とも書かず照合し直させる。
+    let watchdog = null;
+    const armWatchdog = () => {
+      if (watchdog) clearTimeout(watchdog);
+      watchdog = setTimeout(() => {
+        finish('応答がないため中断しました。どこまで削除できたかは照合し直して確認してください');
+        try { port.disconnect(); } catch (_e) {}
+      }, 60000);
+    };
+    const clearWatchdog = () => { if (watchdog) clearTimeout(watchdog); watchdog = null; };
+    port.onMessage.addListener(armWatchdog);
+    port.onDisconnect.addListener(clearWatchdog);
+    armWatchdog();
+
+    // 接続しただけでは background は動かない。承認済みの対象と件数を渡して開始する。
+    port.postMessage({
+      type: 'START',
+      syncSessionId: armed.syncSessionId,
+      videoIds: rows.map((r) => r.videoId),
+      limit,
+    });
   });
 }
 

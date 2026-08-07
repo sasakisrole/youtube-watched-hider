@@ -371,6 +371,36 @@ check('the batch re-scans every chunk and stops if ids were reassigned',
 check('the batch always ends on a fresh scan',
   /const finalScan = await scanWatchLater\(\{\}\);/.test(batchBodySrc));
 
+// The page and the worker talk over a Port, and nothing in either file fails on its
+// own if the two halves disagree: connecting without sending START leaves the UI
+// saying "削除中…" forever while the worker waits. That happened (2026-08-08), so the
+// contract is pinned here rather than left to whoever reads both files.
+const historySrc = fs.readFileSync(path.join(__dirname, '..', 'history.js'), 'utf8');
+const portName = (src.match(/port\.name !== '([a-z-]*batch[a-z-]*)'/) || [])[1];
+check('background listens on a watch-later batch port', !!portName);
+check('history.js connects to that exact port name',
+  !!portName && new RegExp(`chrome\\.runtime\\.connect\\(\\{ name: '${portName}' \\}\\)`).test(historySrc));
+// Scoped to the batch's own connect..next-connect region. Three other features in
+// this file also post `type: 'START'`, so an unscoped search passes even when the
+// batch sends nothing at all — which is exactly how the 2026-08-08 bug slipped past.
+const batchUiStart = historySrc.indexOf("chrome.runtime.connect({ name: 'watch-later-batch' })");
+const nextConnect = historySrc.indexOf('chrome.runtime.connect(', batchUiStart + 1);
+const batchUiSrc = batchUiStart === -1
+  ? ''
+  : historySrc.slice(batchUiStart, nextConnect === -1 ? undefined : nextConnect);
+check('the batch UI region was found', batchUiStart !== -1);
+check('history.js sends START on the port it just opened (connecting alone does nothing)',
+  /port\.postMessage\(\{\s*type: 'START'/.test(batchUiSrc));
+// The worker reads these three off the START message; a rename on either side would
+// silently delete nothing (missing videoIds) or everything (missing limit).
+check('START carries the fields the worker reads',
+  /type: 'START',[\s\S]{0,200}?syncSessionId:[\s\S]{0,200}?videoIds:[\s\S]{0,200}?limit,/.test(batchUiSrc));
+check('the worker reads exactly those fields',
+  /runWatchLaterBatch\(\{ syncSessionId, videoIds, limit \}/.test(src));
+// A stuck "削除中…" must not be permanent even if the worker never answers.
+check('the page gives up if the worker never answers',
+  /setTimeout\(\(\) => \{[\s\S]{0,200}?finish\(/.test(historySrc));
+
 // The shared extractor now emits setVideoId; the liked path must strip it so a
 // Watch-Later-only field never lands in the liked store.
 check('liked sync strips setVideoId before persisting',
