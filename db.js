@@ -736,16 +736,12 @@ if (typeof WatchedDB === 'undefined') {
     }
 
     function isValidLikedRecord(record) {
-      if (!record || typeof record !== 'object' || typeof record.videoId !== 'string' || record.videoId.length === 0) return false;
-      const stringFields = ['title', 'channel', 'accountId'];
-      const numberFields = ['likedAt', 'syncedAt', 'playlistIndex'];
-      for (const field of stringFields) {
-        if (record[field] != null && typeof record[field] !== 'string') return false;
-      }
-      for (const field of numberFields) {
-        if (record[field] != null && (typeof record[field] !== 'number' || !Number.isFinite(record[field]))) return false;
-      }
-      return true;
+      // videoId is the only required field. Optional-field corruption is repaired
+      // by normalizeLikedRecord instead of discarding an otherwise recoverable row.
+      return !!record
+        && typeof record === 'object'
+        && typeof record.videoId === 'string'
+        && record.videoId.length > 0;
     }
 
     // Split records into valid/dropped without throwing, so a backup with a
@@ -1124,10 +1120,10 @@ if (typeof WatchedDB === 'undefined') {
         videoId: String(record.videoId),
         title: typeof record.title === 'string' ? record.title : '',
         channel: typeof record.channel === 'string' ? record.channel : '',
-        likedAt: typeof record.likedAt === 'number' && record.likedAt > 0 ? record.likedAt : Date.now(),
+        likedAt: typeof record.likedAt === 'number' && Number.isFinite(record.likedAt) && record.likedAt > 0 ? record.likedAt : Date.now(),
         accountId: typeof record.accountId === 'string' ? record.accountId : '',
-        syncedAt: typeof record.syncedAt === 'number' && record.syncedAt > 0 ? record.syncedAt : Date.now(),
-        playlistIndex: typeof record.playlistIndex === 'number' ? record.playlistIndex : 0,
+        syncedAt: typeof record.syncedAt === 'number' && Number.isFinite(record.syncedAt) && record.syncedAt > 0 ? record.syncedAt : Date.now(),
+        playlistIndex: typeof record.playlistIndex === 'number' && Number.isFinite(record.playlistIndex) ? record.playlistIndex : 0,
       };
     }
 

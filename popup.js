@@ -488,6 +488,26 @@ function formatImportResult(response, label) {
   };
 }
 
+function formatMergeImportStatus(response) {
+  const likedFailed = !!(response.liked && response.liked.failed);
+  const liked = likedFailed
+    ? ', 高評価の復元に失敗'
+    : (response.liked && typeof response.liked.imported === 'number' ? `, ${response.liked.imported} liked` : '');
+  const droppedN = response.dropped ? ((response.dropped.watched || 0) + (response.dropped.liked || 0)) : 0;
+  const structural = !!(response.dropped && response.dropped.likedStructural);
+  const metaStructural = !!(response.dropped && response.dropped.likedMetaStructural);
+  const droppedNotes = [];
+  if (droppedN) droppedNotes.push(`${droppedN}件スキップ`);
+  if (structural) droppedNotes.push('高評価データの形式が不正');
+  if (metaStructural) droppedNotes.push('高評価アカウント情報の形式が不正');
+  const droppedNote = droppedNotes.length ? `（${droppedNotes.join(' / ')}）` : '';
+  const prefix = likedFailed ? '一部成功: 視聴履歴' : 'Done:';
+  return {
+    text: `${prefix} +${response.added} new, ${response.skipped} existing${liked}${droppedNote}`,
+    warning: likedFailed || droppedN > 0 || structural || metaStructural,
+  };
+}
+
 function handleImportResponse(response, label) {
   if (response && response.success) {
     const result = formatImportResult(response, label);
@@ -702,18 +722,9 @@ syncFileInput.addEventListener('change', (e) => {
       syncStatus.textContent = `Merging ${data.length} records...`;
       chrome.runtime.sendMessage({ type: 'MERGE_IMPORT', data: parsed }, (response) => {
         if (response && response.success) {
-          const liked = response.liked && typeof response.liked.imported === 'number' ? `, ${response.liked.imported} liked` : '';
-          const droppedN = response.dropped ? ((response.dropped.watched || 0) + (response.dropped.liked || 0)) : 0;
-          const structural = !!(response.dropped && response.dropped.likedStructural);
-          const metaStructural = !!(response.dropped && response.dropped.likedMetaStructural);
-          const droppedNotes = [];
-          if (droppedN) droppedNotes.push(`${droppedN}件スキップ`);
-          if (structural) droppedNotes.push('高評価データの形式が不正');
-          if (metaStructural) droppedNotes.push('高評価アカウント情報の形式が不正');
-          const droppedNote = droppedNotes.length ? `（${droppedNotes.join(' / ')}）` : '';
-          syncStatus.textContent = `Done: +${response.added} new, ${response.skipped} existing${liked}${droppedNote}`;
-          // Warn color when records were dropped so the skip is not mistaken for a clean merge — u1ps 2gkw.
-          syncStatus.style.color = (droppedN > 0 || structural || metaStructural) ? 'var(--warning)' : 'var(--success)';
+          const result = formatMergeImportStatus(response);
+          syncStatus.textContent = result.text;
+          syncStatus.style.color = result.warning ? 'var(--warning)' : 'var(--success)';
           loadStats();
           if (historyPanel.style.display !== 'none') loadHistory();
         } else {

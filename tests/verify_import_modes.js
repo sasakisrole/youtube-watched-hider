@@ -147,6 +147,36 @@ function testLikedMetaStructural() {
   check('liked meta structural: offscreen keeps both dropped paths wired',
     (offscreenSource.match(/likedMetaStructural/g) || []).length >= 2);
   check('liked meta structural: popup warning stays wired', popupSource.includes('likedMetaStructural'));
+
+  // Execute the real popup formatters with the real diff result. These are
+  // behavior checks, not source-string assertions.
+  const renderStart = popupSource.indexOf('function renderImportDiff');
+  const renderEnd = popupSource.indexOf('function formatImportResult', renderStart);
+  const renderImportDiff = new Function(
+    popupSource.slice(renderStart, renderEnd) + '; return renderImportDiff;'
+  )();
+  const formatStart = popupSource.indexOf('function formatImportResult');
+  const formatEnd = popupSource.indexOf('function formatMergeImportStatus', formatStart);
+  const formatImportResult = new Function(
+    popupSource.slice(formatStart, formatEnd) + '; return formatImportResult;'
+  )();
+  const mergeFormatStart = popupSource.indexOf('function formatMergeImportStatus');
+  const mergeFormatEnd = popupSource.indexOf('function handleImportResponse', mergeFormatStart);
+  const formatMergeImportStatus = new Function(
+    popupSource.slice(mergeFormatStart, mergeFormatEnd) + '; return formatMergeImportStatus;'
+  )();
+  const invalidPreview = renderImportDiff(invalidDiff);
+  const invalidApplied = formatImportResult({ count: 1, liked: { imported: 0 }, dropped: { likedMetaStructural: true } }, '安全に統合');
+  const invalidLegacy = formatMergeImportStatus({ added: 1, skipped: 0, liked: { imported: 0 }, dropped: { likedMetaStructural: true } });
+  check('REQ-1 invalid likedSyncMeta reaches users with explanatory warning',
+    invalidPreview.includes('同期アカウント情報の形式が不正')
+      && invalidApplied.warning && invalidApplied.text.includes('高評価アカウント情報の形式不正')
+      && invalidLegacy.warning && invalidLegacy.text.includes('高評価アカウント情報の形式が不正'));
+  const validPreview = renderImportDiff(validDiff);
+  const validApplied = formatImportResult({ count: 1, liked: { imported: 0 }, dropped: {} }, '安全に統合');
+  const validLegacy = formatMergeImportStatus({ added: 1, skipped: 0, liked: { imported: 0 }, dropped: {} });
+  check('REQ-2 valid likedSyncMeta produces no extra warning',
+    !validPreview.includes('同期アカウント情報の形式が不正') && !validApplied.warning && !validLegacy.warning);
 }
 
 async function testWatchedOptionalFieldTolerance() {
@@ -223,6 +253,65 @@ async function testWatchedRequiredVideoId() {
     imported === 0 && merged.total === 0 && merged.dropped === invalid.length && replaced.importedWatched === 0);
 }
 
+
+async function testLikedOptionalFieldTolerance() {
+  const badOptional = {
+    videoId: 'liked-optional-bad',
+    title: 7,
+    channel: {},
+    accountId: false,
+    likedAt: Infinity,
+    syncedAt: NaN,
+    playlistIndex: 'first',
+  };
+  const { idb, stores } = makeFake([], []);
+  const WatchedDB = loadWatchedDb(idb);
+  const parsed = WatchedDB.parseImportData({
+    schemaVersion: 2,
+    watchedVideos: [],
+    likedVideos: [badOptional],
+  });
+  check('REQ-5 liked optional field mismatches are retained by parsing',
+    parsed.likedVideos.length === 1 && parsed.droppedLiked === 0);
+
+  const imported = await WatchedDB.importLikedData(parsed.likedVideos);
+  const normalized = stores.likedVideos.get('liked-optional-bad');
+  check('REQ-5 liked optional fields are coerced during import',
+    imported === 1
+      && normalized
+      && normalized.title === ''
+      && normalized.channel === ''
+      && normalized.accountId === ''
+      && Number.isFinite(normalized.likedAt)
+      && Number.isFinite(normalized.syncedAt)
+      && normalized.playlistIndex === 0);
+
+  const merged = await WatchedDB.mergeLikedData([{ ...badOptional, videoId: 'liked-optional-merge' }]);
+  const replaced = await WatchedDB.replaceRecords([], [], [], [{ ...badOptional, videoId: 'liked-optional-replace' }]);
+  check('REQ-5 liked optional mismatches survive merge and replace',
+    merged.total === 1
+      && stores.likedVideos.has('liked-optional-merge')
+      && replaced.importedLiked === 1
+      && stores.likedVideos.has('liked-optional-replace'));
+}
+
+async function testLikedRequiredVideoId() {
+  const invalid = [null, {}, { videoId: '' }, { videoId: 42 }];
+  const { idb } = makeFake([], []);
+  const WatchedDB = loadWatchedDb(idb);
+  const parsed = WatchedDB.parseImportData({
+    schemaVersion: 2,
+    watchedVideos: [],
+    likedVideos: [...invalid, { videoId: 'liked-valid' }],
+  });
+  check('REQ-6 invalid liked videoId records remain dropped',
+    parsed.likedVideos.length === 1 && parsed.droppedLiked === invalid.length);
+  const imported = await WatchedDB.importLikedData(invalid);
+  const merged = await WatchedDB.mergeLikedData(invalid);
+  const replaced = await WatchedDB.replaceRecords([], [], [], invalid);
+  check('REQ-6 direct liked paths still reject invalid videoId records',
+    imported === 0 && merged.total === 0 && replaced.importedLiked === 0);
+}
 function testLikedStructuralWarning() {
   const WatchedDB = loadWatchedDb({});
   let parsed = null;
@@ -294,6 +383,32 @@ async function testPartialSuccessDisplay() {
       && rendered.text.includes('高評価の復元に失敗')
       && rendered.text.includes('1 records'));
 
+  const formatMergeImportStatus = new Function(formatSnippet + '; return formatMergeImportStatus;')();
+  const legacyRendered = formatMergeImportStatus({ ...response, success: true, added: 1, skipped: 0 });
+  check('REQ-3 legacy merge result identifies watched success and liked failure',
+    legacyRendered.warning === true
+      && legacyRendered.text.includes('一部成功')
+      && legacyRendered.text.includes('視聴履歴 +1 new')
+      && legacyRendered.text.includes('高評価の復元に失敗'));
+
+  const successfulDb = {
+    ...WatchedDB,
+    importLikedData: async () => 1,
+  };
+  const successfulImportPayload = new Function(
+    'WatchedDB', importSnippet + '; return importPayload;'
+  )(successfulDb);
+  const successfulResponse = await successfulImportPayload({ data: {} }, false);
+  const successfulRendered = formatImportResult({ ...successfulResponse, success: true }, 'バックアップ優先で統合');
+  const successfulLegacy = formatMergeImportStatus({ ...successfulResponse, success: true, added: 1, skipped: 0 });
+  check('REQ-4 complete success is not reported as partial',
+    successfulResponse.partialSuccess === false
+      && successfulResponse.liked.failed === false
+      && successfulRendered.warning === false
+      && successfulLegacy.warning === false
+      && !successfulRendered.text.includes('一部成功')
+      && !successfulLegacy.text.includes('一部成功'));
+
   const backgroundSource = fs.readFileSync(path.join(ROOT, 'background.js'), 'utf8');
   check('REQ-3 failed liked import does not store liked metadata',
     (backgroundSource.match(/if \(!\(result\.liked && result\.liked\.failed\)\)/g) || []).length === 2);
@@ -305,6 +420,8 @@ async function main() {
   testLikedMetaStructural();
   await testWatchedOptionalFieldTolerance();
   await testWatchedRequiredVideoId();
+  await testLikedOptionalFieldTolerance();
+  await testLikedRequiredVideoId();
   testLikedStructuralWarning();
   await testPartialSuccessDisplay();
   console.log(`\n${pass} passed, ${fail} failed`);
