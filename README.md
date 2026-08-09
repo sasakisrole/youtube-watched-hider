@@ -11,6 +11,12 @@
 YouTubeのおすすめから**視聴済み動画を非表示**にするChrome拡張機能。
 視聴履歴はブラウザ内の IndexedDB にのみ保存され、外部には一切送信しません。
 
+## 配布
+
+- Chrome ウェブストア: <https://chromewebstore.google.com/detail/youtube-watched-hider/bfanjfgoedconkhkkjhfclhimlgiamkh>
+- ストア公開版: **v1.42.8**（ストア表示の最終更新 2026-07-13 / 2026-08-09 にストアページ埋め込みの manifest で確認）。リポジトリ側はこれより先行しているので、公開版を語るときは manifest.json でなくストアを見る
+- 提出用パッケージは `python3 scripts/build_dist.py` で `dist/` と zip を再生成する
+
 ## 主な機能
 
 ### 視聴済み動画の非表示
