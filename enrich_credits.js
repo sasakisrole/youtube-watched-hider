@@ -80,24 +80,27 @@
   const ENRICH_REQUESTS_PER_VIDEO_MIN = 1;
   const ENRICH_REQUESTS_PER_VIDEO_MAX = 6;
 
-  function estimateEnrichmentMinutes(videoCount, rateLimitMs) {
+  function estimateEnrichmentMinutes(videoCount, rateLimitMs, minimumRequestCount = null) {
     const count = Math.max(0, Math.floor(Number(videoCount) || 0));
     const interval = Math.max(0, Number(rateLimitMs) || 0);
     if (!count || !interval) return { minMinutes: 0, maxMinutes: 0 };
-    const estimateForRequestCount = (requestsPerVideo) => (
-      Math.max(1, Math.ceil((count * requestsPerVideo * interval) / 60000))
+    const minRequests = minimumRequestCount == null
+      ? count * ENRICH_REQUESTS_PER_VIDEO_MIN
+      : Math.max(0, Math.floor(Number(minimumRequestCount) || 0));
+    const estimateForRequestCount = (requestCount) => (
+      requestCount ? Math.max(1, Math.ceil((requestCount * interval) / 60000)) : 0
     );
     return {
-      minMinutes: estimateForRequestCount(ENRICH_REQUESTS_PER_VIDEO_MIN),
-      maxMinutes: estimateForRequestCount(ENRICH_REQUESTS_PER_VIDEO_MAX),
+      minMinutes: estimateForRequestCount(minRequests),
+      maxMinutes: estimateForRequestCount(count * ENRICH_REQUESTS_PER_VIDEO_MAX),
     };
   }
 
-  function buildEnrichmentConfirmText(preCount, rateLimitMs, limit = null) {
+  function buildEnrichmentConfirmText(preCount, rateLimitMs, limit = null, minimumRequestCount = null) {
     const videoCount = Number(preCount && preCount.videoCount) || 0;
     const channelCount = Number(preCount && preCount.channelCount) || 0;
     const processCount = getLimitedVideoCount(videoCount, limit);
-    const { minMinutes, maxMinutes } = estimateEnrichmentMinutes(processCount, rateLimitMs);
+    const { minMinutes, maxMinutes } = estimateEnrichmentMinutes(processCount, rateLimitMs, minimumRequestCount);
     const maxRequests = processCount * ENRICH_REQUESTS_PER_VIDEO_MAX;
     return `${videoCount}動画 / ${channelCount}チャンネルを固定ルールとMusicBrainzで照合します。`
       + ` 処理予定 ${processCount}件、推定所要時間 約${minMinutes}〜${maxMinutes}分`
@@ -207,6 +210,29 @@
 
   function cleanArtistFromChannel(channel) {
     return window.CreditTarget.stripTopicChannelSuffix(channel);
+  }
+
+  function getMbCacheKey(channel, title) {
+    return `${cleanArtistFromChannel(channel)}\n${title}`;
+  }
+
+  function getMinimumEnrichmentRequestCount(groups, rules, mbCache) {
+    const ruleByChannel = new Map((rules || []).map((rule) => [rule.channel, rule]));
+    let requestCount = 0;
+    for (const [channel, videos] of groups || []) {
+      const rule = ruleByChannel.get(channel);
+      for (const video of videos) {
+        const missing = new Set(getMissingCreditRoles(video));
+        if (rule) {
+          coveredNeededRoles(createRuleCandidate(video, rule), missing)
+            .forEach((role) => missing.delete(role));
+        }
+        if (missing.size && !(mbCache && mbCache.has(getMbCacheKey(channel, video.title || '')))) {
+          requestCount++;
+        }
+      }
+    }
+    return requestCount;
   }
 
   function normalizeTitle(value) {
@@ -906,9 +932,15 @@
       if (!hasCandidates && !this.generating && this.commitBtn) this.commitBtn.disabled = true;
     }
 
-    confirmGeneration(preCount, rateLimitMs) {
+    confirmGeneration(preCount, rateLimitMs, groups, rules, loadRulesForEstimate = null) {
       const host = this.autoView || this.modal;
       if (!host || typeof document.createElement !== 'function') return Promise.resolve(false);
+      let estimateRules = Array.isArray(rules) ? rules : null;
+      const estimateText = (limit = null) => {
+        const limitedGroups = limitEnrichmentGroups(groups, limit);
+        const minimumRequestCount = getMinimumEnrichmentRequestCount(limitedGroups, estimateRules, this.fetchCache.mb);
+        return buildEnrichmentConfirmText(preCount, rateLimitMs, limit, minimumRequestCount);
+      };
 
       const panel = document.createElement('div');
       panel.className = 'enrich-message enrich-precount-confirm';
@@ -925,7 +957,7 @@
 
       const description = document.createElement('p');
       description.id = 'enrichPreCountDescription';
-      description.textContent = buildEnrichmentConfirmText(preCount, rateLimitMs);
+      description.textContent = estimateText();
       description.style.margin = '8px 0 12px';
       panel.appendChild(description);
 
@@ -1007,7 +1039,7 @@
       const updateEstimate = () => {
         const limit = selectedLimit();
         start.disabled = limitMode.value === 'limited' && limit === undefined;
-        description.textContent = buildEnrichmentConfirmText(preCount, rateLimitMs, limit);
+        description.textContent = estimateText(limit);
       };
       limitMode.addEventListener('change', () => {
         limitInput.disabled = limitMode.value !== 'limited';
@@ -1019,9 +1051,11 @@
       const previousFocus = document.activeElement;
       return new Promise((resolve) => {
         let settled = false;
+        let ruleLoadTimer = null;
         const finish = (confirmed) => {
           if (settled) return;
           settled = true;
+          if (ruleLoadTimer !== null) clearTimeout(ruleLoadTimer);
           if (typeof panel.remove === 'function') panel.remove();
           this.cancelGenerationConfirmation = null;
           if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus();
@@ -1036,6 +1070,20 @@
           if (typeof event.stopPropagation === 'function') event.stopPropagation();
           finish(false);
         });
+        if (!estimateRules && typeof loadRulesForEstimate === 'function') {
+          ruleLoadTimer = setTimeout(async () => {
+            ruleLoadTimer = null;
+            try {
+              const loadedRules = await loadRulesForEstimate();
+              if (!settled && Array.isArray(loadedRules)) {
+                estimateRules = loadedRules;
+                updateEstimate();
+              }
+            } catch {
+              // Keep the legacy one-request-per-video lower bound visible.
+            }
+          }, 0);
+        }
         if (typeof start.focus === 'function') start.focus();
       });
     }
@@ -1074,7 +1122,7 @@
 
     async fetchMb(channel, title) {
       const artist = cleanArtistFromChannel(channel);
-      const key = `${artist}\n${title}`;
+      const key = getMbCacheKey(channel, title);
       if (this.fetchCache.mb.has(key)) return this.fetchCache.mb.get(key);
       const response = await sendRuntimeMessage({ type: 'enrichCreditsMb', artist, title });
       if (!response || !response.success) {
@@ -1098,12 +1146,32 @@
       this.confirmingGeneration = true;
       this.updateButtons();
       let confirmation = null;
+      let rules = Array.isArray(this.rules) ? this.rules : null;
+      let rulesLoadAttempt = null;
       try {
         const config = await sendRuntimeMessage({ type: 'getEnrichCreditsConfig' });
         if (!config || !config.success || !(Number(config.rateLimitMs) > 0)) {
           throw new Error('通信間隔を取得できません');
         }
-        confirmation = await this.confirmGeneration(preCount, Number(config.rateLimitMs));
+        const loadRulesForEstimate = rules ? null : () => {
+          rulesLoadAttempt = this.loadRules()
+            .then((loadedRules) => {
+              rules = Array.isArray(loadedRules) ? loadedRules : null;
+              return loadedRules;
+            })
+            .catch((error) => {
+              rulesLoadAttempt = null;
+              throw error;
+            });
+          return rulesLoadAttempt;
+        };
+        confirmation = await this.confirmGeneration(
+          preCount,
+          Number(config.rateLimitMs),
+          allGroups,
+          rules,
+          loadRulesForEstimate,
+        );
       } catch (error) {
         this.setMessage(`候補生成の事前確認に失敗しました: ${error.message}`, 'error');
       } finally {
@@ -1129,7 +1197,9 @@
       this.setMessage(`${groups.size}チャンネルを照合します。`);
 
       try {
-        const rules = await this.loadRules();
+        if (!Array.isArray(rules)) {
+          rules = rulesLoadAttempt ? await rulesLoadAttempt : await this.loadRules();
+        }
         const ruleByChannel = new Map(rules.map((rule) => [rule.channel, rule]));
         const entries = Array.from(groups.entries());
         for (let i = 0; i < entries.length; i++) {
@@ -1537,6 +1607,7 @@
     needsCreditEnrichment,
     getEnrichmentPreCount,
     getLimitedVideoCount,
+    getMinimumEnrichmentRequestCount,
     ENRICH_REQUESTS_PER_VIDEO_MIN,
     ENRICH_REQUESTS_PER_VIDEO_MAX,
     estimateEnrichmentMinutes,
