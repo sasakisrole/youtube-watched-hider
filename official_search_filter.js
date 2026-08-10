@@ -512,10 +512,14 @@
     }
   }
 
-  function refreshCreditCandidates(cards, profile) {
-    const creditAliases = normalizeCreditAliases([
-      profile?.displayName,
-      ...(profile?.aliases || []),
+  function refreshCreditCandidates(cards, candidateProfile, relatedProfile) {
+    const candidateAliases = normalizeCreditAliases([
+      candidateProfile?.displayName,
+      ...(candidateProfile?.aliases || []),
+    ]);
+    const relatedAliases = normalizeCreditAliases([
+      relatedProfile?.displayName,
+      ...(relatedProfile?.aliases || []),
     ]);
     const items = cards.map((card) => ({
       videoId: getVideoIdFromCard(card),
@@ -528,14 +532,25 @@
       item.channel?.canonicalPath || '',
       item.channel?.displayName || '',
     ]).sort();
+    const canInferCandidates = Boolean(
+      candidateProfile?.id && candidateAliases.length > 0
+    );
+    const canInferRelated = Boolean(
+      relatedProfile?.id && relatedAliases.length > 0
+    );
     const canLookup = Boolean(
-      profile?.id &&
-      creditAliases.length > 0 &&
+      (canInferCandidates || canInferRelated) &&
       videoIds.length > 0 &&
       typeof globalThis.chrome?.runtime?.sendMessage === 'function'
     );
     const lookupKey = canLookup
-      ? JSON.stringify([profile.id, creditAliases, itemSignatures])
+      ? JSON.stringify([
+        candidateProfile?.id || '',
+        candidateAliases,
+        relatedProfile?.id || '',
+        relatedAliases,
+        itemSignatures,
+      ])
       : '';
 
     if (lookupKey === state.creditLookupKey) return;
@@ -556,20 +571,34 @@
         ) {
           return;
         }
-        const inferred = inferCreditChannelCandidates({
-          items,
-          creditsByVideoId: {
-            ...(creditsByVideoId || {}),
-            ...state.previewCreditsByVideoId,
-          },
-          creditAliases,
-        });
-        state.creditCandidates = inferred.candidates.map((candidate) => ({
+        const combinedCreditsByVideoId = {
+          ...(creditsByVideoId || {}),
+          ...state.previewCreditsByVideoId,
+        };
+        const candidateInference = canInferCandidates
+          ? inferCreditChannelCandidates({
+            items,
+            creditsByVideoId: combinedCreditsByVideoId,
+            creditAliases: candidateAliases,
+          })
+          : { candidates: [], relatedVideoIds: [] };
+        const relatedInference = canInferRelated
+          ? (
+            canInferCandidates && candidateProfile.id === relatedProfile.id
+              ? candidateInference
+              : inferCreditChannelCandidates({
+                items,
+                creditsByVideoId: combinedCreditsByVideoId,
+                creditAliases: relatedAliases,
+              })
+          )
+          : { candidates: [], relatedVideoIds: [] };
+        state.creditCandidates = candidateInference.candidates.map((candidate) => ({
           ...candidate,
-          profileId: profile.id,
-          profileName: profile.displayName || profile.id,
+          profileId: candidateProfile.id,
+          profileName: candidateProfile.displayName || candidateProfile.id,
         }));
-        state.creditRelatedVideoIds = new Set(inferred.relatedVideoIds);
+        state.creditRelatedVideoIds = new Set(relatedInference.relatedVideoIds);
         scanSearchResults();
         renderManagementState();
       })
@@ -777,7 +806,7 @@
 
     const profile = resolveEffectiveState();
     const cards = getSearchVideoCards();
-    refreshCreditCandidates(cards, profile);
+    refreshCreditCandidates(cards, getActiveProfile(), profile);
     const counts = createEmptyCounts();
     const previewVideoIds = [];
     let visibleCount = 0;

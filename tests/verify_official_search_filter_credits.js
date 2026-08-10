@@ -111,6 +111,65 @@ function loadWatchedDbForCredits(records) {
 }
 
 async function main() {
+  console.log('active and effective profile separation');
+  {
+    const activeOnly = boundSettings('official');
+    activeOnly.queryBindings = {};
+    const storage = createStorageStub(activeOnly);
+    const rpcCalls = installCreditRpc(storage, {
+      official: { composer: 'Artist' },
+    });
+    const runtime = makeRuntime(storage);
+    await settle();
+    await settle();
+
+    check('REQ-1 unbound query uses active profile aliases for candidates',
+      rpcCalls.length === 1 &&
+      panel(runtime).querySelectorAll('[data-credit-candidate]').length === 1 &&
+      panel(runtime).querySelector('[data-credit-candidate]')
+        .textContent.includes('/@artist'));
+    runtime.context._ywhOfficialSearchFilter.cleanup();
+  }
+  {
+    const activeAndEffective = {
+      ...boundSettings('official'),
+      activeProfileId: 'alpha',
+      profiles: {
+        alpha: {
+          id: 'alpha',
+          displayName: 'Alpha',
+          aliases: [],
+          channels: [],
+          mode: 'official',
+        },
+        beta: {
+          id: 'beta',
+          displayName: 'Beta',
+          aliases: [],
+          channels: [],
+          mode: 'official',
+        },
+      },
+      queryBindings: { 'artist - topic': 'beta' },
+    };
+    const storage = createStorageStub(activeAndEffective);
+    const rpcCalls = installCreditRpc(storage, {
+      official: { composer: 'Alpha' },
+    });
+    const runtime = makeRuntime(storage);
+    await settle();
+    await settle();
+
+    check('REQ-2 active-only credit creates a candidate but not a related classification',
+      panel(runtime).querySelectorAll('[data-credit-candidate]').length === 1 &&
+      panel(runtime).querySelector('[data-count="credit-related"]')
+        .textContent === '0');
+    check('REQ-4 differing active and effective profiles use one credit RPC',
+      rpcCalls.length === 1 &&
+      rpcCalls[0].op === 'GET_CREDITS_FOR_VIDEO_IDS');
+    runtime.context._ywhOfficialSearchFilter.cleanup();
+  }
+
   console.log('batched credit lookup and candidate presentation');
   {
     const storage = createStorageStub(boundSettings('official'));
@@ -123,7 +182,7 @@ async function main() {
     await settle();
     await settle();
 
-    check('(a) all result videoIds use one bulk credit RPC',
+    check('REQ-3 identical active and effective profiles use one credit RPC',
       rpcCalls.length === 1 &&
       rpcCalls[0].type === 'DB_RPC' &&
       rpcCalls[0].op === 'GET_CREDITS_FOR_VIDEO_IDS' &&
@@ -173,10 +232,10 @@ async function main() {
     }).candidates[0];
     const adoptedWithoutConsent = core.adoptCreditCandidate({
       candidate: inferredCandidate,
-      userAccepted: false,
+      userAccepted: undefined,
       register: () => { registrationCalls += 1; },
     });
-    check('(c) unaccepted candidate calls the registration function zero times',
+    check('REQ-5 userAccepted !== true calls the registration function zero times',
       adoptedWithoutConsent === false && registrationCalls === 0);
 
     panel(runtime).querySelector('[data-credit-candidate-prepare]')?.click();
