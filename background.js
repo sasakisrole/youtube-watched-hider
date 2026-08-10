@@ -3,6 +3,7 @@
 
 importScripts('credit_target.js');
 importScripts('official_search_filter_core.js');
+importScripts('watch_later_core.js');
 
 // Extract video ID from YouTube URL
 function extractVideoId(url) {
@@ -1323,6 +1324,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'SCAN_WATCH_LATER') {
+    scanWatchLater({ maxPages: message.maxPages })
+      .then(sendResponse)
+      .catch((e) => sendResponse({ success: false, error: e.message }));
+    return true;
+  }
+
+  if (message.type === 'REMOVE_ONE_WATCH_LATER') {
+    removeOneWatchLaterRow({ syncSessionId: message.syncSessionId, videoId: message.videoId })
+      .then(sendResponse)
+      .catch((e) => sendResponse({ success: false, error: e.message }));
+    return true;
+  }
+
   if (message.type === 'GET_LIKED') {
     sendToOffscreenDb('GET_LIKED')
       .then((rows) => sendResponse({ success: true, rows }))
@@ -2162,6 +2177,25 @@ function findFirstContinuationToken(node) {
   return null;
 }
 
+// Watch Later rows are removed by `setVideoId` — the id of THIS entry in THIS
+// playlist — so it has to be harvested from the same node the videoId came from.
+// playlistVideoRenderer exposes it directly; the newer lockupViewModel hides it
+// inside its menu's playlist-edit command, so this walker is used as a fallback.
+// It is always called on a SINGLE item node (never the whole response), which is
+// what keeps a neighbouring row's setVideoId from being attached to this video.
+// Liked sync ignores the field; only the Watch Later scan reads it.
+function findFirstSetVideoId(node, depth) {
+  const d = depth || 0;
+  if (!node || typeof node !== 'object' || d > 12) return '';
+  if (typeof node.setVideoId === 'string' && node.setVideoId) return node.setVideoId;
+  if (Array.isArray(node)) {
+    for (const v of node) { const s = findFirstSetVideoId(v, d + 1); if (s) return s; }
+    return '';
+  }
+  for (const k in node) { const s = findFirstSetVideoId(node[k], d + 1); if (s) return s; }
+  return '';
+}
+
 // v1.42.9 (H1 refinement, Codex 2026-07-10): container names split into two roles.
 //
 // LL_PRIMARY_RENDERERS = playlist-SPECIFIC renderers. Their name IS real evidence of
@@ -2259,7 +2293,8 @@ function extractItemsAndContinuation(data) {
           // than risk storing a non-channel string (view count, upload date,
           // etc.) that would pollute liked-artist aggregation. Analyzer treats
           // empty channel as "channel unknown".
-          rawItems.push({ videoId, title, channel, playlistIndex: 0, cid, named });
+          rawItems.push({ videoId, title, channel, playlistIndex: 0,
+            setVideoId: findFirstSetVideoId(lv), cid, named });
         }
       }
       return;
@@ -2277,7 +2312,8 @@ function extractItemsAndContinuation(data) {
         }
         const indexStr = (r.index && r.index.simpleText) || '';
         const playlistIndex = parseInt(indexStr, 10) || 0;
-        rawItems.push({ videoId, title, channel, playlistIndex, cid, named });
+        rawItems.push({ videoId, title, channel, playlistIndex,
+          setVideoId: r.setVideoId || findFirstSetVideoId(r), cid, named });
       }
       return;
     }
@@ -2942,10 +2978,11 @@ async function syncLikedPlaylist({ confirmAccountChange, confirmUnknownAccount, 
   }
 
   // Approximate likedAt: assume newest-first ordering; assign decreasing offsets.
-  // Strip the transient `source` tag (H1 scoping metadata) so it never lands in
-  // the persisted liked record.
+  // Strip the transient `source` tag (H1 scoping metadata) and `setVideoId` (a
+  // Watch-Later-only playlist-entry id harvested by the shared extractor) so
+  // neither lands in the persisted liked record.
   const now = Date.now();
-  const enriched = uniqueItems.map(({ source, ...it }, idx) => ({ ...it, likedAt: now - idx * 1000 }));
+  const enriched = uniqueItems.map(({ source, setVideoId, ...it }, idx) => ({ ...it, likedAt: now - idx * 1000 }));
 
   let upsertResp;
   try {
@@ -3023,6 +3060,450 @@ async function syncLikedPlaylist({ confirmAccountChange, confirmUnknownAccount, 
     ownerChannelId,
   };
 }
+
+// --- Watch Later scan (WL = 後で見る) ---
+//
+// Round B: READ-ONLY. This function fetches the whole Watch Later list and reports
+// how many of its entries are already in the watched DB. It never sends an
+// edit_playlist action, never writes to the DB and never touches storage. The
+// deletion step (Round C) is built on top of the rows recorded here.
+//
+// It deliberately mirrors syncLikedPlaylist's safety model — the same fixed tab +
+// pinned account session, the same "only paginate a token proven to belong to this
+// list" rule — because a scan that silently wandered into a recommendation shelf
+// would later hand those unrelated videos to a delete action.
+let lastWatchLaterScan = null;
+// Deliberately NOT cleared by a delete (unlike lastWatchLaterScan), so the next scan
+// can report whether the edit reassigned any setVideoId. Read-only diagnostic for the
+// Round D design question — nothing acts on it.
+let lastWatchLaterFingerprint = null;
+const WL_FINGERPRINT_KEY = 'watchLaterFingerprint';
+
+// Mirrored into chrome.storage.session because the measurement spans two scans with a
+// delete in between, and an MV3 service worker can be evicted in that gap — an
+// in-memory-only fingerprint would just silently never report. `session` (not `local`)
+// is deliberate: this is a list of the user's video ids, so it stays in memory and
+// dies with the browser session rather than being written to disk.
+async function readWatchLaterFingerprint() {
+  if (lastWatchLaterFingerprint) return lastWatchLaterFingerprint;
+  try {
+    const got = await chrome.storage.session.get(WL_FINGERPRINT_KEY);
+    const rows = got && got[WL_FINGERPRINT_KEY];
+    return Array.isArray(rows) && rows.length ? rows : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+async function writeWatchLaterFingerprint(rows) {
+  lastWatchLaterFingerprint = rows;
+  try { await chrome.storage.session.set({ [WL_FINGERPRINT_KEY]: rows }); } catch (_e) {}
+}
+
+async function scanWatchLater({ maxPages } = {}) {
+  const Core = globalThis.WatchLaterCore;
+  const syncSessionId = (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function')
+    ? globalThis.crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  let sessionStart;
+  try {
+    sessionStart = await sendToYouTubeTab({ type: 'GET_YOUTUBE_SYNC_CONTEXT', syncSessionId });
+  } catch (_e) {
+    return { success: false, reason: 'no-youtube-tab', syncSessionId };
+  }
+  if (!sessionStart || !sessionStart.success || !Number.isInteger(sessionStart.tabId)
+      || !/^\d+$/.test(String(sessionStart.authUser == null ? '' : sessionStart.authUser))) {
+    return { success: false, reason: 'sync-account-unavailable', syncSessionId,
+      errors: ['YouTubeタブの認証アカウントを確認できないため、中止しました'] };
+  }
+
+  const syncSession = {
+    syncSessionId,
+    tabId: sessionStart.tabId,
+    authUser: String(sessionStart.authUser),
+    accountKey: String(sessionStart.accountId || ''),
+  };
+  let syncTabFailed = false;
+  const sendInSyncSession = async (message) => {
+    try {
+      const result = await sendToYouTubeTab({
+        ...message,
+        syncSessionId: syncSession.syncSessionId,
+        authUser: syncSession.authUser,
+      }, syncSession.tabId);
+      if (!result || result.reason === 'timeout' || result.reason === 'invalid-auth-user') {
+        syncTabFailed = true;
+      }
+      return result;
+    } catch (e) {
+      syncTabFailed = true;
+      throw e;
+    }
+  };
+
+  let resp;
+  try {
+    resp = await sendInSyncSession({ type: 'FETCH_PLAYLIST_HTML', listId: Core.WL_PLAYLIST_ID });
+  } catch (_e) {
+    return { success: false, reason: 'sync-tab-unavailable', syncSessionId,
+      errors: ['開始時のYouTubeタブが閉じたか応答しないため、中止しました'] };
+  }
+  if (!resp || !resp.success) {
+    return { success: false, reason: (resp && resp.reason) || 'fetch-failed', syncSessionId };
+  }
+
+  const html = resp.html || '';
+  const ytcfg = extractYtcfg(html);
+  if (ytcfg.authUser && String(ytcfg.authUser) !== syncSession.authUser) {
+    return { success: false, reason: 'sync-session-changed', syncSessionId,
+      errors: ['開始時からYouTubeの認証アカウントが変わったため、中止しました'] };
+  }
+
+  const errors = [];
+  const rawRows = [];
+  // Watch Later, unlike the liked list, legitimately contains the SAME video twice.
+  // Nothing in this function may deduplicate by videoId (see watch_later_core.js).
+  const pushItems = (items) => {
+    for (const it of items) rawRows.push({ ...it, playlistIndex: it.playlistIndex || rawRows.length + 1 });
+  };
+  const selectProven = (ext, label) => {
+    if (ext.primaryUncertain) { errors.push(label + ': primary-uncertain'); return null; }
+    return (ext.items || []).filter((it) => it.source !== 'loose');
+  };
+
+  const ytInitial = extractYtInitialData(html);
+  let continuation = '';
+  if (ytInitial.data) {
+    const ext = extractItemsAndContinuation(ytInitial.data);
+    const usable = selectProven(ext, 'html');
+    if (usable) pushItems(usable);
+    if (ext.continuationScoped) continuation = ext.continuation;
+  } else {
+    errors.push('html: ' + (ytInitial.matched ? 'parse-failed' : 'no-ytInitialData'));
+  }
+
+  const baseContext = ytcfg.context
+    || { client: { clientName: ytcfg.clientName, clientVersion: ytcfg.clientVersion, hl: 'ja', gl: 'JP' } };
+
+  // The static HTML usually ships no items for a private list; the authenticated
+  // VLWL browse is the authoritative source for both the rows and the first token.
+  if (!continuation || !rawRows.length) {
+    try {
+      const initResp = await sendInSyncSession({
+        type: 'FETCH_INNERTUBE_BROWSE',
+        apiKey: ytcfg.apiKey,
+        clientVersion: ytcfg.clientVersion,
+        body: { context: baseContext, browseId: Core.WL_BROWSE_ID },
+      });
+      if (initResp && initResp.success && initResp.data) {
+        const ext0 = extractItemsAndContinuation(initResp.data);
+        const usable0 = selectProven(ext0, 'init-browse');
+        if (usable0) {
+          // The browse response repeats whatever the HTML already gave us. Replace
+          // rather than merge: merging would double every row, and row identity here
+          // is (videoId, setVideoId), not videoId, so a videoId-keyed dedup is not
+          // available as a repair.
+          rawRows.length = 0;
+          pushItems(usable0);
+        }
+        if (ext0.continuationScoped) {
+          continuation = ext0.continuation;
+        } else {
+          continuation = '';
+          if (ext0.continuation || ext0.rejectedTokenCount) errors.push('init-browse: unproven-continuation');
+        }
+      } else if (initResp && !initResp.success) {
+        errors.push('init-browse: ' + (initResp.reason || 'unknown'));
+      }
+    } catch (e) {
+      errors.push('init-browse: ' + e.message);
+    }
+  }
+
+  const cap = typeof maxPages === 'number' ? maxPages : 50;
+  let page = 1;
+  // Loop guard: a diverged/looping token returns rows we already hold. Duplicate
+  // videoIds are legal here, so the guard keys on setVideoId (the per-entry id) and
+  // falls back to videoId only for rows YouTube gave us no setVideoId for.
+  const seenKeys = new Set(rawRows.map((r) => r.setVideoId || ('v:' + r.videoId)));
+  while (continuation && page < cap) {
+    page++;
+    let contResp;
+    try {
+      contResp = await sendInSyncSession({
+        type: 'FETCH_INNERTUBE_BROWSE',
+        apiKey: ytcfg.apiKey,
+        clientVersion: ytcfg.clientVersion,
+        body: { context: baseContext, continuation },
+      });
+    } catch (e) {
+      errors.push('page-' + page + ': ' + e.message);
+      break;
+    }
+    if (!contResp || !contResp.success) {
+      errors.push('page-' + page + ': ' + ((contResp && contResp.reason) || 'unknown'));
+      break;
+    }
+    const ext = extractItemsAndContinuation(contResp.data);
+    if (!ext.items.length) { errors.push('page-' + page + ': empty-page'); break; }
+    const usable = selectProven(ext, 'page-' + page);
+    if (usable === null) { continuation = ''; break; }
+    if (!usable.length) { errors.push('page-' + page + ': no-scoped-items'); break; }
+
+    let newOnPage = 0;
+    for (const it of usable) {
+      const key = it.setVideoId || ('v:' + it.videoId);
+      if (!seenKeys.has(key)) { seenKeys.add(key); newOnPage++; }
+    }
+    pushItems(usable);
+    if (newOnPage === 0) { errors.push('page-' + page + ': all-duplicate'); break; }
+
+    if (ext.continuationScoped) {
+      continuation = ext.continuation;
+    } else {
+      if (ext.continuation || ext.rejectedTokenCount) errors.push('page-' + page + ': unproven-continuation');
+      continuation = '';
+    }
+  }
+
+  if (syncTabFailed) {
+    return { success: false, reason: 'sync-tab-unavailable', syncSessionId,
+      errors: ['開始時のYouTubeタブが閉じたか応答しないため、中止しました'] };
+  }
+
+  const hasMore = !!continuation;
+  const partial = hasMore || errors.some((e) => /^(page-\d+|init-browse|html)/.test(e));
+  const rows = Core.normalizeRows(rawRows);
+  if (!rows.length) {
+    return { success: false, reason: 'no-items', partial, hasMore, pages: page, errors, syncSessionId };
+  }
+
+  // Re-check the pinned tab/account before reporting a result the user may act on.
+  // A count produced under account A must never be presented while account B is
+  // selected — that is the state in which a later delete would hit the wrong list.
+  let sessionEnd;
+  try {
+    sessionEnd = await sendInSyncSession({ type: 'GET_YOUTUBE_SYNC_CONTEXT' });
+  } catch (_e) {
+    return { success: false, reason: 'sync-tab-unavailable', syncSessionId, fetched: rows.length,
+      errors: ['開始時のYouTubeタブが閉じたか応答しないため、中止しました'] };
+  }
+  const endAuthUser = String(sessionEnd && sessionEnd.authUser == null ? '' : sessionEnd.authUser);
+  const endAccountKey = String((sessionEnd && sessionEnd.accountId) || '');
+  const accountKeyChanged = !!syncSession.accountKey && endAccountKey !== syncSession.accountKey;
+  if (!sessionEnd || !sessionEnd.success || endAuthUser !== syncSession.authUser || accountKeyChanged) {
+    return {
+      success: false,
+      reason: 'sync-session-changed',
+      syncSessionId,
+      fetched: rows.length,
+      errors: [...errors, '取得中にYouTubeのタブまたは認証アカウントが変わったため、結果を破棄しました'],
+    };
+  }
+
+  // Watched lookup. A DB failure is NOT "not watched": bail out instead of reporting
+  // a candidate count computed from a failed lookup (HANDOFF_2026-07-12.md §8.3).
+  let watchedMap;
+  try {
+    watchedMap = await sendToOffscreenDb('DB_CHECK_MULTIPLE', { videoIds: rows.map((r) => r.videoId) });
+  } catch (e) {
+    return { success: false, reason: 'db-check-failed', syncSessionId, fetched: rows.length,
+      errors: [...errors, '視聴済みデータベースを確認できないため、対象件数を出さずに中止しました: ' + e.message] };
+  }
+
+  const plan = Core.buildRemovalPlan(rows, watchedMap || {});
+  // Compare against the previous completed scan BEFORE overwriting the fingerprint.
+  // A failed scan never gets here, so the fingerprint only ever holds real rows.
+  const prevFingerprint = await readWatchLaterFingerprint();
+  const drift = prevFingerprint ? Core.compareSetVideoIds(prevFingerprint, rows) : null;
+  await writeWatchLaterFingerprint(rows.map((r) => ({ videoId: r.videoId, setVideoId: r.setVideoId })));
+  lastWatchLaterScan = {
+    syncSessionId,
+    tabId: syncSession.tabId,
+    authUser: syncSession.authUser,
+    accountKey: syncSession.accountKey,
+    scannedAt: Date.now(),
+    rows,
+    candidates: plan.candidates,
+    partial,
+    // Kept so the deletion step does not have to re-fetch the playlist HTML just to
+    // rebuild the Innertube context — and so it provably uses the context from the
+    // same pinned session that produced these setVideoIds.
+    innertube: { apiKey: ytcfg.apiKey, clientVersion: ytcfg.clientVersion, context: baseContext },
+  };
+
+  return {
+    success: true,
+    syncSessionId,
+    partial,
+    hasMore,
+    pages: page,
+    errors,
+    counts: plan.counts,
+    drift,
+    // Capped preview only: the full candidate list stays in the service worker for
+    // the deletion step instead of being copied into every UI message.
+    preview: plan.candidates.slice(0, 200).map((c) => ({
+      videoId: c.videoId, title: c.title, channel: c.channel,
+      playlistIndex: c.playlistIndex, duplicateVideoId: c.duplicateVideoId,
+    })),
+    previewTruncated: plan.candidates.length > 200,
+  };
+}
+
+// ---- Watch Later deletion (Round C / D) ----
+
+// The one irreversible request, shared by the single-row and batch paths. Everything
+// checkable before sending is checked here: an account switch between "scan" and
+// "delete" is exactly the state in which a delete lands on the wrong list, so the
+// pinned account is verified again even though the scan already did it. Success is
+// whatever YouTube states, never inferred from a 200.
+async function sendWatchLaterRemoval(scan, row) {
+  const Core = globalThis.WatchLaterCore;
+  let ctx;
+  try {
+    ctx = await sendToYouTubeTab(
+      { type: 'GET_YOUTUBE_SYNC_CONTEXT', syncSessionId: scan.syncSessionId }, scan.tabId);
+  } catch (_e) {
+    return { ok: false, reason: 'sync-tab-unavailable' };
+  }
+  const ctxAuthUser = String(ctx && ctx.authUser == null ? '' : ctx.authUser);
+  const ctxAccountKey = String((ctx && ctx.accountId) || '');
+  if (!ctx || !ctx.success || ctxAuthUser !== scan.authUser
+      || (scan.accountKey && ctxAccountKey !== scan.accountKey)) {
+    return { ok: false, reason: 'sync-session-changed' };
+  }
+
+  const it = scan.innertube || {};
+  let resp;
+  try {
+    resp = await sendToYouTubeTab({
+      type: 'FETCH_INNERTUBE_EDIT_PLAYLIST',
+      syncSessionId: scan.syncSessionId,
+      authUser: scan.authUser,
+      apiKey: it.apiKey,
+      clientVersion: it.clientVersion,
+      body: Core.buildRemoveOneBody(it.context, row.setVideoId),
+    }, scan.tabId);
+  } catch (_e) {
+    return { ok: false, reason: 'sync-tab-unavailable' };
+  }
+  if (!resp || !resp.success) return { ok: false, reason: (resp && resp.reason) || 'edit-failed' };
+  if (!Core.isEditPlaylistSuccess(resp.data)) {
+    // Ambiguous outcome: the row may or may not be gone. Say so instead of guessing.
+    return { ok: false, reason: 'edit-not-confirmed',
+      status: String((resp.data && resp.data.status) || '') };
+  }
+  return { ok: true };
+}
+
+// Round C: remove exactly ONE row, named by the user.
+async function removeOneWatchLaterRow({ syncSessionId, videoId } = {}) {
+  const Core = globalThis.WatchLaterCore;
+  const scan = lastWatchLaterScan;
+  const pick = Core.selectConfirmedCandidate(scan, { syncSessionId, videoId }, Date.now());
+  if (pick.status !== 'ok') return { success: false, reason: pick.status };
+
+  const sent = await sendWatchLaterRemoval(scan, pick.row);
+  if (!sent.ok) return { success: false, reason: sent.reason, status: sent.status };
+
+  // The scan is dropped rather than patched: its candidate list still contains the row
+  // that is now gone, and the single-row path exists to be the simple one. Rebuilding
+  // a list mid-run is the batch path's job.
+  const removed = { videoId: pick.row.videoId, title: pick.row.title, channel: pick.row.channel };
+  lastWatchLaterScan = null;
+  return { success: true, removed };
+}
+
+// Round D: remove several rows that the user approved as a named list.
+//
+// Runs in chunks driven by re-scans rather than one scan for the whole run. The
+// 2026-08-08 measurement showed our own deletes do not reassign other rows'
+// setVideoId — that is what makes a chunk safe. Re-scanning between chunks bounds
+// what a change made on another device mid-run could reach.
+async function runWatchLaterBatch({ syncSessionId, videoIds, limit } = {}, onProgress) {
+  const Core = globalThis.WatchLaterCore;
+  const report = (p) => { try { if (onProgress) onProgress(p); } catch (_e) {} };
+  const approved = Array.isArray(videoIds) ? videoIds.filter(Boolean) : [];
+  if (!approved.length) return { success: false, reason: 'no-targets' };
+
+  let scan = lastWatchLaterScan;
+  if (!scan || scan.syncSessionId !== syncSessionId) return { success: false, reason: 'stale-scan' };
+
+  const max = Number.isInteger(limit) && limit > 0 ? Math.min(limit, approved.length) : approved.length;
+  const removed = [];
+  const removedIds = [];
+  let stopped = null;
+  let sinceRescan = 0;
+
+  while (removed.length < max) {
+    if (!scan) { stopped = 'no-scan'; break; }
+    const row = Core.selectBatchTargets(scan.candidates, approved, removedIds).targets[0];
+    if (!row) { stopped = removed.length ? null : 'no-targets'; break; }
+
+    // Re-run the single-row gate for every row, so a long batch cannot drift past the
+    // scan age limit or onto a row the user never approved.
+    const gate = Core.selectConfirmedCandidate(
+      { ...scan, candidates: [row] },
+      { syncSessionId: scan.syncSessionId, videoId: row.videoId },
+      Date.now());
+    if (gate.status !== 'ok') { stopped = gate.status; break; }
+
+    const sent = await sendWatchLaterRemoval(scan, row);
+    if (!sent.ok) { stopped = sent.reason; break; }
+
+    removed.push({ videoId: row.videoId, title: row.title, channel: row.channel });
+    removedIds.push(row.videoId);
+    sinceRescan += 1;
+    report({ done: removed.length, total: max, title: row.title || row.videoId });
+    if (removed.length >= max) break;
+
+    if (sinceRescan >= Core.BATCH_CHUNK) {
+      const rescan = await scanWatchLater({});
+      if (!rescan || !rescan.success) { stopped = 'rescan-failed'; break; }
+      // The list stopped behaving the way it was measured to — stop rather than keep
+      // deleting against ids we can no longer trust.
+      if (Core.batchShouldStop(rescan.drift)) { stopped = 'setvideoid-reassigned'; break; }
+      scan = lastWatchLaterScan;
+      sinceRescan = 0;
+    } else {
+      scan = { ...scan, candidates: scan.candidates.filter((c) => c.videoId !== row.videoId) };
+    }
+  }
+
+  // Always finish on a fresh scan: whatever the caller does next must not run against
+  // the list as it looked before the batch, and this is where drift would surface.
+  const finalScan = await scanWatchLater({});
+  const finalOk = !!(finalScan && finalScan.success);
+  return {
+    success: true,
+    removed,
+    stopped,
+    counts: finalOk ? finalScan.counts : null,
+    drift: finalOk ? finalScan.drift : null,
+    finalScanFailed: !finalOk,
+  };
+}
+
+// A batch can run for a minute; a Port keeps the progress visible instead of leaving
+// the page silent while rows are being deleted.
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'watch-later-batch') return;
+
+  port.onMessage.addListener(async (msg) => {
+    if (msg.type !== 'START') return;
+    try {
+      const result = await runWatchLaterBatch(msg, (progress) => {
+        try { port.postMessage({ type: 'PROGRESS', ...progress }); } catch (_e) {}
+      });
+      try { port.postMessage({ type: 'DONE', ...result }); } catch (_e) {}
+    } catch (e) {
+      try { port.postMessage({ type: 'ERROR', error: e.message }); } catch (_e) {}
+    }
+    try { port.disconnect(); } catch (_e) {}
+  });
+});
 
 // Streaming variant via chrome.runtime.Port — emits progress events.
 chrome.runtime.onConnect.addListener((port) => {

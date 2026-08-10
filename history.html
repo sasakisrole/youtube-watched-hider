@@ -166,6 +166,74 @@
       cursor: not-allowed;
       pointer-events: none;
     }
+    .sort-btn:focus-visible,
+    .wl-panel input:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+    /* 後で見るの削除対象プレビュー。取り消せない一括操作なので、実行前に全件を目で見る */
+    .wl-panel {
+      max-width: 1200px;
+      margin: 0 auto 16px;
+      padding: 16px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius);
+      background: var(--surface);
+    }
+    .wl-panel[hidden] { display: none; }
+    .wl-panel h2 { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
+    .wl-panel .wl-note { font-size: 12px; color: var(--text-muted); margin: 0 0 12px; }
+    .wl-list {
+      list-style: none;
+      margin: 0 0 12px;
+      padding: 0;
+      max-height: 40vh;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+    .wl-list li {
+      display: flex;
+      gap: 10px;
+      align-items: baseline;
+      padding: 8px 12px;
+      font-size: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .wl-list li:last-child { border-bottom: none; }
+    .wl-list .wl-idx {
+      min-width: 2.5em;
+      color: var(--text-faint);
+      font-variant-numeric: tabular-nums;
+    }
+    .wl-list .wl-title { flex: 1 1 20em; }
+    .wl-list .wl-channel { color: var(--text-muted); }
+    .wl-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      font-size: 12px;
+    }
+    .wl-actions label { color: var(--text-muted); }
+    .wl-actions input[type="number"] {
+      width: 6em;
+      min-height: 44px;
+      padding: 6px 8px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+    .wl-actions .sort-btn { min-height: 44px; }
+    .sort-btn.wl-danger { border-color: var(--danger); color: var(--danger); }
+    .sort-btn.wl-danger:hover {
+      background: var(--danger);
+      border-color: var(--danger);
+      color: #fff;
+    }
     .sort-btn:disabled:hover {
       background: var(--surface);
       border-color: var(--border-strong);
@@ -882,9 +950,26 @@
       <button class="sort-btn" id="fixDurations" title="動画時間をwatchページから補完（ライブは-1として記録）">Fix Durations</button>
       <label class="chk" title="最近チェック済み（30日以内）の動画は除外して取得。作曲・作詞・編曲のどれかが空なら、それより前にチェックした動画は再取得の対象"><input type="checkbox" id="skipCreditsChecked" checked>チェック済みスキップ</label>
       <label class="chk" title="非Topicチャンネル（MV・公式配信など）も対象にする。ラベル付き行のみ採用"><input type="checkbox" id="includeGeneralCredits">一般も含める</label>
+      <span class="toolbar-label" style="margin-left:8px;">後で見る</span>
+      <button class="sort-btn" id="scanWatchLater" title="後で見るの全件を取得し、視聴済みデータベースと一致する件数を数える。削除はしない">照合</button>
+      <button class="sort-btn" id="removeOneWatchLater" title="照合で見つかった先頭の1件だけを後で見るから削除する。取り消せない" disabled>1件だけ削除</button>
+      <button class="sort-btn" id="bulkRemoveWatchLater" title="照合で見つかった視聴済みの動画を一覧で確認してから、まとめて削除する。取り消せない" disabled>まとめて削除</button>
       <span id="fixStatus"></span>
     </div>
   </div>
+
+  <section class="wl-panel" id="wlPanel" hidden aria-labelledby="wlPanelTitle">
+    <h2 id="wlPanelTitle">まとめて削除する動画</h2>
+    <p class="wl-note" id="wlPanelNote"></p>
+    <ul class="wl-list" id="wlPanelList"></ul>
+    <div class="wl-actions">
+      <label for="wlPanelLimit">今回削除する件数</label>
+      <input type="number" id="wlPanelLimit" min="1" step="1" value="5">
+      <button class="sort-btn wl-danger" id="wlPanelRun" type="button">削除を実行</button>
+      <button class="sort-btn" id="wlPanelCancel" type="button">やめる</button>
+      <span id="wlPanelStatus"></span>
+    </div>
+  </section>
 
   <div class="enrich-modal" id="enrichModal" hidden aria-hidden="true">
     <div class="enrich-dialog" role="dialog" aria-modal="true" aria-labelledby="enrichTitle">

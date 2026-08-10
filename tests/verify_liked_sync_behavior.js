@@ -64,7 +64,14 @@ function message(handler, payload) {
     catch (e) { reject(e); }
   });
 }
+// top() は「次の関数宣言まで」を切り出すので、関数の間に別の関数が挿入されると
+// その手前で切れ、間にある定数が抜けて ReferenceError になる（実際に v1.45.0 の
+// マージで findFirstSetVideoId が割り込んで壊れた）。依存する定数は名指しで足す。
+const llRenderers = between(bg, 'const LL_PRIMARY_RENDERERS = new Set([',
+  '\nfunction extractItemsAndContinuation(');
 const itemExtractor = eval('(function(){' + top('findFirstContinuationToken') + '\n'
+  + fn('findFirstSetVideoId', bg) + '\n'
+  + llRenderers + '\n'
   + top('extractItemsAndContinuation') + '\nreturn extractItemsAndContinuation;})()');
 const ownerExtractor = eval('(function(){' + fn('extractOwnerIdentity', bg)
   + '\nreturn extractOwnerIdentity;})()');

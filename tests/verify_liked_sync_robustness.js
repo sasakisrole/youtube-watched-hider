@@ -62,7 +62,13 @@ function extractBracedFn(name, source) {
 // `function`, which sweeps in the LL_PRIMARY_RENDERERS / LL_CONTINUATION_ENVELOPES
 // consts declared between the two helpers — so they are in scope for
 // extractItemsAndContinuation (v1.42.9 split the former single LL_ITEM_CONTAINERS set).
+//
+// Watch Later scan (2026-08-07): findFirstSetVideoId now sits between the two, so it must be spliced in
+// as well — and because extractFn slices up to the NEXT top-level `function`, it is
+// the findFirstSetVideoId slice that now carries those consts. Dropping it here
+// would make extractItemsAndContinuation throw ReferenceError on the first item.
 const harness = extractFn('findFirstContinuationToken') + '\n'
+  + extractFn('findFirstSetVideoId') + '\n'
   + extractFn('extractItemsAndContinuation');
 // eslint-disable-next-line no-eval
 const extractItemsAndContinuation = eval('(function(){ ' + harness + '\n return extractItemsAndContinuation; })()');

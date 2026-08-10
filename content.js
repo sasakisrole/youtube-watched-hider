@@ -2732,6 +2732,61 @@ window._ytWatchedHider = (() => {
       return true;
     }
 
+    if (message.type === 'FETCH_INNERTUBE_EDIT_PLAYLIST') {
+      // Proxy POST to youtubei/v1/browse/edit_playlist. This is the ONLY irreversible
+      // request the extension makes, so the endpoint is hardcoded here and the body is
+      // re-validated: whatever the caller sends, this proxy can never do more than
+      // remove ONE entry from Watch Later. Widening it (other playlists, other
+      // actions, batches) must be a deliberate edit to this guard, not a caller change.
+      (async () => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), PROXY_FETCH_TIMEOUT_MS);
+        try {
+          const authUser = String(message.authUser == null ? '' : message.authUser);
+          if (!/^\d+$/.test(authUser)) {
+            sendResponse({ success: false, reason: 'invalid-auth-user' });
+            return;
+          }
+          const body = message.body || {};
+          const actions = Array.isArray(body.actions) ? body.actions : [];
+          if (body.playlistId !== 'WL' || actions.length !== 1
+              || !actions[0] || actions[0].action !== 'ACTION_REMOVE_VIDEO'
+              || !actions[0].setVideoId) {
+            sendResponse({ success: false, reason: 'refused-unexpected-edit' });
+            return;
+          }
+          const url = `https://www.youtube.com/youtubei/v1/browse/edit_playlist?prettyPrint=false${message.apiKey ? '&key=' + encodeURIComponent(message.apiKey) : ''}`;
+          const headers = {
+            'Content-Type': 'application/json',
+            'X-YouTube-Client-Name': '1',
+            'X-Origin': 'https://www.youtube.com',
+            'X-Goog-AuthUser': authUser,
+          };
+          if (message.clientVersion) headers['X-YouTube-Client-Version'] = message.clientVersion;
+          const auth = await computeSapisidHash();
+          if (auth) headers['Authorization'] = auth;
+          const res = await fetch(url, {
+            method: 'POST',
+            headers,
+            credentials: 'include',
+            body: JSON.stringify(body),
+            signal: controller.signal,
+          });
+          if (!res.ok) {
+            sendResponse({ success: false, reason: 'http-' + res.status });
+            return;
+          }
+          const data = await res.json();
+          sendResponse({ success: true, data });
+        } catch (e) {
+          sendResponse({ success: false, reason: e.name === 'AbortError' ? 'timeout' : 'fetch-error', error: e.message });
+        } finally {
+          clearTimeout(timer);
+        }
+      })();
+      return true;
+    }
+
     if (message.type === 'QUEUE_VIDEO') {
       const card = findCardByVideoId(message.videoId);
       if (card) queueOneCard(card).catch(() => {});

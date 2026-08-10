@@ -278,20 +278,26 @@ async function run() {
     && src.includes('for (const card of exhaustedThisPass) card.remove();'));
 
   console.log('\n§8.2 fetch timeout/abort (H1) — source-level pins');
+  // 2026-08-08: EDIT_PLAYLIST (Round C, the only irreversible request) joined the
+  // proxied handlers, so the expected count moved 3 -> 4. The count is deliberately
+  // exact: a new proxy that skips the timeout/abort discipline must fail here rather
+  // than inherit it by resemblance.
+  const PROXY_HANDLER_COUNT = 4;
   const abortControllerCount = (src.match(/new AbortController\(\)/g) || []).length;
-  check('drift: all 3 proxied fetch handlers (WATCH_HTML / PLAYLIST_HTML / INNERTUBE_BROWSE) construct an AbortController',
-    abortControllerCount === 3);
+  check('drift: all 4 proxied fetch handlers (WATCH_HTML / PLAYLIST_HTML / INNERTUBE_BROWSE / EDIT_PLAYLIST) construct an AbortController',
+    abortControllerCount === PROXY_HANDLER_COUNT);
   const signalWiredCount = (src.match(/signal: controller\.signal/g) || []).length;
-  check('drift: all 3 fetches actually pass the abort signal into fetch()', signalWiredCount === 3);
+  check('drift: all 4 fetches actually pass the abort signal into fetch()',
+    signalWiredCount === PROXY_HANDLER_COUNT);
   const timeoutScheduleCount = (src.match(/setTimeout\(\(\) => controller\.abort\(\), PROXY_FETCH_TIMEOUT_MS\)/g) || []).length;
-  check('drift: all 3 handlers schedule the abort via the shared PROXY_FETCH_TIMEOUT_MS constant',
-    /const PROXY_FETCH_TIMEOUT_MS = \d+;/.test(src) && timeoutScheduleCount === 3);
+  check('drift: all 4 handlers schedule the abort via the shared PROXY_FETCH_TIMEOUT_MS constant',
+    /const PROXY_FETCH_TIMEOUT_MS = \d+;/.test(src) && timeoutScheduleCount === PROXY_HANDLER_COUNT);
   const abortReasonCount = (src.match(/reason: e\.name === 'AbortError' \? 'timeout' : 'fetch-error'/g) || []).length;
-  check('drift: all 3 handlers distinguish a timeout abort from a generic fetch error',
-    abortReasonCount === 3);
+  check('drift: all 4 handlers distinguish a timeout abort from a generic fetch error',
+    abortReasonCount === PROXY_HANDLER_COUNT);
   const clearTimeoutCount = (src.match(/\} finally \{\s*clearTimeout\(timer\);\s*\}/g) || []).length;
-  check('drift: all 3 handlers clear the timeout in a finally (no leaked timers)',
-    clearTimeoutCount === 3);
+  check('drift: all 4 handlers clear the timeout in a finally (no leaked timers)',
+    clearTimeoutCount === PROXY_HANDLER_COUNT);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
