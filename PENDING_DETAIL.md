@@ -445,13 +445,17 @@ WIP `wip/stored-owner-guard`(`d2d023c`) は**取り込んでいない**。本実
 
 **③（通信先4者整合）は 2026-07-15 に完了**（`history.html` の uta-net 削除＋`docs/privacy.html` に MusicBrainz 通信を日英で開示＝manifest／実装／UI／privacy が YouTube+MusicBrainz で一致）。
 
-### 次回やること（次回ストア提出を実際に切るリリース準備 round で）
+**①clean commit/tag と ②root/dist/ZIP の byte 一致は 2026-08-10 の v1.45.0 リリースで完了**（commit `e74c6b8` / tag `v1.45.0` / 29ファイル全一致）。
 
-- **N1: clean commit / tag を作成し manifest 版と一致させる**
-- **N2: dist を削除→再生成し、root / dist / ZIP を byte 一致させる**（SHA照合）
-- **N3: リリースゲートを手順化**（tree clean／全テスト／hash 記録）
+**④リリースゲートの手順化は 2026-08-10 に完了**＝本項目はクローズ。
 
-今 tag や再ビルドをすると未検証コードを配布物に固定してしまうため延期している。バージョンを確定してから実施する。
+### 完了（2026-08-10・④手順化）
+
+- 手順書 `RELEASE_CHECKLIST.md` を新設（Step 0 前提確認 → 版上げ → whatsnew 再生成 → 全テスト → commit → dist/ZIP 再生成 → SHA-256 検算 → tag → 記録 → 提出）。止める条件と、順番を入れ替えてはいけない理由も明記。
+- 検算が口頭手順のままだと再現しないので、`scripts/verify_dist_hashes.py` を新設。root / `dist/` / ZIP の全ファイル SHA-256 照合＋ZIP 余剰エントリ検出で、終了コードが提出可否になる。
+- 実測: 現行 v1.45.0 で **29ファイル全一致・余剰0・exit 0**。感応性＝合成リポで root だけ書き換え / ZIP に余剰エントリ追加 / dist からファイル削除の3変異とも exit 1、無変異は exit 0。
+- 回帰ハーネスも手順どおりのループで **29本 0 failed** を実走確認。
+- ⚠️ `RELEASE_CHECKLIST.md` は未コミット（commit するかはけんと判断）。`scripts/` は `.gitignore` 済みでそもそも追跡外。
 
 ### 参照
 
