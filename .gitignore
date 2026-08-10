@@ -59,3 +59,20 @@ credit_changes_*_audit.csv
 credit_data_anomalies*.csv
 description_parser_audit.*
 backup_diff_metrics.json
+
+# --- 2026-08-10 公開ファイルの許可リスト化（列挙漏れで内部文書が公開された事故の再発防止） ---
+# 「危ないものを列挙して除外」だと列挙漏れが黙って公開される。ルート直下の文書は
+# 既定で除外し、公開するものだけ ! で通す。新しい作業メモを置いても自動で除外される。
+/*.md
+!/README.md
+!/CHANGELOG.md
+
+# docs/ は GitHub Pages の配信元。公開するページだけ通す
+# （privacy.html は Chrome ウェブストアのプライバシーポリシー要件で必須）
+/docs/*
+!/docs/index.html
+!/docs/privacy.html
+
+# 内部文書（AI委託プロンプト・個人の嗜好データ由来の出力）
+codex/
+yt-recommend-*.html
