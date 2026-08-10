@@ -1,6 +1,6 @@
 # yt-watched-hider 積み残し詳細
 
-最終更新: 2026-08-09
+最終更新: 2026-08-10
 
 PENDING.md 本文から移した経緯・実測値を id 単位で置く。PENDING.md 側には「現在地と次の一手」だけを残す。
 
@@ -582,3 +582,101 @@ push すると公開されるのは 12ファイル・+668/-40（`background.js` 
 - 経緯: `projects/codex-claude-split/poc-vcdz-2026-07-20.md`
 - 調査ログ: `codex-reports/launch/codex_out_drain27-2k2h.log`
 - 検出KW: 入れ子リポジトリ / 版ずれ / 未コミット差分 / youtube-watched-hider リポジトリ整理
+
+---
+
+## id:7kyr — クレジットDBから公式チャンネル候補を推測・提示
+
+### 現在地
+
+実装・自動テストは完了。**残るのは実機スモーク1回だけ**。
+
+検索結果の videoId 群を 1回の RPC でDBへ一括照会し、`creditAliases` の NFKC 正規化で突き合わせて公式/関連チャンネル候補を生成する。候補は提示のみで、`userAccepted=true` の明示採用（「この候補を確認」→「このチャンネルを登録」の二段階）のときだけ登録する。名前一致・部分クエリ一致だけでは自動確定しない。
+
+### 次回やること
+
+`private-audit/SMOKE_CHECKLIST_7kyr.md` を実機で1回通す（15〜20分）。**4Step全PASSなら close してよい**。
+
+- Step 1: 検索DOMから videoId・チャンネルが取れる（コンソール貼付スニペットで自動PASS判定）
+- Step 2: クレジット一致による未登録候補が根拠付きで並ぶ
+- Step 3: 二段階の明示採用と、押す前には登録されないネガティブ確認
+- Step 4: SPA遷移・無限スクロールで壊れない
+
+Step 2 が「候補0」のまま3語試しても出ない場合は FAIL でなく判定保留（DB側のクレジット状況を別途確認。既存汚染の修復は id:iv0b）。
+
+### 経緯
+
+#### 2026-07-28 実装（`29f1532`・branch `claude/7kyr-official-candidates`）
+
+videoId 一括取得・NFKC 突き合わせ・候補提示・明示採用・`CATEGORY.CREDIT_RELATED` / `hasRelatedCredit` の実配線（従来は false 固定）。新規 `tests/verify_official_search_filter_credits.js` 13件、既存 `verify_*.js` 全19本を 0 failed。感応性は Codex側10変異＋管制塔の独立変異1件（`adoptCreditCandidate` の明示採用チェックを潰すと2件落ち、復元後SHA一致）。
+
+#### 2026-07-30 独立確認で反証され、足りない分を実装（`0d3d0bc`）
+
+「実装済みで main 統合済み」という見立ては反証された。実装コミット自体は main に入っていたが、**DB一括応答が `composer`/`lyricist`/`arranger` だけを返し `creditsRaw` を返していなかった**（レコードには保存されていたのに検索側へ渡していない穴）。また複数名を区切る「・」が token 分割の対象外だった。
+
+けんとの指示で「対象外にする」でなく「実装する」を選択し、① `creditsRaw` を一括DB応答へ追加（`db.js`・4096字上限）② 複数名クレジットを分割対象にした。カタカナ名を分断しないよう、分割後の全断片が2文字以上かつカタカナのみでない場合だけ分割する。
+
+境界8ケースを管制塔が独立確認して全て期待どおり: 分割する＝田中太郎・鈴木花子／山田・田中・佐藤／椎名林檎・宇多田ヒカル。分割しない＝ジャン・ピエール／マイケル・ジャクソン／アン・ルイス／ジャン・ピエール・ポルナレフ／X・Y。
+
+`dist/`・`manifest.json` は無変更。公式候補の自動確定ロジックも変更していない。
+
+#### 2026-08-10 スモーク手順を新規作成し、残作業を確定
+
+従来ポインタの `SMOKE_CHECKLIST_2026-07-17.md` は w7gg / l1cm / w2mp / u1ps 用で、**7kyr の手順を一つも含んでいなかった**（実機スモークが残作業なのに手順が存在しない状態）。そこで 7kyr 専用の `private-audit/SMOKE_CHECKLIST_7kyr.md` を作成した。
+
+管制塔の独立確認:
+
+- 関連自動テスト5本を再実行して全 pass（official_search_filter 全緑・credits 16・discovery 50・credit_target 24・enrich_credits_roles 31）
+- 実装コミット `29f1532`・`0d3d0bc` が main に含まれることを `git merge-base --is-ancestor` で確認（branch 取込み判断は解消済み）
+- 現行 root は manifest **v1.45.0**
+
+実機のDOM確認を管制塔側で代行しようとしたが、ブラウザペインは youtube.com をポリシーでブロックするため不可。代わりに Step 1 を「コンソールに貼るだけで PASS/FAIL が出るスニペット」にして、人側の判断を減らしてある（押して見るだけの項目と、DOMセレクタの漂流を見分けるため）。
+
+### 参照
+
+- スモーク手順: `private-audit/SMOKE_CHECKLIST_7kyr.md`
+- 実装: `official_search_filter.js`（`refreshCreditCandidates` L515／二段階UI L1569・L1937）、`official_search_filter_core.js`（`inferCreditChannelCandidates` L465／`adoptCreditCandidate` L544）、`db.js`（`getCreditsForVideoIds` L287）
+- 将来アイデア: `projects/_recovery-youtube-watched-hider-20260723/FUTURE_IDEAS_qdo5_2026-07-23.md`
+- 検出KW: 公式候補 推測 / creditAliases / CREDIT_RELATED / PR5 PR6 / クレジットDB 連携
+
+---
+
+## id:cnd7 — クレジット候補の生成を「使用するプロフィール」で動かす
+
+### 現在地
+
+2026-08-10 の 7kyr 実機スモークで発覚。パネルには「プロフィール」が2つの意味で存在し、けんとが選んだ方は候補生成に使われていない。
+
+| | 実体 | 何に使われるか |
+|---|---|---|
+| 使用するプロフィール（ドロップダウン） | `activeProfileId`（`requestProfileSelection` L996 で書く） | 登録済みチャンネル一覧の表示 |
+| 検索語から解決されるプロフィール | `resolveProfileForQuery`（`queryBindings` 完全一致 or プロフィール名と検索語の完全一致） | **クレジット候補の生成** |
+
+`scanSearchResults`(L775) が `resolveEffectiveState()`(L612) の戻り値をそのまま `refreshCreditCandidates`(L515) へ渡すため、検索語が解決しないと `canLookup=false` で**候補探索そのものが走らない**。しかも空表示の文言は一致0のときと同一で、切り分けができない。
+
+実機で `東方 アレンジ` を検索し ZUN プロフィールを選んでいても候補0だったのはこれが原因。
+
+### なぜ抜けと判断したか
+
+設計書 A-10「プロフィール選択の安全性」が定める検索語→プロフィール解決は、**絞り込み表示のためのルール**（「この検索のときは ZUN の公式だけ残す」）。一方 7kyr の元仕様（qdo5 PR5〜PR6・`FUTURE_IDEAS_qdo5_2026-07-23.md`）に、候補提示を検索語の紐付けで制限する記述はない。同じパネルで選ばせておいて候補生成が無視するのは一貫していない。
+
+けんとの認識（「Team Shanghai Alice - Topic も zun - Topic も作曲が ZUN だからまとめて候補にしてほしい」）が仕様どおりで、実装が追いついていない。
+
+### 次回やること
+
+**候補リストと分類を別のプロフィールで動かす。**
+
+- 候補リスト（`state.creditCandidates`）→ `activeProfile`
+- 分類（`state.creditRelatedVideoIds` → `hasRelatedCredit` → 隠す・残すの判断）→ **従来どおり検索語解決のプロフィール**
+- DB照会（`GET_CREDITS_FOR_VIDEO_IDS`）は1回のまま。取得したクレジットに対して別名セットごとに `inferCreditChannelCandidates` を評価する（両者が同一プロフィールなら1回で済ませる）
+
+⚠️ 分類まで active に寄せない。寄せると無関係な検索でも他作家の動画が「クレジット関連」として残り、絞り込みが緩む。
+⚠️ 二段階の明示採用（`adoptCreditCandidate` の `userAccepted=true`）は変更しない。
+⚠️ 別名を足すUIは全ファイルに存在せず `aliases: []` 固定＝突き合わせはプロフィール名のみ。今回はこの前提を変えない。
+
+### 参照
+
+- 実装: `official_search_filter.js`（`scanSearchResults` L775 / `refreshCreditCandidates` L515 / `resolveEffectiveState` L612 / `getActiveProfile` L635 / `resolveProfileForQuery` L595）
+- 設計: `private-audit/DESIGN_official-search-and-credits_2026-07-12.md` A-10
+- 元仕様: `projects/_recovery-youtube-watched-hider-20260723/FUTURE_IDEAS_qdo5_2026-07-23.md`
+- 発覚経緯: `private-audit/SMOKE_CHECKLIST_7kyr.md` Step 2
