@@ -8,13 +8,14 @@
 // Run: node verify_enrich_credits_roles.js
 const fs = require('fs');
 const path = require('path');
+const CT = require(path.join(__dirname, '..', 'credit_target.js'));
 
 const src = fs.readFileSync(path.join(__dirname, '..', 'enrich_credits.js'), 'utf8');
 
 // enrich_credits.js is a browser IIFE that only sets window.* at load time (the
 // controller constructor runs lazily via create(), not at load). So evaluating
 // it with minimal stubs is enough to reach the pure test hooks.
-const win = {};
+const win = { CreditTarget: CT };
 const doc = {
   getElementById: () => null,
   addEventListener: () => {},
@@ -83,6 +84,26 @@ check('zero videos produce a zero-width estimate',
 check('upper limit applies to both estimate bounds and maximum request count',
   H.buildEnrichmentConfirmText({ videoCount: 100, channelCount: 20 }, 60000, 2)
     .includes('処理予定 2件、推定所要時間 約2〜12分（最大 約12 回の通信）'));
+
+// The lower-bound request estimate must use the same persistent MB gate as the
+// live Source 3 loop.
+{
+  const now = 2_000_000_000_000;
+  const video = {
+    videoId: 'cooldown', channel: 'Artist', title: 'Title',
+    composer: 'A', lyricist: 'B', arranger: '', creditsRaw: 'hint',
+    mbLookup: {
+      status: 'no-roles', checkedAt: now - 1000, nextEligibleAt: now + 1000,
+      queryFingerprint: CT.mbQueryFingerprint('Artist', 'Title'),
+      missingRoles: ['arranger'], attempts: 0,
+    },
+  };
+  const groups = new Map([['Artist', [video]]]);
+  check('MusicBrainz cooldown removes the video from minimum request count',
+    H.getMinimumEnrichmentRequestCount(groups, [], new Map(), { now }) === 0);
+  check('MusicBrainz cooldown bypass restores the video to minimum request count',
+    H.getMinimumEnrichmentRequestCount(groups, [], new Map(), { now, ignoreCooldown: true }) === 1);
+}
 
 // --- coveredNeededRoles -----------------------------------------------------
 console.log('coveredNeededRoles');

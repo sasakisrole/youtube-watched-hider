@@ -140,6 +140,9 @@ if (typeof WatchedDB === 'undefined') {
               arranger: existing.arranger || '',
               creditsCheckedAt: existing.creditsCheckedAt || 0,
               creditsSource: existing.creditsSource || '',
+              ...(Object.prototype.hasOwnProperty.call(existing, 'mbLookup')
+                ? { mbLookup: existing.mbLookup }
+                : {}),
             };
             if (nextDuration != null && nextRecord.durationFetchFailed) {
               delete nextRecord.durationFetchFailed;
@@ -325,6 +328,55 @@ if (typeof WatchedDB === 'undefined') {
         }
 
         tx.oncomplete = () => resolve(result);
+        tx.onerror = (event) => reject(event.target.error);
+        tx.onabort = (event) => reject(event.target.error);
+      });
+    }
+
+    async function recordMbLookup(videoId, details = {}) {
+      const status = details.status;
+      if (!['found', 'not-found', 'no-roles', 'error'].includes(status)) {
+        throw new TypeError('Invalid MusicBrainz lookup status');
+      }
+      if (typeof details.queryFingerprint !== 'string') {
+        throw new TypeError('Invalid MusicBrainz query fingerprint');
+      }
+      const missingRoles = [...new Set(
+        (Array.isArray(details.missingRoles) ? details.missingRoles : [])
+          .filter((role) => CREDIT_ROLES.includes(role))
+      )];
+      const now = typeof details.now === 'number' && Number.isFinite(details.now) && details.now > 0
+        ? details.now
+        : Date.now();
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const getReq = store.get(videoId);
+        let didUpdate = false;
+        getReq.onsuccess = () => {
+          const existing = getReq.result;
+          if (!existing) return;
+          const prior = sanitizeMbLookup(existing.mbLookup);
+          const sameCondition = prior
+            && prior.queryFingerprint === details.queryFingerprint
+            && missingRoles.every((role) => prior.missingRoles.includes(role));
+          const priorAttempts = details.ignoreCooldown === true || !sameCondition
+            ? 0
+            : (prior && prior.status === 'error' ? prior.attempts : 0);
+          const attempts = status === 'error' ? priorAttempts + 1 : 0;
+          existing.mbLookup = {
+            status,
+            checkedAt: now,
+            nextEligibleAt: globalThis.CreditTarget.computeMbNextEligibleAt(status, attempts, now),
+            queryFingerprint: details.queryFingerprint,
+            missingRoles,
+            attempts,
+          };
+          store.put(existing);
+          didUpdate = true;
+        };
+        tx.oncomplete = () => resolve(didUpdate);
         tx.onerror = (event) => reject(event.target.error);
         tx.onabort = (event) => reject(event.target.error);
       });
@@ -989,6 +1041,27 @@ if (typeof WatchedDB === 'undefined') {
       return sanitized;
     }
 
+    function sanitizeMbLookup(value) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+      if (!['found', 'not-found', 'no-roles', 'error'].includes(value.status)) return null;
+      if (typeof value.checkedAt !== 'number' || !Number.isFinite(value.checkedAt) || value.checkedAt <= 0) return null;
+      if (typeof value.nextEligibleAt !== 'number' || !Number.isFinite(value.nextEligibleAt)
+        || value.nextEligibleAt < value.checkedAt) return null;
+      if (typeof value.queryFingerprint !== 'string' || !Array.isArray(value.missingRoles)) return null;
+      if (!Number.isInteger(value.attempts) || value.attempts < 0) return null;
+      if (value.status === 'error' ? value.attempts < 1 : value.attempts !== 0) return null;
+      if (value.missingRoles.some((role) => !CREDIT_ROLES.includes(role))) return null;
+      if (new Set(value.missingRoles).size !== value.missingRoles.length) return null;
+      return {
+        status: value.status,
+        checkedAt: value.checkedAt,
+        nextEligibleAt: value.nextEligibleAt,
+        queryFingerprint: value.queryFingerprint,
+        missingRoles: value.missingRoles.slice(),
+        attempts: value.attempts,
+      };
+    }
+
     function isValidLikedRecord(record) {
       // videoId is the only required field. Optional-field corruption is repaired
       // by normalizeLikedRecord instead of discarding an otherwise recoverable row.
@@ -1088,7 +1161,7 @@ if (typeof WatchedDB === 'undefined') {
     }
 
     function normalizeRecord(record) {
-      return {
+      const normalized = {
         videoId: String(record.videoId),
         title: typeof record.title === 'string' ? record.title : '',
         channel: typeof record.channel === 'string' ? record.channel : '',
@@ -1113,6 +1186,9 @@ if (typeof WatchedDB === 'undefined') {
         durationFetchFailed: typeof record.durationFetchFailed === 'string' ? record.durationFetchFailed : '',
         category: typeof record.category === 'string' ? record.category : '',
       };
+      const mbLookup = sanitizeMbLookup(record.mbLookup);
+      if (mbLookup) normalized.mbLookup = mbLookup;
+      return normalized;
     }
 
     async function importData(records) {
@@ -1294,6 +1370,11 @@ if (typeof WatchedDB === 'undefined') {
               }
               if (record.creditsCheckedAt > (existing.creditsCheckedAt || 0)) {
                 existing.creditsCheckedAt = record.creditsCheckedAt;
+                updated = true;
+              }
+              if (record.mbLookup
+                && record.mbLookup.checkedAt > ((sanitizeMbLookup(existing.mbLookup) || {}).checkedAt || 0)) {
+                existing.mbLookup = record.mbLookup;
                 updated = true;
               }
               if (record.creditsSource && !existing.creditsSource) {
@@ -1522,7 +1603,7 @@ if (typeof WatchedDB === 'undefined') {
       return { total: all.length, accounts: [...accounts.entries()] };
     }
 
-    return { openDB, addWatched, updateDuration, markDurationFailed, markDurationLive, updateTitle, updateTitleAndChannel, updateCredits, getCreditsForVideoIds, setManualCreditRole, markCreditsChecked, markCreditsFailed, cleanAllCredits, repairInvalidCredits, restoreRepairedCredits, verifyCreditRepair, isWatched, checkMultiple, getStats, getAllIds, getWatchedIdsPage, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport, unwrapWatchedRecords, parseImportData, diffImport,
+    return { openDB, addWatched, updateDuration, markDurationFailed, markDurationLive, updateTitle, updateTitleAndChannel, updateCredits, recordMbLookup, getCreditsForVideoIds, setManualCreditRole, markCreditsChecked, markCreditsFailed, cleanAllCredits, repairInvalidCredits, restoreRepairedCredits, verifyCreditRepair, isWatched, checkMultiple, getStats, getAllIds, getWatchedIdsPage, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport, unwrapWatchedRecords, parseImportData, diffImport,
       upsertLiked, getAllLiked, importLikedData, mergeLikedData, clearLikedByAccount, deleteManyRecords, replaceRecords, getLikedStats };
   })();
 }

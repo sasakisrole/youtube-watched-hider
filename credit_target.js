@@ -28,6 +28,12 @@
   var CREDIT_RECHECK_EMPTY_MS = 180 * 24 * 60 * 60 * 1000;
   var CREDIT_RECHECK_EMPTY_MAX_MS = 720 * 24 * 60 * 60 * 1000;
   var CREDIT_RECHECK_SPREAD_MS = 30 * 24 * 60 * 60 * 1000;
+  // MusicBrainz successful negative/partial results are stable enough to avoid
+  // repeating the same lookup on every Enrich Credits run.
+  var MB_RECHECK_MS = 90 * 24 * 60 * 60 * 1000;
+  var MB_ERROR_BASE_MS = 60 * 60 * 1000;
+  var MB_ERROR_MAX_MS = 24 * 60 * 60 * 1000;
+  var MB_LOOKUP_STATUSES = ['found', 'not-found', 'no-roles', 'error'];
 
   var TOPIC_SUFFIX_RE = /\s*-\s*(?:topic|トピック)\s*$/i;
   var CREDIT_ROLE_TEXT_RE = /(?:作詞(?:家|者)?|作詩|作曲(?:家|者)?|編曲(?:家|者)?|作編曲|lyrics?(?:\s+by)?|lyricists?|written\s+by|songwriters?|words\s*(?:&|and)\s*music|compos(?:e|ed\s+by|er|ers|ition)|arrang(?:e|ed\s+by|er|ers|ement))/iu;
@@ -55,6 +61,54 @@
 
   function normalizeSharedText(value) {
     return String(value == null ? '' : value).normalize('NFKC').trim();
+  }
+
+  function normalizeMbQueryPart(value) {
+    return normalizeSharedText(value).replace(/\s+/gu, ' ').toLowerCase();
+  }
+
+  function mbQueryFingerprint(artist, title) {
+    return normalizeMbQueryPart(artist) + '\u0000' + normalizeMbQueryPart(title);
+  }
+
+  function isValidMbLookup(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    if (MB_LOOKUP_STATUSES.indexOf(value.status) === -1) return false;
+    if (typeof value.checkedAt !== 'number' || !Number.isFinite(value.checkedAt) || value.checkedAt <= 0) return false;
+    if (typeof value.nextEligibleAt !== 'number' || !Number.isFinite(value.nextEligibleAt)
+      || value.nextEligibleAt < value.checkedAt) return false;
+    if (typeof value.queryFingerprint !== 'string' || !Array.isArray(value.missingRoles)) return false;
+    if (!Number.isInteger(value.attempts) || value.attempts < 0) return false;
+    if (value.status === 'error' ? value.attempts < 1 : value.attempts !== 0) return false;
+    var seen = new Set();
+    for (var i = 0; i < value.missingRoles.length; i++) {
+      var role = value.missingRoles[i];
+      if (CREDIT_ROLES.indexOf(role) === -1 || seen.has(role)) return false;
+      seen.add(role);
+    }
+    return true;
+  }
+
+  function shouldQueryMb(record, opts) {
+    opts = opts || {};
+    if (opts.ignoreCooldown === true) return true;
+    var lookup = record && record.mbLookup;
+    if (!isValidMbLookup(lookup)) return true;
+    var now = typeof opts.now === 'number' && Number.isFinite(opts.now) ? opts.now : Date.now();
+    if (now >= lookup.nextEligibleAt) return true;
+    if (lookup.queryFingerprint !== mbQueryFingerprint(opts.artist, opts.title)) return true;
+    var priorRoles = new Set(lookup.missingRoles);
+    var missingRoles = Array.isArray(opts.missingRoles) ? opts.missingRoles : [];
+    return missingRoles.some(function (role) {
+      return CREDIT_ROLES.indexOf(role) !== -1 && !priorRoles.has(role);
+    });
+  }
+
+  function computeMbNextEligibleAt(status, attempts, now) {
+    if (typeof now !== 'number' || !Number.isFinite(now)) now = Date.now();
+    if (status !== 'error') return now + MB_RECHECK_MS;
+    var stage = Number.isInteger(attempts) && attempts > 0 ? attempts : 1;
+    return now + Math.min(MB_ERROR_MAX_MS, MB_ERROR_BASE_MS * Math.pow(2, stage - 1));
   }
 
   function isTopicChannelName(name) {
@@ -185,6 +239,9 @@
     CREDIT_RECHECK_EMPTY_MAX_MS: CREDIT_RECHECK_EMPTY_MAX_MS,
     CREDIT_RECHECK_SPREAD_MS: CREDIT_RECHECK_SPREAD_MS,
     creditRecheckSpreadMs: creditRecheckSpreadMs,
+    MB_RECHECK_MS: MB_RECHECK_MS,
+    MB_ERROR_BASE_MS: MB_ERROR_BASE_MS,
+    MB_ERROR_MAX_MS: MB_ERROR_MAX_MS,
     creditIsBlank: creditIsBlank,
     getMissingCreditRoles: getMissingCreditRoles,
     effectiveRoleSource: effectiveRoleSource,
@@ -197,6 +254,9 @@
     creditRecheckWindowMs: creditRecheckWindowMs,
     recentlyCreditChecked: recentlyCreditChecked,
     isFixCreditsTarget: isFixCreditsTarget,
+    mbQueryFingerprint: mbQueryFingerprint,
+    shouldQueryMb: shouldQueryMb,
+    computeMbNextEligibleAt: computeMbNextEligibleAt,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

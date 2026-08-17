@@ -54,9 +54,18 @@ const runtimeFlat = {
   lastError: 'network hiccup',
 };
 
+const mbLookup = {
+  status: 'not-found',
+  checkedAt: 1731000000000,
+  nextEligibleAt: 1738776000000,
+  queryFingerprint: 'artist\u0000title',
+  missingRoles: ['composer', 'arranger'],
+  attempts: 0,
+};
+
 // --- Export preserves flat shape + all fields ---
 const envelope = WatchedDB.wrapExport(
-  [{ videoId: 'a', watchedAt: 1, source: 'self' }],
+  [{ videoId: 'a', watchedAt: 1, source: 'self', mbLookup }],
   { likedVideos: [{ videoId: 'b', accountId: 'UCkenrec' }], likedSyncMeta: runtimeFlat, source: 'manual' }
 );
 const em = envelope.likedSyncMeta;
@@ -70,6 +79,8 @@ check('export: identityConfidence preserved (dropped by old impl)', em && em.ide
 check('export: partial preserved (dropped by old impl)', em && em.partial === true);
 check('export: count preserved', em && em.count === 42);
 check('export: lastError preserved', em && em.lastError === 'network hiccup');
+check('export: watched mbLookup is preserved by whole-record export',
+  JSON.stringify(envelope.watchedVideos[0].mbLookup) === JSON.stringify(mbLookup));
 
 // --- parseImportData roundtrips the flat shape ---
 const parsed = WatchedDB.parseImportData(envelope);
@@ -80,6 +91,8 @@ check('import: identityConfidence survives roundtrip', pm && pm.identityConfiden
 check('import: unknownConfirmedAt null preserved', pm && pm.unknownConfirmedAt === null);
 check('import: partial survives roundtrip', pm && pm.partial === true);
 check('import: watched records restored', parsed.watchedVideos.length === 1 && parsed.watchedVideos[0].videoId === 'a');
+check('import: watched mbLookup survives envelope roundtrip',
+  JSON.stringify(parsed.watchedVideos[0].mbLookup) === JSON.stringify(mbLookup));
 check('import: liked records restored', parsed.likedVideos.length === 1 && parsed.likedVideos[0].videoId === 'b');
 
 // --- 誤同期防止 guard scenario: after restore, the flat guard still fires ---

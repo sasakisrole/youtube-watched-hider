@@ -137,7 +137,22 @@ check('skipChecked defaults to true when omitted',
 // --- constant sanity --------------------------------------------------------
 console.log('constants');
 check('CREDIT_RECHECK_MS is 30 days', CT.CREDIT_RECHECK_MS === 30 * DAY);
+check('MB_RECHECK_MS is 90 days', CT.MB_RECHECK_MS === 90 * DAY);
 check('CREDIT_ROLES are the 3 roles', JSON.stringify(CT.CREDIT_ROLES) === JSON.stringify(['composer', 'lyricist', 'arranger']));
+
+// --- MusicBrainz persistent cooldown ---------------------------------------
+console.log('MusicBrainz cooldown');
+const mbFingerprint = CT.mbQueryFingerprint(' Artist ', 'Ｔｉｔｌｅ');
+const mbRecord = { mbLookup: {
+  status: 'not-found', checkedAt: NOW - DAY, nextEligibleAt: NOW + DAY,
+  queryFingerprint: mbFingerprint, missingRoles: ['lyricist'], attempts: 0,
+} };
+check('unchanged MusicBrainz lookup inside cooldown is skipped',
+  CT.shouldQueryMb(mbRecord, { artist: 'artist', title: 'title', missingRoles: ['lyricist'], now: NOW }) === false);
+check('changed MusicBrainz query is immediately eligible',
+  CT.shouldQueryMb(mbRecord, { artist: 'artist', title: 'new title', missingRoles: ['lyricist'], now: NOW }) === true);
+check('newly missing MusicBrainz role is immediately eligible',
+  CT.shouldQueryMb(mbRecord, { artist: 'artist', title: 'title', missingRoles: ['lyricist', 'arranger'], now: NOW }) === true);
 
 function makeFakeIndexedDb(record) {
   const db = {

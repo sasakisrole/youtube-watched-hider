@@ -4,6 +4,7 @@
 // Run: node tests/verify_enrich_credits_estimate_behavior.js
 const fs = require('fs');
 const path = require('path');
+const CreditTarget = require(path.join(__dirname, '..', 'credit_target.js'));
 
 const src = fs.readFileSync(path.join(__dirname, '..', 'enrich_credits.js'), 'utf8');
 
@@ -136,9 +137,9 @@ async function waitFor(findValue) {
   throw new Error('confirmation dialog did not appear');
 }
 
-async function exerciseGeneration({ records, rules, cachedVideoIds = [], ruleLoadFails = false }) {
+async function exerciseGeneration({ records, rules, cachedVideoIds = [], ruleLoadFails = false, ignoreCooldown = false }) {
   const document = new FakeDocument();
-  const calls = { config: 0, mb: 0, localRuleFetch: 0 };
+  const calls = { config: 0, mb: 0, recordMbLookup: 0, localRuleFetch: 0 };
   const byTitle = new Map(records.map((record) => [record.title, record]));
   const chrome = {
     runtime: {
@@ -157,6 +158,11 @@ async function exerciseGeneration({ records, rules, cachedVideoIds = [], ruleLoa
           callback(mbResponse(record, `Network Arranger ${record.videoId}`));
           return;
         }
+        if (message.type === 'DB_RPC' && message.op === 'RECORD_MB_LOOKUP') {
+          calls.recordMbLookup++;
+          callback({ success: true, result: true });
+          return;
+        }
         throw new Error(`unexpected runtime message: ${message.type}`);
       },
     },
@@ -167,9 +173,7 @@ async function exerciseGeneration({ records, rules, cachedVideoIds = [], ruleLoa
     if (ruleLoadFails) throw new Error('simulated local rule load failure');
     return { ok: true, json: async () => ({ rules }) };
   };
-  const window = {
-    CreditTarget: { stripTopicChannelSuffix: (channel) => channel },
-  };
+  const window = { CreditTarget };
 
   // eslint-disable-next-line no-new-func
   new Function('window', 'document', 'chrome', 'fetch', src)(window, document, chrome, fakeFetch);
@@ -187,7 +191,7 @@ async function exerciseGeneration({ records, rules, cachedVideoIds = [], ruleLoa
 
   const groups = controller.groupUnassigned(records);
   const minimumRequestCount = window.EnrichCreditsTestHooks
-    .getMinimumEnrichmentRequestCount(groups, rules, controller.fetchCache.mb);
+    .getMinimumEnrichmentRequestCount(groups, rules, controller.fetchCache.mb, { ignoreCooldown });
   const hooks = window.EnrichCreditsTestHooks;
   const expectedEstimate = hooks.buildEnrichmentConfirmText(
     hooks.getEnrichmentPreCount(records),
@@ -200,6 +204,12 @@ async function exerciseGeneration({ records, rules, cachedVideoIds = [], ruleLoa
     (element) => element.dataset.enrichPrecountAction === 'start'));
   const panel = document.modal.find(
     (element) => element.className === 'enrich-message enrich-precount-confirm');
+
+  if (ignoreCooldown) {
+    const checkbox = panel.find((element) => element.dataset.enrichIgnoreMbCooldown === 'true');
+    checkbox.checked = true;
+    checkbox.dispatch('change');
+  }
 
   if (ruleLoadFails) {
     await waitFor(() => calls.localRuleFetch === 1);
@@ -311,6 +321,23 @@ async function run() {
 
   check('all generation cases loaded local rules once and requested config once',
     [cache, ruleOnly, mixed].every((result) => result.calls.localRuleFetch === 1 && result.calls.config === 1));
+
+  console.log('\npersistent MusicBrainz cooldown paths');
+  const cooldownRecord = makeRecord('cooldown', 'Cooldown Artist', 'Cooldown Song');
+  cooldownRecord.mbLookup = {
+    status: 'not-found',
+    checkedAt: Date.now() - 1000,
+    nextEligibleAt: Date.now() + 60 * 60 * 1000,
+    queryFingerprint: CreditTarget.mbQueryFingerprint(cooldownRecord.channel, cooldownRecord.title),
+    missingRoles: ['arranger'],
+    attempts: 0,
+  };
+  const cooldown = await exerciseGeneration({ records: [cooldownRecord], rules: [] });
+  check('cooldown lowers estimate and actual MusicBrainz communication to zero',
+    cooldown.minimumRequestCount === 0 && cooldown.calls.mb === 0 && cooldown.calls.recordMbLookup === 0);
+  const bypass = await exerciseGeneration({ records: [cooldownRecord], rules: [], ignoreCooldown: true });
+  check('confirmation checkbox bypass restores estimate, query, and persistent stamp',
+    bypass.minimumRequestCount === 1 && bypass.calls.mb === 1 && bypass.calls.recordMbLookup === 1);
 
   console.log('\nfailed local-rule load confirmation path');
   let failedRuleLoad = null;

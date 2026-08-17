@@ -268,6 +268,14 @@ async function handleDbRpc(message) {
       return WatchedDB.markCreditsFailed(message.videoId, message.reason || 'unknown');
     case 'UPDATE_CREDITS':
       return WatchedDB.updateCredits(message.videoId, message.credits || {}, !!message.force, message.creditsSource || '');
+    case 'RECORD_MB_LOOKUP':
+      return WatchedDB.recordMbLookup(message.videoId, {
+        status: message.status,
+        missingRoles: message.missingRoles,
+        queryFingerprint: message.queryFingerprint,
+        now: message.now,
+        ignoreCooldown: !!message.ignoreCooldown,
+      });
     case 'GET_CREDITS_FOR_VIDEO_IDS':
       return WatchedDB.getCreditsForVideoIds(message.videoIds || []);
     case 'SET_MANUAL_CREDIT_ROLE': {

@@ -1,5 +1,5 @@
 // Enrich Credits UI controller for history.html.
-// Keeps all enrichment state in memory; IndexedDB writes go through existing DB_RPC UPDATE_CREDITS.
+// Keeps candidate state in memory; IndexedDB writes go through DB_RPC operations.
 (function () {
   'use strict';
 
@@ -216,8 +216,10 @@
     return `${cleanArtistFromChannel(channel)}\n${title}`;
   }
 
-  function getMinimumEnrichmentRequestCount(groups, rules, mbCache) {
+  function getMinimumEnrichmentRequestCount(groups, rules, mbCache, opts = {}) {
     const ruleByChannel = new Map((rules || []).map((rule) => [rule.channel, rule]));
+    const api = window.CreditTarget;
+    const now = typeof opts.now === 'number' ? opts.now : Date.now();
     let requestCount = 0;
     for (const [channel, videos] of groups || []) {
       const rule = ruleByChannel.get(channel);
@@ -227,7 +229,17 @@
           coveredNeededRoles(createRuleCandidate(video, rule), missing)
             .forEach((role) => missing.delete(role));
         }
-        if (missing.size && !(mbCache && mbCache.has(getMbCacheKey(channel, video.title || '')))) {
+        const title = video.title || '';
+        const artist = cleanArtistFromChannel(channel);
+        const eligible = !api || typeof api.shouldQueryMb !== 'function'
+          || api.shouldQueryMb(video, {
+            artist,
+            title,
+            missingRoles: Array.from(missing),
+            now,
+            ignoreCooldown: opts.ignoreCooldown === true,
+          });
+        if (missing.size && eligible && !(mbCache && mbCache.has(getMbCacheKey(channel, title)))) {
           requestCount++;
         }
       }
@@ -936,9 +948,15 @@
       const host = this.autoView || this.modal;
       if (!host || typeof document.createElement !== 'function') return Promise.resolve(false);
       let estimateRules = Array.isArray(rules) ? rules : null;
+      let ignoreCooldown = false;
       const estimateText = (limit = null) => {
         const limitedGroups = limitEnrichmentGroups(groups, limit);
-        const minimumRequestCount = getMinimumEnrichmentRequestCount(limitedGroups, estimateRules, this.fetchCache.mb);
+        const minimumRequestCount = getMinimumEnrichmentRequestCount(
+          limitedGroups,
+          estimateRules,
+          this.fetchCache.mb,
+          { ignoreCooldown },
+        );
         return buildEnrichmentConfirmText(preCount, rateLimitMs, limit, minimumRequestCount);
       };
 
@@ -1003,6 +1021,21 @@
       limitRow.appendChild(limitInput);
       panel.appendChild(limitRow);
 
+      const cooldownLabel = document.createElement('label');
+      cooldownLabel.style.display = 'flex';
+      cooldownLabel.style.gap = '8px';
+      cooldownLabel.style.alignItems = 'center';
+      cooldownLabel.style.margin = '0 0 12px';
+      const cooldownInput = document.createElement('input');
+      cooldownInput.type = 'checkbox';
+      cooldownInput.dataset.enrichIgnoreMbCooldown = 'true';
+      cooldownInput.checked = false;
+      cooldownLabel.appendChild(cooldownInput);
+      const cooldownText = document.createElement('span');
+      cooldownText.textContent = 'MusicBrainz のクールダウンを無視して再照会する';
+      cooldownLabel.appendChild(cooldownText);
+      panel.appendChild(cooldownLabel);
+
       const actions = document.createElement('div');
       actions.style.display = 'flex';
       actions.style.gap = '8px';
@@ -1046,6 +1079,10 @@
         updateEstimate();
       });
       limitInput.addEventListener('input', updateEstimate);
+      cooldownInput.addEventListener('change', () => {
+        ignoreCooldown = cooldownInput.checked === true;
+        updateEstimate();
+      });
       updateEstimate();
 
       const previousFocus = document.activeElement;
@@ -1062,7 +1099,7 @@
           resolve(confirmed);
         };
         this.cancelGenerationConfirmation = () => finish(false);
-        start.addEventListener('click', () => finish({ limit: selectedLimit() }));
+        start.addEventListener('click', () => finish({ limit: selectedLimit(), ignoreCooldown }));
         cancel.addEventListener('click', () => finish(false));
         panel.addEventListener('keydown', (event) => {
           if (event.key !== 'Escape') return;
@@ -1130,6 +1167,19 @@
       }
       this.fetchCache.mb.set(key, response);
       return response;
+    }
+
+    async recordMbLookup(videoId, details) {
+      const response = await sendRuntimeMessage({
+        type: 'DB_RPC',
+        op: 'RECORD_MB_LOOKUP',
+        videoId,
+        ...details,
+      });
+      if (!response || !response.success) {
+        throw new Error((response && response.error) || 'RECORD_MB_LOOKUP failed');
+      }
+      return !!response.result;
     }
 
     async generateCandidates() {
@@ -1239,8 +1289,55 @@
           // one success elsewhere no longer starves the other videos, HANDOFF §3.3).
           for (const state of stillMissing()) {
             if (this.abortRequested) break;
+            const title = state.video.title || '';
+            const artist = cleanArtistFromChannel(channel);
+            const missingRoles = Array.from(state.missing);
+            const api = window.CreditTarget;
+            const shouldQuery = !api || typeof api.shouldQueryMb !== 'function'
+              || api.shouldQueryMb(state.video, {
+                artist,
+                title,
+                missingRoles,
+                now: Date.now(),
+                ignoreCooldown: confirmation.ignoreCooldown === true,
+              });
+            if (!shouldQuery) continue;
+            const queryFingerprint = api && typeof api.mbQueryFingerprint === 'function'
+              ? api.mbQueryFingerprint(artist, title)
+              : `${String(artist).normalize('NFKC').trim().replace(/\s+/gu, ' ').toLowerCase()}\u0000${String(title).normalize('NFKC').trim().replace(/\s+/gu, ' ').toLowerCase()}`;
+            let mb = null;
             try {
-              const mb = await this.fetchMb(channel, state.video.title || '');
+              mb = await this.fetchMb(channel, title);
+            } catch (error) {
+              try {
+                await this.recordMbLookup(state.video.videoId, {
+                  status: 'error',
+                  missingRoles,
+                  queryFingerprint,
+                  now: Date.now(),
+                  ignoreCooldown: confirmation.ignoreCooldown === true,
+                });
+              } catch (recordError) {
+                this.errors.push(`${channel}: MusicBrainz 記録 ${recordError.message}`);
+              }
+              this.errors.push(`${channel}: MusicBrainz ${error.message}`);
+              continue;
+            }
+            const status = mb && mb.candidate
+              ? 'found'
+              : (mb && mb.reason === 'no-roles' ? 'no-roles' : 'not-found');
+            try {
+              await this.recordMbLookup(state.video.videoId, {
+                status,
+                missingRoles,
+                queryFingerprint,
+                now: Date.now(),
+                ignoreCooldown: confirmation.ignoreCooldown === true,
+              });
+            } catch (error) {
+              this.errors.push(`${channel}: MusicBrainz 記録 ${error.message}`);
+            }
+            try {
               const m = mb && mb.candidate;
               const candidate = m && candidateFromSong(state.video, {
                 title: m.mbTitle || mb.title || state.video.title || '',
@@ -1257,7 +1354,7 @@
               });
               applyCandidate(state, candidate);
             } catch (error) {
-              this.errors.push(`${channel}: MusicBrainz ${error.message}`);
+              this.errors.push(`${channel}: MusicBrainz 候補 ${error.message}`);
             }
           }
           this.renderAll();

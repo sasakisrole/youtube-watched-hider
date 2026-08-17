@@ -10,6 +10,7 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
+const CreditTarget = require(path.join(ROOT, 'credit_target.js'));
 
 let pass = 0;
 let fail = 0;
@@ -57,7 +58,7 @@ function makeFake(watched, liked) {
 
 function loadWatchedDb(idb) {
   const dbSource = fs.readFileSync(path.join(ROOT, 'db.js'), 'utf8');
-  return new Function('indexedDB', 'globalThis', `${dbSource}\nreturn WatchedDB;`)(idb, {});
+  return new Function('indexedDB', 'globalThis', `${dbSource}\nreturn WatchedDB;`)(idb, { CreditTarget });
 }
 
 async function testReplace() {
@@ -414,6 +415,51 @@ async function testPartialSuccessDisplay() {
     (backgroundSource.match(/if \(!\(result\.liked && result\.liked\.failed\)\)/g) || []).length === 2);
 }
 
+function makeMbLookup(checkedAt, status = 'not-found') {
+  return {
+    status,
+    checkedAt,
+    nextEligibleAt: checkedAt + 90 * 24 * 60 * 60 * 1000,
+    queryFingerprint: CreditTarget.mbQueryFingerprint('Artist', 'Title'),
+    missingRoles: ['arranger'],
+    attempts: 0,
+  };
+}
+
+async function testMbLookupPreservation() {
+  const importedLookup = makeMbLookup(2000);
+  const { idb, stores } = makeFake([], []);
+  const WatchedDB = loadWatchedDb(idb);
+  await WatchedDB.importData([{ videoId: 'mb-import', watchedAt: 1, source: 'self', mbLookup: importedLookup }]);
+  check('mbLookup survives normalized import',
+    JSON.stringify(stores.watchedVideos.get('mb-import').mbLookup) === JSON.stringify(importedLookup));
+
+  await WatchedDB.importData([{
+    videoId: 'mb-invalid', watchedAt: 1, source: 'self',
+    mbLookup: { ...importedLookup, missingRoles: ['invalid-role'] },
+  }]);
+  check('malformed mbLookup is dropped during import normalization',
+    !Object.prototype.hasOwnProperty.call(stores.watchedVideos.get('mb-invalid'), 'mbLookup'));
+
+  const older = makeMbLookup(1000, 'no-roles');
+  const newer = makeMbLookup(3000, 'found');
+  const mergedFake = makeFake([
+    { videoId: 'mb-merge', watchedAt: 1, source: 'self', playCount: 1, mbLookup: older },
+  ], []);
+  const MergeDB = loadWatchedDb(mergedFake.idb);
+  await MergeDB.mergeImport([{ videoId: 'mb-merge', watchedAt: 1, source: 'self', mbLookup: newer }]);
+  check('mergeImport adopts only the newer mbLookup',
+    mergedFake.stores.watchedVideos.get('mb-merge').mbLookup.checkedAt === 3000
+      && mergedFake.stores.watchedVideos.get('mb-merge').mbLookup.status === 'found');
+  await MergeDB.mergeImport([{ videoId: 'mb-merge', watchedAt: 1, source: 'self', mbLookup: makeMbLookup(2000) }]);
+  check('mergeImport does not overwrite mbLookup with an older check',
+    mergedFake.stores.watchedVideos.get('mb-merge').mbLookup.checkedAt === 3000);
+
+  await MergeDB.addWatched('mb-merge', 'Title', 'self', 'Artist');
+  check('addWatched preserves mbLookup on re-watch',
+    mergedFake.stores.watchedVideos.get('mb-merge').mbLookup.checkedAt === 3000);
+}
+
 async function main() {
   await testReplace();
   await testMergeLiked();
@@ -424,6 +470,7 @@ async function main() {
   await testLikedRequiredVideoId();
   testLikedStructuralWarning();
   await testPartialSuccessDisplay();
+  await testMbLookupPreservation();
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail > 0) process.exit(1);
 }
