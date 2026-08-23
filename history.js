@@ -205,7 +205,7 @@ function render() {
     content.textContent = '';
     const empty = document.createElement('div');
     empty.className = 'empty';
-    empty.textContent = 'No videos found';
+    empty.textContent = '該当する動画はありません。検索語や絞り込みを外してみてください。';
     content.appendChild(empty);
     return;
   }
@@ -285,6 +285,48 @@ function updateMaintenanceButtons() {
     btn.disabled = true;
     btn.textContent = item.defaultText;
     btn.title = '他のメンテナンス処理が実行中';
+  });
+  updateMaintToggleLock();
+}
+
+const maintToggle = document.getElementById('maintToggle');
+const maintPanel = document.getElementById('maintPanel');
+const MAINT_OPEN_KEY = 'ytwh.maintOpen';
+
+function readMaintOpenPref() {
+  try {
+    return localStorage.getItem(MAINT_OPEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function setMaintOpen(open, persist = true) {
+  if (!maintToggle || !maintPanel) return;
+  maintPanel.hidden = !open;
+  maintToggle.setAttribute('aria-expanded', String(open));
+  if (!persist) return;
+  try {
+    localStorage.setItem(MAINT_OPEN_KEY, open ? '1' : '0');
+  } catch {
+    // ストレージが使えなくても開閉自体は成立させる（次回開いたときの既定に戻るだけ）
+  }
+}
+
+function updateMaintToggleLock() {
+  if (!maintToggle) return;
+  const locked = !!runningMaintenance;
+  // 走っている処理の中止ボタンは折り畳みの中にあるので、実行中は閉じさせない
+  if (locked) setMaintOpen(true, false);
+  maintToggle.disabled = locked;
+  maintToggle.title = locked ? '実行中は閉じられません' : '';
+}
+
+if (maintToggle && maintPanel) {
+  setMaintOpen(readMaintOpenPref(), false);
+  maintToggle.addEventListener('click', () => {
+    if (runningMaintenance) return;
+    setMaintOpen(maintPanel.hidden);
   });
 }
 

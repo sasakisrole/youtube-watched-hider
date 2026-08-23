@@ -179,6 +179,7 @@ input:checked + .slider::before {
 }
 
 .btn {
+  min-height: 36px;
   padding: 8px 12px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
@@ -194,6 +195,11 @@ input:checked + .slider::before {
   background: var(--accent-soft);
   border-color: var(--accent);
   color: var(--accent);
+}
+
+.btn-primary-action {
+  min-height: 44px;
+  font-size: 13px;
 }
 
 .btn-danger {
@@ -233,6 +239,11 @@ input:checked + .slider::before {
 .search-input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .history-list {
@@ -368,7 +379,74 @@ input:checked + .slider::before {
 /* ===== Settings ===== */
 .settings-toggle {
   margin-top: 12px;
-  text-align: center;
+}
+
+.fold-toggle {
+  width: 100%;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.fold-toggle:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.fold-toggle .chev { transition: transform 0.2s; }
+.fold-toggle[aria-expanded="true"] .chev { transform: rotate(180deg); }
+
+.icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.settings-heading {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+.settings-heading-danger { color: var(--danger); }
+
+.import-mode-panel {
+  margin-top: 4px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.import-mode-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.import-diff-summary {
+  white-space: pre-line;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-muted);
 }
 
 .btn-link {
@@ -479,9 +557,8 @@ input:checked + .slider::before {
 }
 
 .about-link {
-  display: block;
-  text-align: center;
-  width: 100%;
+  background: none;
+  border-color: var(--border);
 }
 
 .about-content {
@@ -532,9 +609,4 @@ input:checked + .slider::before {
   text-align: center;
   color: var(--success);
   min-height: 16px;
-}
-
-/* Maintenance section divider in popup uses border-top consistently */
-.setting-item[style*="border-top"] {
-  border-top: 1px solid var(--border) !important;
 }

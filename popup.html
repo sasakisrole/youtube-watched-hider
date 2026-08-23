@@ -18,7 +18,7 @@
 
     <div class="stats">
       <span id="count">...</span>
-      <span class="label">watched videos</span>
+      <span class="label">件の視聴済み動画を記録済み</span>
       <div id="dbStatus" class="db-status"></div>
     </div>
 
@@ -26,55 +26,61 @@
       初回同期のため、一度YouTubeを開いてください。
     </div>
 
+    <!-- 日常操作: ここに出すのは毎回押すものだけ。データ管理は下の折り畳みへ。 -->
     <div class="actions">
-      <button id="historyBtn" class="btn">History</button>
-      <button id="viewerBtn" class="btn">Open Viewer</button>
-      <button id="exportBtn" class="btn">Export JSON</button>
-      <button id="importBtn" class="btn">Import JSON</button>
-      <button id="whatsnewBtn" class="btn">Guide</button>
+      <button id="historyBtn" class="btn btn-primary-action" aria-expanded="false" aria-controls="historyPanel">最近の履歴</button>
+      <button id="viewerBtn" class="btn btn-primary-action">履歴・分析を開く</button>
+      <button id="whatsnewBtn" class="btn btn-primary-action">使い方・更新履歴</button>
     </div>
 
     <!-- History list (hidden by default) -->
     <div id="historyPanel" class="history-panel" style="display:none">
       <div class="history-header">
-        <input type="text" id="historySearch" placeholder="Search..." class="search-input">
+        <input type="text" id="historySearch" placeholder="タイトル・チャンネル名で検索" class="search-input" aria-label="最近の履歴を検索">
       </div>
       <div id="historyList" class="history-list"></div>
     </div>
 
-    <!-- Settings (hidden by default) -->
+    <!-- 設定・データ管理（既定は折り畳み） -->
     <div class="settings-toggle">
-      <button id="settingsBtn" class="btn-link">Settings</button>
+      <button id="settingsBtn" class="fold-toggle" type="button" aria-expanded="false" aria-controls="settingsPanel">
+        <svg class="icon chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+        <span>設定・データ管理</span>
+      </button>
     </div>
     <div id="settingsPanel" class="settings-panel" style="display:none">
       <div class="setting-item cache-setting">
-        <span class="setting-label">Cache</span>
+        <span class="setting-label">キャッシュ</span>
         <span id="cacheModeBadge" class="cache-mode-badge cache-error">error</span>
       </div>
-      <div class="setting-desc" id="cacheDetail">Cache stats loading...</div>
+      <div class="setting-desc" id="cacheDetail">キャッシュの状態を読み込み中...</div>
+
+      <h2 class="settings-heading">表示</h2>
 
       <div class="setting-item">
-        <span class="setting-label">Hide Shorts</span>
+        <span class="setting-label" id="hideShortsLabel">ショート動画を隠す</span>
         <label class="toggle toggle-small">
-          <input type="checkbox" id="hideShortsToggle">
+          <input type="checkbox" id="hideShortsToggle" aria-labelledby="hideShortsLabel">
           <span class="slider"></span>
         </label>
       </div>
       <div class="setting-desc">ショート動画を一覧から非表示にする</div>
 
       <div class="setting-item">
-        <span class="setting-label">Hide Movies</span>
+        <span class="setting-label" id="hideMoviesLabel">映画・番組を隠す</span>
         <label class="toggle toggle-small">
-          <input type="checkbox" id="hideMoviesToggle">
+          <input type="checkbox" id="hideMoviesToggle" aria-labelledby="hideMoviesLabel">
           <span class="slider"></span>
         </label>
       </div>
       <div class="setting-desc">映画・番組を一覧から非表示にする</div>
 
+      <h2 class="settings-heading">記録</h2>
+
       <div class="setting-item">
-        <span class="setting-label">History Harvest</span>
+        <span class="setting-label" id="harvestModeLabel">履歴ページに一括取り込みボタンを出す</span>
         <label class="toggle toggle-small">
-          <input type="checkbox" id="harvestModeToggle">
+          <input type="checkbox" id="harvestModeToggle" aria-labelledby="harvestModeLabel">
           <span class="slider"></span>
         </label>
       </div>
@@ -83,47 +89,61 @@
       </div>
 
       <div class="setting-item">
-        <span class="setting-label">Record while OFF</span>
+        <span class="setting-label" id="recordWhileOffLabel">OFF中も記録する</span>
         <label class="toggle toggle-small">
-          <input type="checkbox" id="recordWhileOffToggle">
+          <input type="checkbox" id="recordWhileOffToggle" aria-labelledby="recordWhileOffLabel">
           <span class="slider"></span>
         </label>
       </div>
-      <div class="setting-desc">OFF中も視聴履歴を記録する</div>
+      <div class="setting-desc">非表示をOFFにしている間も視聴履歴だけは記録する</div>
+
+      <h2 class="settings-heading">バックアップ</h2>
 
       <div class="setting-item">
-        <span class="setting-label">Auto Backup (daily)</span>
+        <span class="setting-label" id="autoBackupLabel">毎日自動でバックアップ</span>
         <label class="toggle toggle-small">
-          <input type="checkbox" id="autoBackupToggle" checked>
+          <input type="checkbox" id="autoBackupToggle" checked aria-labelledby="autoBackupLabel">
           <span class="slider"></span>
         </label>
       </div>
       <div class="setting-desc">
-        毎日自動でダウンロードフォルダにバックアップ
+        ダウンロードフォルダに1日1回保存する
         <span id="lastBackupInfo"></span>
       </div>
       <div class="setting-desc" id="nextBackupInfo"></div>
-      <button id="backupNowBtn" class="btn">Backup Now</button>
+      <button id="backupNowBtn" class="btn">今すぐバックアップ</button>
+      <button id="exportBtn" class="btn">バックアップを保存</button>
+      <button id="importBtn" class="btn">バックアップを復元</button>
 
-      <div class="setting-item" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);">
-        <span class="setting-label">Sync (Dropbox)</span>
+      <!-- Import mode chooser (u1ps §7.3): shown after a file is picked, with a
+           dry-run diff, so the user explicitly chooses replace vs merge. -->
+      <div id="importModePanel" class="import-mode-panel" style="display:none">
+        <div class="import-mode-title">復元方法を選択</div>
+        <div id="importDiffSummary" class="import-diff-summary"></div>
+        <button id="importReplaceBtn" class="btn btn-danger">置換（このバックアップ時点に戻す・自動バックアップ後）</button>
+        <button id="importSafeMergeBtn" class="btn">安全に統合（競合は現在のデータを優先）</button>
+        <button id="importBackupMergeBtn" class="btn">バックアップ優先で統合（競合は取込側で上書き）</button>
+        <button id="importCancelBtn" class="btn-link">キャンセル</button>
       </div>
-      <div class="setting-desc">別PCとデータを同期する（差分マージ）</div>
+
+      <h2 class="settings-heading">別PCと同期（Dropbox）</h2>
+      <div class="setting-desc">別PCで保存したバックアップを読み込んで差分だけ統合する</div>
       <div class="sync-actions">
-        <button id="syncImportBtn" class="btn btn-sync">Import &amp; Merge</button>
+        <button id="syncImportBtn" class="btn btn-sync">読み込んで統合</button>
       </div>
-      <div id="syncStatus" class="sync-status"></div>
+      <div id="syncStatus" class="sync-status" role="status" aria-live="polite"></div>
 
-      <div class="setting-item" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);">
-        <span class="setting-label">データ削除</span>
-      </div>
+      <h2 class="settings-heading settings-heading-danger">データ削除</h2>
       <div class="setting-desc">削除する範囲を選べます。「全データを初期化」は実行前に自動でバックアップを1件保存します。</div>
       <button id="clearWatchedBtn" class="btn btn-danger">視聴履歴だけ削除</button>
       <button id="clearLikedBtn" class="btn btn-danger">高評価データだけ削除</button>
       <button id="clearAllBtn" class="btn btn-danger">全データを初期化（自動バックアップ後）</button>
 
       <div class="about-section">
-        <button id="aboutBtn" class="btn-link about-link">About</button>
+        <button id="aboutBtn" class="fold-toggle about-link" type="button" aria-expanded="false" aria-controls="aboutPanel">
+          <svg class="icon chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+          <span>このツールについて</span>
+        </button>
         <div id="aboutPanel" style="display:none" class="about-content">
           <p><strong>YT Watched Hider</strong> <span id="aboutVersion"></span></p>
           <ul>
@@ -135,8 +155,8 @@
           </ul>
           <p class="about-note">
             <strong>PC間の同期:</strong><br>
-            Auto Backupで自動保存されたJSONを<br>
-            Dropbox等で共有し、別PCで「Import &amp; Merge」<br>
+            自動バックアップで保存されたJSONを<br>
+            Dropbox等で共有し、別PCで「読み込んで統合」<br>
             すると差分だけ取り込めます。
           </p>
         </div>
@@ -146,18 +166,7 @@
     <input type="file" id="fileInput" accept=".json" style="display:none">
     <input type="file" id="syncFileInput" accept=".json" style="display:none">
 
-    <!-- Import mode chooser (u1ps §7.3): shown after a file is picked, with a
-         dry-run diff, so the user explicitly chooses replace vs merge. -->
-    <div id="importModePanel" style="display:none; margin-top:8px; padding:8px; border:1px solid var(--border); border-radius:6px;">
-      <div style="font-weight:600; margin-bottom:4px;">インポート方法を選択</div>
-      <div id="importDiffSummary" style="white-space:pre-line; font-size:12px; margin-bottom:8px;"></div>
-      <button id="importReplaceBtn" class="btn btn-danger">置換（このバックアップ時点に戻す・自動バックアップ後）</button>
-      <button id="importSafeMergeBtn" class="btn">安全に統合（競合は現在のデータを優先）</button>
-      <button id="importBackupMergeBtn" class="btn">バックアップ優先で統合（競合は取込側で上書き）</button>
-      <button id="importCancelBtn" class="btn-link">キャンセル</button>
-    </div>
-
-    <div id="status" class="status"></div>
+    <div id="status" class="status" role="status" aria-live="polite"></div>
   </div>
 
   <script src="popup.js"></script>

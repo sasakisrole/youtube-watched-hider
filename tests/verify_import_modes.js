@@ -381,14 +381,14 @@ async function testPartialSuccessDisplay() {
     rendered.warning === true
       && rendered.text.includes('一部成功')
       && rendered.text.includes('高評価の復元に失敗')
-      && rendered.text.includes('1 records'));
+      && rendered.text.includes('1件'));
 
   const formatMergeImportStatus = new Function(formatSnippet + '; return formatMergeImportStatus;')();
   const legacyRendered = formatMergeImportStatus({ ...response, success: true, added: 1, skipped: 0 });
   check('REQ-3 legacy merge result identifies watched success and liked failure',
     legacyRendered.warning === true
       && legacyRendered.text.includes('一部成功')
-      && legacyRendered.text.includes('視聴履歴 +1 new')
+      && legacyRendered.text.includes('視聴履歴 新規 1件')
       && legacyRendered.text.includes('高評価の復元に失敗'));
 
   const successfulDb = {

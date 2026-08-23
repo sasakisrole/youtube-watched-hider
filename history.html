@@ -106,7 +106,24 @@
       border-bottom: 1px solid var(--border);
     }
     .toolbar-row:last-child { border-bottom: none; }
+    /* display:flex は UA の [hidden]{display:none} より強いので、明示的に打ち消す */
+    .toolbar-row[hidden] { display: none; }
     .toolbar-row.maint { background: var(--surface-2); }
+    .toolbar-row.maint-bar { background: var(--surface-2); }
+    /* 折り畳んでいる間も進捗を読めるよう、状態表示だけはバー側に残す */
+    .maint-bar #fixStatus { flex: 1; min-width: 0; }
+    .maint-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .maint-group + .maint-group {
+      padding-top: 10px;
+      margin-top: 2px;
+      border-top: 1px dashed var(--border);
+      width: 100%;
+    }
     .toolbar-label {
       font-size: 11px;
       color: var(--text-faint);
@@ -270,7 +287,6 @@
 
     /* Maint toggle */
     .maint-toggle {
-      margin-left: auto;
       display: inline-flex;
       align-items: center;
       gap: 4px;
@@ -284,8 +300,10 @@
       transition: color 0.15s, border-color 0.15s;
     }
     .maint-toggle:hover { color: var(--accent); border-color: var(--accent); }
+    .maint-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .maint-toggle:disabled { cursor: not-allowed; opacity: 0.7; }
     .maint-toggle .chev { transition: transform 0.2s; }
-    .maint-toggle.open .chev { transform: rotate(180deg); }
+    .maint-toggle[aria-expanded="true"] .chev { transform: rotate(180deg); }
 
     .icon { width: 14px; height: 14px; vertical-align: middle; }
 
@@ -912,7 +930,7 @@
   <div class="header">
     <h1>YT Watched History</h1>
     <div class="header-right">
-      <span class="stats-badge"><strong id="totalCount">-</strong> videos</span>
+      <span class="stats-badge"><strong id="totalCount">-</strong> 件</span>
     </div>
   </div>
 
@@ -920,41 +938,53 @@
     <!-- Row 1: 探す + ビュー切替 -->
     <div class="toolbar-row">
       <input type="text" class="search-box" id="search" placeholder="タイトル・チャンネル名で検索">
-      <button class="sort-btn" id="toggleAnalyze" title="音楽傾向分析">Analyze</button>
+      <button class="sort-btn" id="toggleAnalyze" title="音楽傾向分析">傾向を分析</button>
     </div>
 
     <!-- Row 2: 並べる・絞る -->
     <div class="toolbar-row">
       <span class="toolbar-label">並び順</span>
       <div class="btn-group" role="group" aria-label="並び順">
-        <button class="sort-btn active" data-sort="date-desc">New</button>
-        <button class="sort-btn" data-sort="date-asc">Old</button>
-        <button class="sort-btn" data-sort="count-desc">Most Played</button>
-        <button class="sort-btn" data-sort="channel">Channel</button>
-        <button class="sort-btn" data-sort="title">Title</button>
+        <button class="sort-btn active" data-sort="date-desc">新しい順</button>
+        <button class="sort-btn" data-sort="date-asc">古い順</button>
+        <button class="sort-btn" data-sort="count-desc">再生回数順</button>
+        <button class="sort-btn" data-sort="channel">チャンネル順</button>
+        <button class="sort-btn" data-sort="title">タイトル順</button>
       </div>
       <span class="toolbar-label" style="margin-left:8px;">絞り込み</span>
-      <button class="sort-btn" id="filterNoChannel" title="チャンネル名が未記録の動画だけ表示">No Channel</button>
+      <button class="sort-btn" id="filterNoChannel" title="チャンネル名が未記録の動画だけ表示">チャンネル名なし</button>
     </div>
 
-    <!-- Row 3: メンテナンス（常時表示・視覚的に弱く） -->
-    <div class="toolbar-row maint">
-      <span class="toolbar-label">補完</span>
-      <button class="sort-btn" id="fixChannels" title="oEmbed APIでチャンネル名を補正（未記録のみ）">Fix Channels</button>
-      <button class="sort-btn" id="fixChannelsForce" title="oEmbed APIでチャンネル名を上書き補正（表示中の全件）">Fix (force)</button>
-      <button class="sort-btn" id="fixCredits" title="動画の作曲・作詞・編曲を概要欄から補完（ラベル行のみ採用）">Fix Credits</button>
-      <button class="sort-btn enrich-btn" id="enrichCredits" title="未割当creditsRawを外部DB照合で補完">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 12H3"></path><path d="M16 6H3"></path><path d="M16 18H3"></path><path d="M18 9v6"></path><path d="M21 12h-6"></path></svg>
-        <span>Enrich Credits</span>
+    <!-- Row 3: メンテナンスの開閉バー。進捗(#fixStatus)は畳んでも見えるようここに置く -->
+    <div class="toolbar-row maint-bar">
+      <button class="maint-toggle" id="maintToggle" type="button" aria-expanded="false" aria-controls="maintPanel">
+        <svg class="icon chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+        <span>データ管理・一括処理</span>
       </button>
-      <button class="sort-btn" id="fixDurations" title="動画時間をwatchページから補完（ライブは-1として記録）">Fix Durations</button>
-      <label class="chk" title="最近チェック済み（30日以内）の動画は除外して取得。作曲・作詞・編曲のどれかが空なら、それより前にチェックした動画は再取得の対象"><input type="checkbox" id="skipCreditsChecked" checked>チェック済みスキップ</label>
-      <label class="chk" title="非Topicチャンネル（MV・公式配信など）も対象にする。ラベル付き行のみ採用"><input type="checkbox" id="includeGeneralCredits">一般も含める</label>
-      <span class="toolbar-label" style="margin-left:8px;">後で見る</span>
-      <button class="sort-btn" id="scanWatchLater" title="後で見るの全件を取得し、視聴済みデータベースと一致する件数を数える。削除はしない">照合</button>
-      <button class="sort-btn" id="removeOneWatchLater" title="照合で見つかった先頭の1件だけを後で見るから削除する。取り消せない" disabled>1件だけ削除</button>
-      <button class="sort-btn" id="bulkRemoveWatchLater" title="照合で見つかった視聴済みの動画を一覧で確認してから、まとめて削除する。取り消せない" disabled>まとめて削除</button>
-      <span id="fixStatus"></span>
+      <span id="fixStatus" role="status" aria-live="polite"></span>
+    </div>
+
+    <!-- Row 4: メンテナンス本体（既定は折り畳み・実行中は開いたまま固定） -->
+    <div class="toolbar-row maint" id="maintPanel" hidden>
+      <div class="maint-group">
+        <span class="toolbar-label">補完</span>
+        <button class="sort-btn" id="fixChannels" title="oEmbed APIでチャンネル名を補正（未記録のみ）">チャンネル名を補完</button>
+        <button class="sort-btn" id="fixChannelsForce" title="oEmbed APIでチャンネル名を上書き補正（表示中の全件）">チャンネル名を再取得</button>
+        <button class="sort-btn" id="fixCredits" title="動画の作曲・作詞・編曲を概要欄から補完（ラベル行のみ採用）">概要欄からクレジット補完</button>
+        <button class="sort-btn enrich-btn" id="enrichCredits" title="未割当creditsRawを外部DB照合で補完">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 12H3"></path><path d="M16 6H3"></path><path d="M16 18H3"></path><path d="M18 9v6"></path><path d="M21 12h-6"></path></svg>
+          <span>クレジット補完（外部DB）</span>
+        </button>
+        <button class="sort-btn" id="fixDurations" title="動画時間をwatchページから補完（ライブは-1として記録）">動画の長さを補完</button>
+        <label class="chk" title="最近チェック済み（30日以内）の動画は除外して取得。作曲・作詞・編曲のどれかが空なら、それより前にチェックした動画は再取得の対象"><input type="checkbox" id="skipCreditsChecked" checked>チェック済みスキップ</label>
+        <label class="chk" title="非Topicチャンネル（MV・公式配信など）も対象にする。ラベル付き行のみ採用"><input type="checkbox" id="includeGeneralCredits">一般も含める</label>
+      </div>
+      <div class="maint-group">
+        <span class="toolbar-label">後で見る</span>
+        <button class="sort-btn" id="scanWatchLater" title="後で見るの全件を取得し、視聴済みデータベースと一致する件数を数える。削除はしない">照合</button>
+        <button class="sort-btn" id="removeOneWatchLater" title="照合で見つかった先頭の1件だけを後で見るから削除する。取り消せない" disabled>1件だけ削除</button>
+        <button class="sort-btn" id="bulkRemoveWatchLater" title="照合で見つかった視聴済みの動画を一覧で確認してから、まとめて削除する。取り消せない" disabled>まとめて削除</button>
+      </div>
     </div>
   </div>
 
@@ -975,7 +1005,7 @@
     <div class="enrich-dialog" role="dialog" aria-modal="true" aria-labelledby="enrichTitle">
       <div class="enrich-header">
         <div class="enrich-title">
-          <h2 id="enrichTitle">Enrich Credits</h2>
+          <h2 id="enrichTitle">クレジット補完（外部DB）</h2>
           <p id="enrichSubtitle">未割当 creditsRaw を固定ルール、MusicBrainz の順に照合します。</p>
         </div>
         <button class="enrich-icon-btn" id="enrichClose" type="button" aria-label="閉じる" title="閉じる">

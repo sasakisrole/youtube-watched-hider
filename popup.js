@@ -87,7 +87,7 @@ function unwrapWatchedRecords(data) {
 
 function getExportRecords(data) {
   if (data && data.__error) {
-    showStatus('DB error: ' + (data.message || 'unknown'), true);
+    showStatus('DBの読み取りに失敗しました: ' + (data.message || '原因不明'), true);
     return null;
   }
   return unwrapWatchedRecords(data) || [];
@@ -108,8 +108,8 @@ function loadStats(retries = 3) {
   chrome.runtime.sendMessage({ type: 'GET_STATS' }, (response) => {
     if (chrome.runtime.lastError) {
       countEl.textContent = '--';
-      countEl.title = 'Service worker error';
-      showStatus('SW error: ' + chrome.runtime.lastError.message, true);
+      countEl.title = 'サービスワーカーに接続できません';
+      showStatus('拡張の内部エラー: ' + chrome.runtime.lastError.message, true);
       return;
     }
     if (response && typeof response.count === 'number') {
@@ -119,20 +119,20 @@ function loadStats(retries = 3) {
       if (response.dbStatus) {
         const statusMap = {
           ready: response.dbOwner === 'offscreen'
-            ? `DB ready (offscreen, cache: ${cache.positive.toLocaleString()}, ${cache.mode})`
-            : `DB ready (cache: ${cache.positive.toLocaleString()}, ${cache.loadMs}ms)`,
-          loading: 'DB loading...',
-          error: 'DB error',
+            ? `DB 正常（offscreen・キャッシュ ${cache.positive.toLocaleString()}件・${cache.mode}）`
+            : `DB 正常（キャッシュ ${cache.positive.toLocaleString()}件・${cache.loadMs}ms）`,
+          loading: 'DB 読み込み中...',
+          error: 'DB エラー',
         };
         dbStatusEl.textContent = statusMap[response.dbStatus] || response.dbStatus;
         dbStatusEl.className = 'db-status ' + response.dbStatus;
       }
     } else if (retries > 0) {
-      countEl.title = 'Connecting... (' + retries + ')';
+      countEl.title = '接続中... (' + retries + ')';
       setTimeout(() => loadStats(retries - 1), 1000);
     } else {
       countEl.textContent = '--';
-      countEl.title = 'No YouTube tab responded';
+      countEl.title = 'YouTubeタブから応答がありません';
       showStatus('YouTubeタブを開いてリロードしてください', true);
     }
   });
@@ -184,8 +184,8 @@ function buildHistoryItem(video) {
     badge.className = 'source-badge';
     badge.textContent = 'YT';
     badge.title = video.source === 'seekbar'
-      ? 'Detected via YouTube seekbar'
-      : 'Imported from YouTube history';
+      ? 'YouTubeのシークバーから検出'
+      : 'YouTubeの履歴ページから取り込み';
     a.appendChild(badge);
   }
 
@@ -194,7 +194,7 @@ function buildHistoryItem(video) {
     const countBadge = document.createElement('span');
     countBadge.className = 'play-count-badge';
     countBadge.textContent = `${count}x`;
-    countBadge.title = `Played ${count} times`;
+    countBadge.title = `${count}回再生`;
     a.appendChild(countBadge);
   }
 
@@ -225,7 +225,7 @@ function buildHistoryItem(video) {
   const delBtn = document.createElement('button');
   delBtn.className = 'history-delete-btn';
   delBtn.textContent = '\u00d7';
-  delBtn.title = 'Remove';
+  delBtn.title = 'この動画を履歴から削除';
   delBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     deleteHistoryVideo(video.videoId, row);
@@ -275,7 +275,9 @@ function renderHistory(filter = '') {
   if (filteredHistoryData.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'history-empty';
-    empty.textContent = 'No videos found';
+    empty.textContent = filter
+      ? '該当する動画はありません。検索語を短くしてみてください。'
+      : 'まだ記録がありません。YouTubeで動画を再生すると記録されます。';
     historyList.appendChild(empty);
     return;
   }
@@ -313,14 +315,14 @@ chrome.runtime.sendMessage({ type: 'GET_ENABLED' }, (response) => {
     if (response.lastBackup) {
       const d = new Date(response.lastBackup);
       const dateStr = `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
-      lastBackupInfo.textContent = ` (last: ${dateStr}, ${response.lastBackupCount} records)`;
+      lastBackupInfo.textContent = `（最終 ${dateStr}・${response.lastBackupCount}件）`;
     } else {
       lastBackupInfo.textContent = '';
     }
     if (response.lastBackupError) {
       const prefix = lastBackupInfo.textContent ? `${lastBackupInfo.textContent} ` : ' ';
       lastBackupInfo.className = 'backup-status backup-error';
-      lastBackupInfo.textContent = `${prefix}last error: ${response.lastBackupError}`;
+      lastBackupInfo.textContent = `${prefix}前回のエラー: ${response.lastBackupError}`;
     }
     if (response.nextBackup) {
       const nd = new Date(response.nextBackup);
@@ -328,7 +330,7 @@ chrome.runtime.sendMessage({ type: 'GET_ENABLED' }, (response) => {
       const m = String(nd.getMinutes()).padStart(2, '0');
       const mm = nd.getMonth() + 1;
       const dd = nd.getDate();
-      nextBackupInfo.textContent = `Next: ${mm}/${dd} ${h}:${m}`;
+      nextBackupInfo.textContent = `次回 ${mm}/${dd} ${h}:${m}`;
     }
     if (migrationBanner) {
       migrationBanner.style.display = response.migrationV135Done === false ? 'block' : 'none';
@@ -352,6 +354,7 @@ historyBtn.addEventListener('click', () => {
     historyPanel.style.display = 'block';
     loadHistory();
   }
+  historyBtn.setAttribute('aria-expanded', String(!visible));
 });
 
 // History scroll: load more when near bottom
@@ -381,20 +384,20 @@ whatsnewBtn.addEventListener('click', () => {
 
 // Export (versioned envelope format)
 exportBtn.addEventListener('click', () => {
-  showStatus('Export started...');
+  showStatus('バックアップを保存中...');
   chrome.runtime.sendMessage({ type: 'EXPORT_DOWNLOAD', source: 'manual' }, (result) => {
     if (!result) {
-      showStatus('Export failed: no response', true);
+      showStatus('バックアップを保存できませんでした（応答なし）。YouTubeタブを開いて再試行してください', true);
       return;
     }
     if (result.success) {
       const watched = result.counts ? result.counts.watchedVideos : result.count;
       const liked = result.counts ? result.counts.likedVideos : 0;
-      showStatus(`Exported ${watched} watched / ${liked} liked`);
+      showStatus(`バックアップを保存しました（視聴 ${watched}件 / 高評価 ${liked}件）`);
     } else if (result.reason === 'no_data') {
-      showStatus('No data to export', true);
+      showStatus('保存するデータがありません', true);
     } else {
-      showStatus('Export failed: ' + (result.error || result.reason), true);
+      showStatus('バックアップを保存できませんでした: ' + (result.error || result.reason), true);
     }
   });
 });
@@ -425,11 +428,11 @@ fileInput.addEventListener('change', (e) => {
     try {
       parsed = JSON.parse(event.target.result);
     } catch {
-      showStatus('Failed to parse JSON', true);
+      showStatus('JSONを読み取れませんでした。バックアップファイルを選び直してください', true);
       return;
     }
     if (!unwrapImportData(parsed)) {
-      showStatus('Invalid JSON format', true);
+      showStatus('このファイルはバックアップの形式ではありません', true);
       return;
     }
     pendingImportData = parsed;
@@ -483,7 +486,7 @@ function formatImportResult(response, label) {
   const note = notes.length ? `（${notes.join(' / ')}）` : '';
   const resultLabel = likedFailed ? `${label}（一部成功）` : label;
   return {
-    text: `${resultLabel}: ${response.count} records${liked}${removed}${note}`,
+    text: `${resultLabel}: ${response.count}件${liked}${removed}${note}`,
     warning: likedFailed || droppedN > 0 || structural || metaStructural,
   };
 }
@@ -501,9 +504,9 @@ function formatMergeImportStatus(response) {
   if (structural) droppedNotes.push('高評価データの形式が不正');
   if (metaStructural) droppedNotes.push('高評価アカウント情報の形式が不正');
   const droppedNote = droppedNotes.length ? `（${droppedNotes.join(' / ')}）` : '';
-  const prefix = likedFailed ? '一部成功: 視聴履歴' : 'Done:';
+  const prefix = likedFailed ? '一部成功: 視聴履歴' : '統合しました:';
   return {
-    text: `${prefix} +${response.added} new, ${response.skipped} existing${liked}${droppedNote}`,
+    text: `${prefix} 新規 ${response.added}件 / 既存 ${response.skipped}件${liked}${droppedNote}`,
     warning: likedFailed || droppedN > 0 || structural || metaStructural,
   };
 }
@@ -518,7 +521,7 @@ function handleImportResponse(response, label) {
     // Data-safety gate: nothing was changed because the pre-replace backup failed.
     showStatus('バックアップに失敗したため中止しました（データは変更していません）', true);
   } else {
-    showStatus(`${label} failed: ` + ((response && response.error) || 'unknown'), true);
+    showStatus(`${label}に失敗しました: ` + ((response && response.error) || '原因不明'), true);
   }
 }
 
@@ -563,13 +566,14 @@ importReplaceBtn.addEventListener('click', () => {
 
 importCancelBtn.addEventListener('click', () => {
   closeImportPanel();
-  showStatus('インポートをキャンセルしました');
+  showStatus('復元をキャンセルしました');
 });
 
 // Settings toggle
 settingsBtn.addEventListener('click', () => {
   const visible = settingsPanel.style.display !== 'none';
   settingsPanel.style.display = visible ? 'none' : 'flex';
+  settingsBtn.setAttribute('aria-expanded', String(!visible));
 });
 
 // Hide Shorts toggle
@@ -614,18 +618,18 @@ autoBackupToggle.addEventListener('change', () => {
 
 // Backup now
 backupNowBtn.addEventListener('click', () => {
-  showStatus('Backup started...');
+  showStatus('バックアップ中...');
   chrome.runtime.sendMessage({ type: 'BACKUP_NOW' }, (result) => {
     if (!result) {
-      showStatus('No response from SW', true);
+      showStatus('拡張から応答がありません。YouTubeタブを開いて再試行してください', true);
     } else if (result.success) {
       const watched = result.counts ? result.counts.watchedVideos : result.count;
       const liked = result.counts ? result.counts.likedVideos : 0;
-      showStatus(`Backup OK: ${watched} watched / ${liked} liked`);
+      showStatus(`バックアップしました（視聴 ${watched}件 / 高評価 ${liked}件）`);
     } else if (result.reason === 'no_data') {
-      showStatus('No data to backup (0 records)', true);
+      showStatus('バックアップするデータがありません（0件）', true);
     } else {
-      showStatus('Backup failed: ' + (result.error || result.reason), true);
+      showStatus('バックアップに失敗しました: ' + (result.error || result.reason), true);
     }
   });
 });
@@ -634,6 +638,7 @@ backupNowBtn.addEventListener('click', () => {
 aboutBtn.addEventListener('click', () => {
   const visible = aboutPanel.style.display !== 'none';
   aboutPanel.style.display = visible ? 'none' : 'block';
+  aboutBtn.setAttribute('aria-expanded', String(!visible));
 });
 
 // Set version from manifest
@@ -688,6 +693,7 @@ clearAllBtn.addEventListener('click', () => {
       allHistoryData = [];
       renderHistory();
       settingsPanel.style.display = 'none';
+      settingsBtn.setAttribute('aria-expanded', 'false');
     } else if (response && response.reason === 'backup_failed') {
       // Data-safety gate: nothing was deleted because the backup failed.
       showStatus('バックアップに失敗したため中止しました（データは削除していません）', true);
@@ -706,7 +712,7 @@ syncFileInput.addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
 
-  syncStatus.textContent = 'Reading file...';
+  syncStatus.textContent = 'ファイルを読み込み中...';
   syncStatus.style.color = 'var(--warning)';
 
   const reader = new FileReader();
@@ -715,11 +721,11 @@ syncFileInput.addEventListener('change', (e) => {
       const parsed = JSON.parse(event.target.result);
       const data = unwrapImportData(parsed);
       if (!data) {
-        syncStatus.textContent = 'Invalid JSON format';
+        syncStatus.textContent = 'このファイルはバックアップの形式ではありません';
         syncStatus.style.color = 'var(--danger)';
         return;
       }
-      syncStatus.textContent = `Merging ${data.length} records...`;
+      syncStatus.textContent = `${data.length}件を統合中...`;
       chrome.runtime.sendMessage({ type: 'MERGE_IMPORT', data: parsed }, (response) => {
         if (response && response.success) {
           const result = formatMergeImportStatus(response);
@@ -728,12 +734,12 @@ syncFileInput.addEventListener('change', (e) => {
           loadStats();
           if (historyPanel.style.display !== 'none') loadHistory();
         } else {
-          syncStatus.textContent = 'Merge failed';
+          syncStatus.textContent = '統合に失敗しました';
           syncStatus.style.color = 'var(--danger)';
         }
       });
     } catch {
-      syncStatus.textContent = 'Failed to parse JSON';
+      syncStatus.textContent = 'JSONを読み取れませんでした';
       syncStatus.style.color = 'var(--danger)';
     }
   };
