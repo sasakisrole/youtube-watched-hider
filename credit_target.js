@@ -111,7 +111,8 @@
   function planCreditRepair(record) {
     return CREDIT_ROLES.reduce(function (repairs, role) {
       var before = record && record[role];
-      if (!creditIsBlank(before) && !isValidCreditValue(before, record && record.title)) {
+      if (effectiveRoleSource(record, role) !== 'manual'
+        && !creditIsBlank(before) && !isValidCreditValue(before, record && record.title)) {
         repairs.push({ role: role, before: before });
       }
       return repairs;

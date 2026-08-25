@@ -327,6 +327,7 @@ const maintenanceButtons = [
   { key: 'fixChannelsForce', el: document.getElementById('fixChannelsForce') },
   { key: 'fixCredits', el: document.getElementById('fixCredits') },
   { key: 'repairCredits', el: document.getElementById('repairCredits') },
+  { key: 'restoreCredits', el: document.getElementById('restoreCredits') },
   { key: 'enrichCredits', el: document.getElementById('enrichCredits') },
   { key: 'fixDurations', el: document.getElementById('fixDurations') },
   { key: 'scanWatchLater', el: document.getElementById('scanWatchLater') },
@@ -1079,11 +1080,28 @@ if (repairCreditsBtn) {
       showJobMessage('クレジットの不正値を修復中…', {
         kind: 'repairCredits', label: 'クレジットの不正値を修復', state: 'running',
       });
-      const applied = await sendHistoryDbRpc('REPAIR_INVALID_CREDITS', { dryRun: false });
+      const applied = await sendHistoryDbRpc('REPAIR_INVALID_CREDITS', {
+        dryRun: false,
+        expectedValues: preview.values,
+      });
+      if (applied.mismatch) {
+        showJobMessage(
+          `確認後に対象件数が ${applied.expected.toLocaleString()}件から ${applied.actual.toLocaleString()}件へ変わったため、修復しませんでした。もう一度確認してください。`,
+          { kind: 'repairCredits', label: 'クレジットの不正値を修復', state: 'error' }
+        );
+        return;
+      }
+      const verified = await sendHistoryDbRpc('VERIFY_CREDIT_REPAIR', { at: applied.at });
+      const verificationOk = verified.remainingInvalid === 0
+        && verified.loggedTotal === applied.values
+        && verified.loggedStillValid === 0
+        && verified.restorable === verified.loggedTotal;
       showJobMessage(
-        `クレジットの不正値を修復しました: ${applied.values.toLocaleString()}件（${applied.videos.toLocaleString()}動画）`,
+        `クレジットの不正値を修復しました: ${applied.values.toLocaleString()}件（${applied.videos.toLocaleString()}動画）\n`
+        + `自己点検: 残存不正値 ${verified.remainingInvalid.toLocaleString()}件 / 記録 ${verified.loggedTotal.toLocaleString()}件 / 正常値の巻き込み ${verified.loggedStillValid.toLocaleString()}件 / 復元可能 ${verified.restorable.toLocaleString()}件\n`
+        + 'この自己点検では、判定基準そのものは検証していません。',
         {
-          kind: 'repairCredits', label: 'クレジットの不正値を修復', state: 'done',
+          kind: 'repairCredits', label: 'クレジットの不正値を修復', state: verificationOk ? 'done' : 'error',
           total: applied.values, processed: applied.values, counters: applied.byRole,
         }
       );
@@ -1094,6 +1112,76 @@ if (repairCreditsBtn) {
       });
     } finally {
       endMaintenance('repairCredits');
+    }
+  });
+}
+
+const restoreCreditsBtn = document.getElementById('restoreCredits');
+if (restoreCreditsBtn) {
+  restoreCreditsBtn.addEventListener('click', async () => {
+    if (!beginMaintenance('restoreCredits', { activeText: '確認中…' })) {
+      showJobMessage('他のメンテナンス処理が実行中', { state: 'error' });
+      return;
+    }
+
+    try {
+      showJobMessage('元に戻せるクレジットを確認中…', {
+        kind: 'restoreCredits', label: '修復を元に戻す', state: 'running',
+      });
+      const preview = await sendHistoryDbRpc('RESTORE_REPAIRED_CREDITS', { dryRun: true });
+      if (preview.values === 0) {
+        const skipped = Number(preview.skipped) || 0;
+        showJobMessage(
+          skipped
+            ? `元に戻せるクレジットはありません（現在値が入っているため ${skipped.toLocaleString()}件スキップ）`
+            : '元に戻せるクレジットはありません',
+          { kind: 'restoreCredits', label: '修復を元に戻す', state: 'done' }
+        );
+        return;
+      }
+
+      const byRole = preview.byRole || {};
+      const confirmed = confirm(
+        `修復前のクレジット ${preview.values.toLocaleString()}件（${preview.videos.toLocaleString()}動画）を元に戻します。\n`
+        + `内訳: 作曲 ${Number(byRole.composer || 0).toLocaleString()}件 / 作詞 ${Number(byRole.lyricist || 0).toLocaleString()}件 / 編曲 ${Number(byRole.arranger || 0).toLocaleString()}件\n`
+        + `現在値が入っているため上書きしない役割: ${Number(preview.skipped || 0).toLocaleString()}件\n\n続行しますか？`
+      );
+      if (!confirmed) {
+        showJobMessage('クレジット修復の取り消しをキャンセルしました', {
+          kind: 'restoreCredits', label: '修復を元に戻す', state: 'aborted',
+        });
+        return;
+      }
+
+      updateRunningMaintenance('restoreCredits', { activeText: '復元中…' });
+      showJobMessage('修復前のクレジットを復元中…', {
+        kind: 'restoreCredits', label: '修復を元に戻す', state: 'running',
+      });
+      const restored = await sendHistoryDbRpc('RESTORE_REPAIRED_CREDITS', {
+        dryRun: false,
+        expectedValues: preview.values,
+      });
+      if (restored.mismatch) {
+        showJobMessage(
+          `確認後に復元可能件数が ${restored.expected.toLocaleString()}件から ${restored.actual.toLocaleString()}件へ変わったため、復元しませんでした。もう一度確認してください。`,
+          { kind: 'restoreCredits', label: '修復を元に戻す', state: 'error' }
+        );
+        return;
+      }
+      showJobMessage(
+        `修復前のクレジットを復元しました: ${restored.values.toLocaleString()}件（${restored.videos.toLocaleString()}動画） / 上書きせずスキップ ${Number(restored.skipped || 0).toLocaleString()}件`,
+        {
+          kind: 'restoreCredits', label: '修復を元に戻す', state: 'done',
+          total: restored.values, processed: restored.values, counters: restored.byRole,
+        }
+      );
+      setTimeout(loadData, 300);
+    } catch (error) {
+      showJobMessage(`クレジット修復の取り消しに失敗しました: ${error.message}`, {
+        kind: 'restoreCredits', label: '修復を元に戻す', state: 'error', error: error.message,
+      });
+    } finally {
+      endMaintenance('restoreCredits');
     }
   });
 }

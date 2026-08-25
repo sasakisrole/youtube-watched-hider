@@ -234,7 +234,17 @@ async function handleDbRpc(message) {
     case 'CLEAN_ALL_CREDITS':
       return WatchedDB.cleanAllCredits();
     case 'REPAIR_INVALID_CREDITS':
-      return WatchedDB.repairInvalidCredits({ dryRun: !!message.dryRun });
+      return WatchedDB.repairInvalidCredits({
+        dryRun: message.dryRun === false ? false : true,
+        expectedValues: message.expectedValues,
+      });
+    case 'RESTORE_REPAIRED_CREDITS':
+      return WatchedDB.restoreRepairedCredits({
+        dryRun: message.dryRun === false ? false : true,
+        expectedValues: message.expectedValues,
+      });
+    case 'VERIFY_CREDIT_REPAIR':
+      return WatchedDB.verifyCreditRepair({ at: message.at });
     default:
       throw new Error('Unknown DB op: ' + message.op);
   }
