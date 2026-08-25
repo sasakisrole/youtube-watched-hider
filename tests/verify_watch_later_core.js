@@ -368,15 +368,16 @@ check('the batch stops on the first failed delete',
 check('the batch re-scans every chunk and stops if ids were reassigned',
   /sinceRescan >= Core\.BATCH_CHUNK/.test(batchBodySrc)
   && /Core\.batchShouldStop\(rescan\.drift\)/.test(batchBodySrc));
-check('the batch always ends on a fresh scan',
-  /const finalScan = await scanWatchLater\(\{\}\);/.test(batchBodySrc));
+check('a completed batch ends on a fresh scan while an aborted batch stops promptly',
+  /const finalScan = aborted \? null : await scanWatchLater\(\{\}\);/.test(batchBodySrc)
+  && /finalScanFailed: !aborted && !finalOk/.test(batchBodySrc));
 
 // The page and the worker talk over a Port, and nothing in either file fails on its
 // own if the two halves disagree: connecting without sending START leaves the UI
 // saying "削除中…" forever while the worker waits. That happened (2026-08-08), so the
 // contract is pinned here rather than left to whoever reads both files.
 const historySrc = fs.readFileSync(path.join(__dirname, '..', 'history.js'), 'utf8');
-const portName = (src.match(/port\.name !== '([a-z-]*batch[a-z-]*)'/) || [])[1];
+const portName = (src.match(/portName: '([a-z-]*batch[a-z-]*)'/) || [])[1];
 check('background listens on a watch-later batch port', !!portName);
 check('history.js connects to that exact port name',
   !!portName && new RegExp(`chrome\\.runtime\\.connect\\(\\{ name: '${portName}' \\}\\)`).test(historySrc));

@@ -111,7 +111,9 @@
     .toolbar-row.maint { background: var(--surface-2); }
     .toolbar-row.maint-bar { background: var(--surface-2); }
     /* 折り畳んでいる間も進捗を読めるよう、状態表示だけはバー側に残す */
-    .maint-bar #fixStatus { flex: 1; min-width: 0; }
+    .maint-job-summary { flex: 1; min-width: 0; display: grid; gap: 4px; }
+    .maint-bar #fixStatus { min-width: 0; }
+    .maint-bar .enrich-progress-track { width: 100%; }
     .maint-group {
       display: flex;
       align-items: center;
@@ -430,6 +432,15 @@
       font-size: 12px;
       font-variant-numeric: tabular-nums;
     }
+    #jobRecentList {
+      width: 100%;
+      margin: 0;
+      padding-left: 20px;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+    #jobRecentList li + li { margin-top: 4px; }
 
     .enrich-btn {
       display: inline-flex;
@@ -961,7 +972,10 @@
         <svg class="icon chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
         <span>データ管理・一括処理</span>
       </button>
-      <span id="fixStatus" role="status" aria-live="polite"></span>
+      <div class="maint-job-summary">
+        <span id="fixStatus" role="status" aria-live="polite"></span>
+        <div class="enrich-progress-track" aria-hidden="true"><div class="enrich-progress-bar" id="jobProgressBar"></div></div>
+      </div>
     </div>
 
     <!-- Row 4: メンテナンス本体（既定は折り畳み・実行中は開いたまま固定） -->
@@ -984,6 +998,10 @@
         <button class="sort-btn" id="scanWatchLater" title="後で見るの全件を取得し、視聴済みデータベースと一致する件数を数える。削除はしない">照合</button>
         <button class="sort-btn" id="removeOneWatchLater" title="照合で見つかった先頭の1件だけを後で見るから削除する。取り消せない" disabled>1件だけ削除</button>
         <button class="sort-btn" id="bulkRemoveWatchLater" title="照合で見つかった視聴済みの動画を一覧で確認してから、まとめて削除する。取り消せない" disabled>まとめて削除</button>
+      </div>
+      <div class="maint-group">
+        <span class="toolbar-label" id="jobRecentLabel">最近の処理</span>
+        <ol id="jobRecentList" aria-labelledby="jobRecentLabel"></ol>
       </div>
     </div>
   </div>

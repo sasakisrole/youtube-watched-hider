@@ -5,6 +5,165 @@ importScripts('credit_target.js');
 importScripts('official_search_filter_core.js');
 importScripts('watch_later_core.js');
 
+const JOB_CURRENT_KEY = 'ytwh.job.current';
+const JOB_RECENT_KEY = 'ytwh.job.recent';
+
+function createJobRegistry({
+  storageArea,
+  now = () => Date.now(),
+  randomUUID = () => crypto.randomUUID(),
+  setTimer = (fn, delay) => setTimeout(fn, delay),
+  clearTimer = (timer) => clearTimeout(timer),
+  throttleMs = 1000,
+  recentLimit = 5,
+  logger = console,
+} = {}) {
+  let activeJob = null;
+  let lastPersistAt = 0;
+  let persistTimer = null;
+  let persistChain = Promise.resolve();
+
+  const copyJob = (job) => job ? { ...job, counters: { ...(job.counters || {}) } } : null;
+  const warn = (error) => {
+    try { logger.warn('[YT-Watched] job state persistence failed:', error && error.message ? error.message : error); } catch (_e) {}
+  };
+
+  async function persistSnapshot(snapshot, addToRecent) {
+    const payload = { [JOB_CURRENT_KEY]: copyJob(snapshot) };
+    if (addToRecent) {
+      try {
+        const stored = await storageArea.get(JOB_RECENT_KEY);
+        const recent = Array.isArray(stored && stored[JOB_RECENT_KEY]) ? stored[JOB_RECENT_KEY] : [];
+        payload[JOB_RECENT_KEY] = [copyJob(snapshot), ...recent.filter(job => job && job.id !== snapshot.id)]
+          .slice(0, recentLimit);
+      } catch (error) {
+        warn(error);
+      }
+    }
+    try {
+      await storageArea.set(payload);
+    } catch (error) {
+      warn(error);
+    }
+  }
+
+  function enqueuePersist(snapshot, addToRecent) {
+    const frozen = copyJob(snapshot);
+    persistChain = persistChain.then(() => persistSnapshot(frozen, addToRecent)).catch(warn);
+  }
+
+  function schedulePersist(job, { immediate = false, addToRecent = false } = {}) {
+    const timestamp = now();
+    if (immediate || throttleMs <= 0 || timestamp - lastPersistAt >= throttleMs) {
+      if (persistTimer) clearTimer(persistTimer);
+      persistTimer = null;
+      lastPersistAt = timestamp;
+      enqueuePersist(job, addToRecent);
+      return;
+    }
+    if (persistTimer) return;
+    persistTimer = setTimer(() => {
+      persistTimer = null;
+      if (!activeJob || activeJob.state !== 'running') return;
+      lastPersistAt = now();
+      enqueuePersist(activeJob, false);
+    }, Math.max(0, throttleMs - (timestamp - lastPersistAt)));
+  }
+
+  async function interruptStaleRunningJob() {
+    try {
+      const stored = await storageArea.get([JOB_CURRENT_KEY, JOB_RECENT_KEY]);
+      const current = stored && stored[JOB_CURRENT_KEY];
+      if (!current || current.state !== 'running') return null;
+      const timestamp = now();
+      const interrupted = {
+        ...current,
+        counters: { ...(current.counters || {}) },
+        state: 'interrupted',
+        updatedAt: timestamp,
+        endedAt: timestamp,
+        message: `中断されました（処理 ${Number(current.processed) || 0}/${Number(current.total) || 0} 件）`,
+        error: null,
+      };
+      const recent = Array.isArray(stored[JOB_RECENT_KEY]) ? stored[JOB_RECENT_KEY] : [];
+      await storageArea.set({
+        [JOB_CURRENT_KEY]: interrupted,
+        [JOB_RECENT_KEY]: [interrupted, ...recent.filter(job => job && job.id !== interrupted.id)].slice(0, recentLimit),
+      });
+      return interrupted;
+    } catch (error) {
+      warn(error);
+      return null;
+    }
+  }
+
+  const ready = interruptStaleRunningJob();
+
+  async function startJob(spec) {
+    await ready;
+    if (activeJob && activeJob.state === 'running') throw new Error('job-already-running');
+    const timestamp = now();
+    activeJob = {
+      id: randomUUID(),
+      kind: spec.kind,
+      label: spec.label,
+      state: 'running',
+      startedAt: timestamp,
+      updatedAt: timestamp,
+      endedAt: null,
+      total: Number(spec.total) || 0,
+      processed: Number(spec.processed) || 0,
+      counters: { ...(spec.counters || {}) },
+      message: spec.message || '',
+      error: null,
+      abortable: !!spec.abortable,
+    };
+    schedulePersist(activeJob, { immediate: true });
+    return activeJob;
+  }
+
+  function updateJob(job, patch = {}) {
+    if (!job || !activeJob || activeJob.id !== job.id || activeJob.state !== 'running') return null;
+    Object.assign(activeJob, patch, {
+      counters: { ...activeJob.counters, ...(patch.counters || {}) },
+      state: 'running',
+      updatedAt: now(),
+      endedAt: null,
+    });
+    schedulePersist(activeJob);
+    return activeJob;
+  }
+
+  function finishJob(job, state, patch = {}) {
+    if (!job || !activeJob || activeJob.id !== job.id || activeJob.state !== 'running') return null;
+    if (!['done', 'aborted', 'error'].includes(state)) throw new Error('invalid-job-state');
+    const timestamp = now();
+    Object.assign(activeJob, patch, {
+      counters: { ...activeJob.counters, ...(patch.counters || {}) },
+      state,
+      updatedAt: timestamp,
+      endedAt: timestamp,
+      error: state === 'error' ? String(patch.error || 'unknown') : null,
+    });
+    const finished = activeJob;
+    activeJob = null;
+    schedulePersist(finished, { immediate: true, addToRecent: true });
+    return finished;
+  }
+
+  return {
+    ready,
+    startJob,
+    updateJob,
+    finishJob,
+    getActiveJob: () => activeJob,
+    flush: () => persistChain,
+  };
+}
+
+// Awaited by every startJob call, so startup cleanup cannot race a newly-started job.
+const jobRegistry = createJobRegistry({ storageArea: chrome.storage.local });
+
 // Extract video ID from YouTube URL
 function extractVideoId(url) {
   try {
@@ -1652,8 +1811,8 @@ async function fetchVideoMeta(videoId) {
   return { videoId, ok: false };
 }
 
-async function fixChannelsBatch(videoIds, force, onProgress) {
-  if (!videoIds.length) return { success: true, updated: 0, failed: 0, total: 0 };
+async function fixChannelsBatch(videoIds, force, onProgress, abortSignal) {
+  if (!videoIds.length) return { success: true, updated: 0, failed: 0, total: 0, processed: 0, aborted: false };
 
   const CONCURRENCY = 5;
   let updated = 0;
@@ -1663,6 +1822,7 @@ async function fixChannelsBatch(videoIds, force, onProgress) {
 
   async function worker() {
     while (idx < videoIds.length) {
+      if (abortSignal && abortSignal.aborted) return;
       const vid = videoIds[idx++];
       const result = await fetchVideoMeta(vid);
       let wasUpdated = false;
@@ -1706,7 +1866,14 @@ async function fixChannelsBatch(videoIds, force, onProgress) {
   for (let i = 0; i < Math.min(CONCURRENCY, videoIds.length); i++) workers.push(worker());
   await Promise.all(workers);
 
-  return { success: true, updated, failed, total: videoIds.length };
+  return {
+    success: true,
+    updated,
+    failed,
+    total: videoIds.length,
+    processed,
+    aborted: !!(abortSignal && abortSignal.aborted),
+  };
 }
 
 // --- Topic credits (composer/lyricist/arranger) extraction ---
@@ -2113,56 +2280,118 @@ async function fixCreditsBatch(videoIds, sources, force, onProgress, abortSignal
   return { success: true, updated, noCredits, fetchFailed, failReasons, total: videoIds.length, processed, aborted, autoStopped };
 }
 
-chrome.runtime.onConnect.addListener((port) => {
-  if (port.name !== 'fix-credits') return;
+function registerJobPort({ portName, createJob, run, progressPatch, finishPatch }) {
+  chrome.runtime.onConnect.addListener((port) => {
+    if (port.name !== portName) return;
 
-  const abortSignal = { aborted: false };
-  port.onDisconnect.addListener(() => { abortSignal.aborted = true; });
+    const abortSignal = { aborted: false };
+    let started = false;
+    let job = null;
+    port.onDisconnect.addListener(() => { abortSignal.aborted = true; });
 
-  port.onMessage.addListener(async (msg) => {
-    if (msg.type === 'ABORT') {
-      abortSignal.aborted = true;
-      return;
-    }
-    if (msg.type !== 'START') return;
-    const videoIds = msg.videoIds || [];
-    const sources = msg.sources || {};
-    const force = !!msg.force;
-    try {
-      const result = await fixCreditsBatch(videoIds, sources, force, (progress) => {
-        try { port.postMessage({ type: 'PROGRESS', ...progress }); } catch (_e) {}
-      }, abortSignal);
-      try { port.postMessage({ type: 'DONE', ...result }); } catch (_e) {}
-    } catch (e) {
-      try { port.postMessage({ type: 'ERROR', error: e.message }); } catch (_e) {}
-    }
-    try { port.disconnect(); } catch (_e) {}
+    port.onMessage.addListener(async (msg) => {
+      if (msg.type === 'ABORT') {
+        abortSignal.aborted = true;
+        return;
+      }
+      if (msg.type !== 'START' || started) return;
+      started = true;
+      try {
+        job = await jobRegistry.startJob(createJob(msg));
+        const result = await run(msg, (progress) => {
+          jobRegistry.updateJob(job, progressPatch(progress));
+          try { port.postMessage({ type: 'PROGRESS', ...progress }); } catch (_e) {}
+        }, abortSignal);
+        const state = result.aborted || abortSignal.aborted
+          ? 'aborted'
+          : (result.success === false ? 'error' : 'done');
+        jobRegistry.finishJob(job, state, finishPatch(result, state, msg));
+        try { port.postMessage({ type: 'DONE', ...result }); } catch (_e) {}
+      } catch (error) {
+        if (job) {
+          jobRegistry.finishJob(job, 'error', {
+            message: `${job.label}に失敗しました: ${error.message || String(error)}`,
+            error: error.message || String(error),
+          });
+        }
+        try { port.postMessage({ type: 'ERROR', error: error.message || String(error) }); } catch (_e) {}
+      }
+      try { port.disconnect(); } catch (_e) {}
+    });
   });
+}
+
+registerJobPort({
+  portName: 'fix-credits',
+  createJob: (msg) => ({
+    kind: 'fixCredits',
+    label: '概要欄からクレジット補完',
+    total: (msg.videoIds || []).length,
+    counters: { updated: 0, noCredits: 0, fetchFailed: 0 },
+    message: `処理中... 残り${(msg.videoIds || []).length}/${(msg.videoIds || []).length}（更新0 / 情報なし0 / 取得失敗0）`,
+    abortable: true,
+  }),
+  run: (msg, onProgress, abortSignal) => fixCreditsBatch(
+    msg.videoIds || [], msg.sources || {}, !!msg.force, onProgress, abortSignal),
+  progressPatch: (progress) => ({
+    total: progress.total,
+    processed: progress.processed,
+    counters: {
+      updated: progress.updated,
+      noCredits: progress.noCredits,
+      fetchFailed: progress.fetchFailed,
+      failReasons: progress.failReasons,
+    },
+    message: `処理中... 残り${progress.total - progress.processed}/${progress.total}（更新${progress.updated} / 情報なし${progress.noCredits} / 取得失敗${progress.fetchFailed}）`,
+  }),
+  finishPatch: (result, state) => ({
+    total: result.total || 0,
+    processed: result.processed || 0,
+    counters: {
+      updated: result.updated || 0,
+      noCredits: result.noCredits || 0,
+      fetchFailed: result.fetchFailed || 0,
+      failReasons: result.failReasons || {},
+    },
+    message: `${state === 'aborted' ? '概要欄からのクレジット補完を中止しました' : (result.autoStopped ? '概要欄からのクレジット補完を自動停止しました' : '概要欄からクレジットを補完しました')}: 更新${result.updated || 0} / 情報なし${result.noCredits || 0} / 取得失敗${result.fetchFailed || 0} / 処理${result.processed || 0}/${result.total || 0}`,
+    error: state === 'error' ? (result.reason || 'unknown') : null,
+  }),
 });
 
-chrome.runtime.onConnect.addListener((port) => {
-  if (port.name !== 'fix-durations') return;
-
-  const abortSignal = { aborted: false };
-  port.onDisconnect.addListener(() => { abortSignal.aborted = true; });
-
-  port.onMessage.addListener(async (msg) => {
-    if (msg.type === 'ABORT') {
-      abortSignal.aborted = true;
-      return;
-    }
-    if (msg.type !== 'START') return;
-    const videoIds = msg.videoIds || [];
-    try {
-      const result = await fixDurationsBatch(videoIds, (progress) => {
-        try { port.postMessage({ type: 'PROGRESS', ...progress }); } catch (_e) {}
-      }, abortSignal);
-      try { port.postMessage({ type: 'DONE', ...result }); } catch (_e) {}
-    } catch (e) {
-      try { port.postMessage({ type: 'ERROR', error: e.message }); } catch (_e) {}
-    }
-    try { port.disconnect(); } catch (_e) {}
-  });
+registerJobPort({
+  portName: 'fix-durations',
+  createJob: (msg) => ({
+    kind: 'fixDurations',
+    label: '動画の長さを補完',
+    total: (msg.videoIds || []).length,
+    counters: { updated: 0, live: 0, fetchFailed: 0 },
+    message: `処理中... 残り${(msg.videoIds || []).length}/${(msg.videoIds || []).length}（更新0 / ライブ0 / 取得失敗0）`,
+    abortable: true,
+  }),
+  run: (msg, onProgress, abortSignal) => fixDurationsBatch(msg.videoIds || [], onProgress, abortSignal),
+  progressPatch: (progress) => ({
+    total: progress.total,
+    processed: progress.processed,
+    counters: {
+      updated: progress.updated,
+      live: progress.live,
+      fetchFailed: progress.fetchFailed,
+      failReasons: progress.failReasons,
+    },
+    message: `処理中... 残り${progress.total - progress.processed}/${progress.total}（更新${progress.updated} / ライブ${progress.live} / 取得失敗${progress.fetchFailed}）`,
+  }),
+  finishPatch: (result, state) => ({
+    total: result.total || 0,
+    processed: result.processed || 0,
+    counters: {
+      updated: result.updated || 0,
+      live: result.live || 0,
+      fetchFailed: result.fetchFailed || 0,
+      failReasons: result.failReasons || {},
+    },
+    message: `${state === 'aborted' ? '動画の長さの補完を中止しました' : (result.autoStopped ? '動画の長さの補完を自動停止しました' : '動画の長さを補完しました')}: 更新${result.updated || 0} / ライブ${result.live || 0} / 取得失敗${result.fetchFailed || 0} / 処理${result.processed || 0}/${result.total || 0}`,
+    error: state === 'error' ? (result.reason || 'unknown') : null,
+  }),
 });
 
 // --- Liked playlist sync (LL = Liked Videos) ---
@@ -3422,7 +3651,7 @@ async function removeOneWatchLaterRow({ syncSessionId, videoId } = {}) {
 // 2026-08-08 measurement showed our own deletes do not reassign other rows'
 // setVideoId — that is what makes a chunk safe. Re-scanning between chunks bounds
 // what a change made on another device mid-run could reach.
-async function runWatchLaterBatch({ syncSessionId, videoIds, limit } = {}, onProgress) {
+async function runWatchLaterBatch({ syncSessionId, videoIds, limit } = {}, onProgress, abortSignal) {
   const Core = globalThis.WatchLaterCore;
   const report = (p) => { try { if (onProgress) onProgress(p); } catch (_e) {} };
   const approved = Array.isArray(videoIds) ? videoIds.filter(Boolean) : [];
@@ -3438,6 +3667,7 @@ async function runWatchLaterBatch({ syncSessionId, videoIds, limit } = {}, onPro
   let sinceRescan = 0;
 
   while (removed.length < max) {
+    if (abortSignal && abortSignal.aborted) { stopped = 'aborted'; break; }
     if (!scan) { stopped = 'no-scan'; break; }
     const row = Core.selectBatchTargets(scan.candidates, approved, removedIds).targets[0];
     if (!row) { stopped = removed.length ? null : 'no-targets'; break; }
@@ -3457,6 +3687,9 @@ async function runWatchLaterBatch({ syncSessionId, videoIds, limit } = {}, onPro
     removedIds.push(row.videoId);
     sinceRescan += 1;
     report({ done: removed.length, total: max, title: row.title || row.videoId });
+    // A removal request is irreversible once sent. Observe cancellation only after
+    // recording that completed removal, never while its outcome is ambiguous.
+    if (abortSignal && abortSignal.aborted) { stopped = 'aborted'; break; }
     if (removed.length >= max) break;
 
     if (sinceRescan >= Core.BATCH_CHUNK) {
@@ -3472,9 +3705,10 @@ async function runWatchLaterBatch({ syncSessionId, videoIds, limit } = {}, onPro
     }
   }
 
-  // Always finish on a fresh scan: whatever the caller does next must not run against
-  // the list as it looked before the batch, and this is where drift would surface.
-  const finalScan = await scanWatchLater({});
+  // Completed runs finish on a fresh scan so the next action cannot reuse stale ids.
+  // An aborted run stops immediately; the caller must scan again before deleting.
+  const aborted = !!(abortSignal && abortSignal.aborted);
+  const finalScan = aborted ? null : await scanWatchLater({});
   const finalOk = !!(finalScan && finalScan.success);
   return {
     success: true,
@@ -3482,46 +3716,95 @@ async function runWatchLaterBatch({ syncSessionId, videoIds, limit } = {}, onPro
     stopped,
     counts: finalOk ? finalScan.counts : null,
     drift: finalOk ? finalScan.drift : null,
-    finalScanFailed: !finalOk,
+    finalScanFailed: !aborted && !finalOk,
+    total: max,
+    processed: removed.length,
+    aborted,
   };
 }
 
-// A batch can run for a minute; a Port keeps the progress visible instead of leaving
-// the page silent while rows are being deleted.
-chrome.runtime.onConnect.addListener((port) => {
-  if (port.name !== 'watch-later-batch') return;
+// A batch can run for a minute; the shared Port wrapper keeps progress visible and
+// turns a page disconnect into the same abort signal used by the other long jobs.
+function describeWatchLaterJobStop(stopped) {
+  const known = {
+    'setvideoid-reassigned': '削除IDが振り直されたため中止しました',
+    'rescan-failed': '途中の再照合に失敗したため中止しました',
+    'scan-expired': '照合から時間が経ったため中止しました',
+    'sync-session-changed': 'YouTubeのタブまたはアカウントが変わったため中止しました',
+    'sync-tab-unavailable': 'YouTubeのタブが閉じたか応答しないため中止しました',
+    'edit-not-confirmed': 'YouTubeが成功を返さなかったため中止しました',
+    'no-targets': '削除できる対象がありませんでした',
+    'no-scan': '照合結果が失われたため中止しました',
+  };
+  return known[stopped] || (stopped ? `中止: ${stopped}` : '');
+}
 
-  port.onMessage.addListener(async (msg) => {
-    if (msg.type !== 'START') return;
-    try {
-      const result = await runWatchLaterBatch(msg, (progress) => {
-        try { port.postMessage({ type: 'PROGRESS', ...progress }); } catch (_e) {}
-      });
-      try { port.postMessage({ type: 'DONE', ...result }); } catch (_e) {}
-    } catch (e) {
-      try { port.postMessage({ type: 'ERROR', error: e.message }); } catch (_e) {}
-    }
-    try { port.disconnect(); } catch (_e) {}
-  });
+function finishWatchLaterJob(result, state) {
+  const removed = Array.isArray(result.removed) ? result.removed.length : 0;
+  const stop = state === 'aborted'
+    ? `中止しました（後で見るから${removed}件を削除・処理 ${removed}/${result.total || 0} 件）`
+    : describeWatchLaterJobStop(result.stopped);
+  return {
+    total: result.total || 0,
+    processed: removed,
+    counters: { removed },
+    message: state === 'aborted'
+      ? stop
+      : `後で見るから${removed}件を削除しました${stop ? ` / ${stop}` : ''}`,
+    error: state === 'error' ? (result.reason || 'unknown') : null,
+  };
+}
+
+registerJobPort({
+  portName: 'watch-later-batch',
+  createJob: (msg) => {
+    const approved = Array.isArray(msg.videoIds) ? msg.videoIds.filter(Boolean) : [];
+    const total = Number.isInteger(msg.limit) && msg.limit > 0 ? Math.min(msg.limit, approved.length) : approved.length;
+    return {
+      kind: 'bulkRemoveWatchLater',
+      label: 'まとめて削除',
+      total,
+      counters: { removed: 0 },
+      message: `削除中... 0/${total}件（削除0件）`,
+      abortable: true,
+    };
+  },
+  run: ({ syncSessionId, videoIds, limit }, onProgress, abortSignal) => runWatchLaterBatch(
+    { syncSessionId, videoIds, limit }, onProgress, abortSignal),
+  progressPatch: (progress) => ({
+    total: progress.total,
+    processed: progress.done,
+    counters: { removed: progress.done },
+    message: `削除中... ${progress.done}/${progress.total}件（削除${progress.done}件）`,
+  }),
+  finishPatch: finishWatchLaterJob,
 });
 
-// Streaming variant via chrome.runtime.Port — emits progress events.
-chrome.runtime.onConnect.addListener((port) => {
-  if (port.name !== 'fix-channels') return;
-
-  port.onMessage.addListener(async (msg) => {
-    if (msg.type !== 'START') return;
-    const videoIds = msg.videoIds || [];
-    const force = !!msg.force;
-
-    try {
-      const result = await fixChannelsBatch(videoIds, force, (progress) => {
-        try { port.postMessage({ type: 'PROGRESS', ...progress }); } catch (_e) {}
-      });
-      try { port.postMessage({ type: 'DONE', ...result }); } catch (_e) {}
-    } catch (e) {
-      try { port.postMessage({ type: 'ERROR', error: e.message }); } catch (_e) {}
-    }
-    try { port.disconnect(); } catch (_e) {}
-  });
+registerJobPort({
+  portName: 'fix-channels',
+  createJob: (msg) => ({
+    kind: msg.force ? 'fixChannelsForce' : 'fixChannels',
+    label: msg.force ? 'チャンネル名を再取得' : 'チャンネル名を補完',
+    total: (msg.videoIds || []).length,
+    counters: { updated: 0, failed: 0 },
+    message: `処理中... 残り${(msg.videoIds || []).length}/${(msg.videoIds || []).length}（更新0 / 失敗0）`,
+    abortable: true,
+  }),
+  run: (msg, onProgress, abortSignal) => fixChannelsBatch(
+    msg.videoIds || [], !!msg.force, onProgress, abortSignal),
+  progressPatch: (progress) => ({
+    total: progress.total,
+    processed: progress.processed,
+    counters: { updated: progress.updated, failed: progress.failed },
+    message: `処理中... 残り${progress.total - progress.processed}/${progress.total}（更新${progress.updated} / 失敗${progress.failed}）`,
+  }),
+  finishPatch: (result, state, msg) => ({
+    total: result.total || 0,
+    processed: result.processed || 0,
+    counters: { updated: result.updated || 0, failed: result.failed || 0 },
+    message: state === 'aborted'
+      ? `${msg.force ? 'チャンネル名の再取得' : 'チャンネル名の補完'}を中止しました: 更新${result.updated || 0}件 / 失敗${result.failed || 0}件 / 処理${result.processed || 0}/${result.total || 0}件`
+      : `${msg.force ? 'チャンネル名を再取得しました' : 'チャンネル名を補完しました'}: 更新${result.updated || 0}件 / 失敗${result.failed || 0}件 / 処理${result.processed || 0}/${result.total || 0}件`,
+    error: state === 'error' ? (result.reason || 'unknown') : null,
+  }),
 });

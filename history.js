@@ -250,6 +250,77 @@ if (filterNoChannelBtn) {
 
 // Fix channels via oEmbed API
 const fixStatus = document.getElementById('fixStatus');
+const jobProgressBar = document.getElementById('jobProgressBar');
+const jobRecentList = document.getElementById('jobRecentList');
+const JOB_CURRENT_KEY = 'ytwh.job.current';
+const JOB_RECENT_KEY = 'ytwh.job.recent';
+let displayedJob = null;
+let recentJobs = [];
+let persistedRunningMaintenance = null;
+
+function maintenanceKeyForJob(kind) {
+  if (kind === 'bulkRemoveWatchLater' || kind === 'scanWatchLater') return 'scanWatchLater';
+  return ['fixChannels', 'fixChannelsForce', 'fixCredits', 'fixDurations'].includes(kind) ? kind : null;
+}
+
+function renderJob(job, recent = recentJobs) {
+  displayedJob = job || null;
+  recentJobs = Array.isArray(recent) ? recent.slice(0, 5) : [];
+  if (fixStatus) fixStatus.textContent = displayedJob && displayedJob.message ? displayedJob.message : '';
+
+  if (jobProgressBar) {
+    const total = Math.max(0, Number(displayedJob && displayedJob.total) || 0);
+    const processed = Math.max(0, Number(displayedJob && displayedJob.processed) || 0);
+    const percent = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0;
+    jobProgressBar.style.width = `${percent}%`;
+  }
+
+  if (jobRecentList) {
+    jobRecentList.textContent = '';
+    const stateLabels = {
+      done: '完了',
+      aborted: '中止',
+      interrupted: '中断',
+      error: '失敗',
+    };
+    recentJobs.forEach(item => {
+      if (!item) return;
+      const li = document.createElement('li');
+      const timestamp = Number(item.endedAt || item.updatedAt || item.startedAt) || 0;
+      const when = timestamp
+        ? new Date(timestamp).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : '日時不明';
+      li.textContent = `${when} ${item.label || item.kind || '処理'} — ${stateLabels[item.state] || item.state || '結果不明'}`;
+      jobRecentList.appendChild(li);
+    });
+  }
+}
+
+function showJobMessage(message, options = {}) {
+  renderJob({
+    id: options.id || `page-${Date.now()}`,
+    kind: options.kind || '',
+    label: options.label || '',
+    state: options.state || 'done',
+    startedAt: options.startedAt || Date.now(),
+    updatedAt: Date.now(),
+    endedAt: options.state === 'running' ? null : Date.now(),
+    total: Number(options.total) || 0,
+    processed: Number(options.processed) || 0,
+    counters: options.counters || {},
+    message,
+    error: options.error || null,
+    abortable: !!options.abortable,
+  });
+}
+
+function applyStoredJobState(current, recent) {
+  persistedRunningMaintenance = current && current.state === 'running'
+    ? maintenanceKeyForJob(current.kind)
+    : null;
+  renderJob(current || null, recent);
+  updateMaintenanceButtons();
+}
 
 const maintenanceButtons = [
   { key: 'fixChannels', el: document.getElementById('fixChannels') },
@@ -260,30 +331,42 @@ const maintenanceButtons = [
   { key: 'scanWatchLater', el: document.getElementById('scanWatchLater') },
 ].filter(item => item.el).map(item => ({
   ...item,
-  defaultText: item.el.textContent,
+  textEl: item.el.querySelector('span'),
+  defaultText: item.el.querySelector('span') ? item.el.querySelector('span').textContent : item.el.textContent,
   defaultTitle: item.el.title,
 }));
 let runningMaintenance = null;
 let runningMaintenanceActiveText = '実行中…';
 let runningMaintenanceAllowAbort = false;
 
+function hasRunningMaintenance() {
+  return !!(runningMaintenance || persistedRunningMaintenance);
+}
+
+function setMaintenanceButtonText(item, text) {
+  if (item.textEl) item.textEl.textContent = text;
+  else item.el.textContent = text;
+}
+
 function updateMaintenanceButtons() {
+  const activeMaintenance = runningMaintenance || persistedRunningMaintenance;
   maintenanceButtons.forEach(item => {
     const btn = item.el;
-    if (!runningMaintenance) {
+    if (!activeMaintenance) {
       btn.disabled = false;
-      btn.textContent = item.defaultText;
+      setMaintenanceButtonText(item, item.defaultText);
       btn.title = item.defaultTitle;
       return;
     }
-    if (item.key === runningMaintenance) {
-      btn.disabled = !runningMaintenanceAllowAbort;
-      btn.textContent = runningMaintenanceActiveText;
-      btn.title = runningMaintenanceAllowAbort ? 'クリックして中止' : item.defaultTitle;
+    if (item.key === activeMaintenance) {
+      const locallyOwned = item.key === runningMaintenance;
+      btn.disabled = !locallyOwned || !runningMaintenanceAllowAbort;
+      setMaintenanceButtonText(item, locallyOwned ? runningMaintenanceActiveText : '実行中…');
+      btn.title = locallyOwned && runningMaintenanceAllowAbort ? 'クリックして中止' : item.defaultTitle;
       return;
     }
     btn.disabled = true;
-    btn.textContent = item.defaultText;
+    setMaintenanceButtonText(item, item.defaultText);
     btn.title = '他のメンテナンス処理が実行中';
   });
   updateMaintToggleLock();
@@ -315,7 +398,7 @@ function setMaintOpen(open, persist = true) {
 
 function updateMaintToggleLock() {
   if (!maintToggle) return;
-  const locked = !!runningMaintenance;
+  const locked = hasRunningMaintenance();
   // 走っている処理の中止ボタンは折り畳みの中にあるので、実行中は閉じさせない
   if (locked) setMaintOpen(true, false);
   maintToggle.disabled = locked;
@@ -325,13 +408,13 @@ function updateMaintToggleLock() {
 if (maintToggle && maintPanel) {
   setMaintOpen(readMaintOpenPref(), false);
   maintToggle.addEventListener('click', () => {
-    if (runningMaintenance) return;
+    if (hasRunningMaintenance()) return;
     setMaintOpen(maintPanel.hidden);
   });
 }
 
 function beginMaintenance(key, options = {}) {
-  if (runningMaintenance) return false;
+  if (hasRunningMaintenance()) return false;
   runningMaintenance = key;
   runningMaintenanceActiveText = options.activeText || '実行中…';
   runningMaintenanceAllowAbort = !!options.allowAbort;
@@ -351,10 +434,30 @@ function updateRunningMaintenance(key, options = {}) {
 function endMaintenance(key) {
   if (runningMaintenance !== key) return;
   runningMaintenance = null;
+  if (persistedRunningMaintenance === key) persistedRunningMaintenance = null;
   runningMaintenanceActiveText = '実行中…';
   runningMaintenanceAllowAbort = false;
   updateMaintenanceButtons();
 }
+
+async function loadStoredJobState() {
+  try {
+    const stored = await chrome.storage.local.get([JOB_CURRENT_KEY, JOB_RECENT_KEY]);
+    applyStoredJobState(stored && stored[JOB_CURRENT_KEY], stored && stored[JOB_RECENT_KEY]);
+  } catch (_error) {
+    renderJob(null, []);
+  }
+}
+
+if (chrome.storage && chrome.storage.onChanged && chrome.storage.onChanged.addListener) {
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'local') return;
+    const current = changes[JOB_CURRENT_KEY] ? changes[JOB_CURRENT_KEY].newValue : displayedJob;
+    const recent = changes[JOB_RECENT_KEY] ? changes[JOB_RECENT_KEY].newValue : recentJobs;
+    applyStoredJobState(current, recent);
+  });
+}
+loadStoredJobState();
 
 // --- Watch Later 照合（読み取り専用） ---
 // 後で見るを全件取得して視聴済みDBと突き合わせ、件数だけを出す。ここでは何も削除しない。
@@ -380,18 +483,18 @@ function describeWatchLaterFailure(res) {
 if (scanWatchLaterBtn) {
   scanWatchLaterBtn.addEventListener('click', () => {
     if (!beginMaintenance('scanWatchLater', { activeText: '照合中…' })) {
-      fixStatus.textContent = '他のメンテナンス処理が実行中';
+      showJobMessage('他のメンテナンス処理が実行中', { state: 'error' });
       return;
     }
-    fixStatus.textContent = '後で見るを取得中…';
+    showJobMessage('後で見るを照合中…', { kind: 'scanWatchLater', label: '照合', state: 'running' });
     chrome.runtime.sendMessage({ type: 'SCAN_WATCH_LATER' }, (res) => {
       endMaintenance('scanWatchLater');
       if (chrome.runtime.lastError) {
-        fixStatus.textContent = '失敗: ' + chrome.runtime.lastError.message;
+        showJobMessage('失敗: ' + chrome.runtime.lastError.message, { kind: 'scanWatchLater', label: '照合', state: 'error' });
         return;
       }
       if (!res || !res.success) {
-        fixStatus.textContent = describeWatchLaterFailure(res);
+        showJobMessage(describeWatchLaterFailure(res), { kind: 'scanWatchLater', label: '照合', state: 'error' });
         return;
       }
       const c = res.counts || {};
@@ -411,7 +514,7 @@ if (scanWatchLaterBtn) {
       if (res.drift && res.drift.compared) {
         parts.push(`前回比 残存${res.drift.compared}件/削除ID変化${res.drift.changed}件`);
       }
-      fixStatus.textContent = parts.join(' / ');
+      showJobMessage(`後で見るを照合しました: ${parts.join(' / ')}`, { kind: 'scanWatchLater', label: '照合', state: 'done' });
       armWatchLaterRemoval(res);
     });
   });
@@ -453,14 +556,14 @@ if (removeOneWatchLaterBtn) {
   removeOneWatchLaterBtn.addEventListener('click', () => {
     const target = armedWatchLaterTarget;
     if (!target) {
-      fixStatus.textContent = '先に「照合」を実行してください';
+      showJobMessage('先に「照合」を実行してください', { state: 'error' });
       return;
     }
     const label = target.title || target.videoId;
     const by = target.channel ? `\n${target.channel}` : '';
     if (!confirm(`次の1本を「後で見る」から削除します。取り消せません。\n\n${label}${by}`)) return;
     if (!beginMaintenance('scanWatchLater', { activeText: '削除中…' })) {
-      fixStatus.textContent = '他のメンテナンス処理が実行中';
+      showJobMessage('他のメンテナンス処理が実行中', { state: 'error' });
       return;
     }
     removeOneWatchLaterBtn.disabled = true;
@@ -474,15 +577,15 @@ if (removeOneWatchLaterBtn) {
       // 二重削除を試みられるのが一番まずいので、必ず照合からやり直させる。
       armedWatchLaterTarget = null;
       if (chrome.runtime.lastError) {
-        fixStatus.textContent = '失敗: ' + chrome.runtime.lastError.message;
+        showJobMessage('失敗: ' + chrome.runtime.lastError.message, { state: 'error' });
         return;
       }
       if (!res || !res.success) {
-        fixStatus.textContent = describeWatchLaterRemovalFailure(res);
+        showJobMessage(describeWatchLaterRemovalFailure(res), { state: 'error' });
         return;
       }
       const removed = res.removed || {};
-      fixStatus.textContent = `削除しました: ${removed.title || removed.videoId} / 残りを消すにはもう一度「照合」`;
+      showJobMessage(`後で見るから1件だけ削除しました: ${removed.title || removed.videoId} / 残りを消すにはもう一度「照合」`, { state: 'done' });
     });
   });
 }
@@ -587,41 +690,52 @@ if (wlPanelRun) {
 
     const port = chrome.runtime.connect({ name: 'watch-later-batch' });
     let settled = false;
-    const finish = (text) => {
+    const finish = (text, state = 'done', processed = 0, total = limit) => {
       if (settled) return;
       settled = true;
       endMaintenance('scanWatchLater');
       wlPanelRun.disabled = false;
       armedWatchLaterTarget = null;
       armWatchLaterBatch(null, null);
-      fixStatus.textContent = text;
+      showJobMessage(text, {
+        kind: 'bulkRemoveWatchLater',
+        label: 'まとめて削除',
+        state,
+        processed,
+        total,
+        counters: { removed: processed },
+      });
       wlPanelStatus.textContent = '';
       closeWatchLaterPanel();
     };
     port.onMessage.addListener((msg) => {
       if (msg.type === 'PROGRESS') {
         wlPanelStatus.textContent = `${msg.done} / ${msg.total} 件目: ${msg.title}`;
+        showJobMessage(`削除中... ${msg.done}/${msg.total}件（削除${msg.done}件）`, {
+          kind: 'bulkRemoveWatchLater', label: 'まとめて削除', state: 'running',
+          processed: msg.done, total: msg.total, counters: { removed: msg.done }, abortable: true,
+        });
         return;
       }
       if (msg.type === 'ERROR') {
-        finish('失敗: ' + (msg.error || 'unknown'));
+        finish('失敗: ' + (msg.error || 'unknown'), 'error');
         return;
       }
       if (msg.type !== 'DONE') return;
       if (!msg.success) {
-        finish(describeBatchStop(msg.reason));
+        finish(describeBatchStop(msg.reason), 'error');
         return;
       }
-      const parts = [`${msg.removed.length}件を削除しました`];
+      const parts = [`後で見るから${msg.removed.length}件をまとめて削除しました`];
       if (msg.stopped) parts.push(describeBatchStop(msg.stopped));
       const c = msg.counts;
       if (c) parts.push(`残り: 後で見る ${c.total}件 / 視聴済み一致 ${c.candidates}件 / 未視聴 ${c.notWatched}件`);
-      if (msg.drift && msg.drift.changed) parts.push(`⚠ 削除ID変化 ${msg.drift.changed}件`);
+      if (msg.drift && msg.drift.changed) parts.push(`削除ID変化 ${msg.drift.changed}件`);
       if (msg.finalScanFailed) parts.push('※削除後の再照合に失敗したため、件数は未確認です');
-      finish(parts.join(' / '));
+      finish(parts.join(' / '), msg.aborted ? 'aborted' : 'done', msg.removed.length, msg.total || limit);
     });
     // service worker が落ちた場合、DONE が来ないまま切断される。
-    port.onDisconnect.addListener(() => finish('中断しました。照合し直して結果を確認してください'));
+    port.onDisconnect.addListener(() => finish('中断しました。照合し直して結果を確認してください', 'interrupted'));
 
     // 応答が完全に途絶えたときに「削除中…」のまま固まらないための保険。
     // 削除が進んでいる間は PROGRESS ごとに延長するので、通常の実行では発火しない。
@@ -630,7 +744,7 @@ if (wlPanelRun) {
     const armWatchdog = () => {
       if (watchdog) clearTimeout(watchdog);
       watchdog = setTimeout(() => {
-        finish('応答がないため中断しました。どこまで削除できたかは照合し直して確認してください');
+        finish('応答がないため中断しました。どこまで削除できたかは照合し直して確認してください', 'interrupted');
         try { port.disconnect(); } catch (_e) {}
       }, 60000);
     };
@@ -638,6 +752,11 @@ if (wlPanelRun) {
     port.onMessage.addListener(armWatchdog);
     port.onDisconnect.addListener(clearWatchdog);
     armWatchdog();
+
+    showJobMessage(`削除中... 0/${limit}件（削除0件）`, {
+      kind: 'bulkRemoveWatchLater', label: 'まとめて削除', state: 'running',
+      processed: 0, total: limit, counters: { removed: 0 }, abortable: true,
+    });
 
     // 接続しただけでは background は動かない。承認済みの対象と件数を渡して開始する。
     port.postMessage({
@@ -651,7 +770,7 @@ if (wlPanelRun) {
 
 function runFix(videoIds, force, label) {
   if (!videoIds.length) {
-    fixStatus.textContent = '対象なし';
+    showJobMessage('対象なし');
     return;
   }
   if (!confirm(`${label}: ${videoIds.length}件のチャンネル名をYouTube oEmbed APIで${force ? '上書き' : '補完'}します。続行しますか？`)) {
@@ -660,13 +779,16 @@ function runFix(videoIds, force, label) {
 
   const maintenanceKey = force ? 'fixChannelsForce' : 'fixChannels';
   if (!beginMaintenance(maintenanceKey, { activeText: '実行中…' })) {
-    fixStatus.textContent = '他のメンテナンス処理が実行中';
+    showJobMessage('他のメンテナンス処理が実行中', { state: 'error' });
     return;
   }
 
   const total = videoIds.length;
   let remaining = total;
-  fixStatus.textContent = `処理中... 残り${remaining}/${total}（更新0 / 失敗0）`;
+  showJobMessage(`処理中... 残り${remaining}/${total}（更新0 / 失敗0）`, {
+    kind: maintenanceKey, label: force ? 'チャンネル名を再取得' : 'チャンネル名を補完',
+    state: 'running', total, processed: 0, counters: { updated: 0, failed: 0 }, abortable: true,
+  });
 
   const port = chrome.runtime.connect({ name: 'fix-channels' });
   const finish = () => {
@@ -709,12 +831,23 @@ function runFix(videoIds, force, label) {
       }
 
       totalCountEl.textContent = sortedCache.length.toLocaleString();
-      fixStatus.textContent = `処理中... 残り${remaining}/${total}（更新${msg.updated} / 失敗${msg.failed}）`;
+      showJobMessage(`処理中... 残り${remaining}/${total}（更新${msg.updated} / 失敗${msg.failed}）`, {
+        kind: maintenanceKey, label: force ? 'チャンネル名を再取得' : 'チャンネル名を補完',
+        state: 'running', total, processed: msg.processed,
+        counters: { updated: msg.updated, failed: msg.failed }, abortable: true,
+      });
       return;
     }
 
     if (msg.type === 'DONE') {
-      fixStatus.textContent = `完了: 更新${msg.updated}件 / 失敗${msg.failed}件 / 合計${msg.total}件`;
+      const outcome = msg.aborted
+        ? `${force ? 'チャンネル名の再取得' : 'チャンネル名の補完'}を中止しました`
+        : `${force ? 'チャンネル名を再取得しました' : 'チャンネル名を補完しました'}`;
+      showJobMessage(`${outcome}: 更新${msg.updated}件 / 失敗${msg.failed}件 / 処理${msg.processed || 0}/${msg.total}件`, {
+        kind: maintenanceKey, label: force ? 'チャンネル名を再取得' : 'チャンネル名を補完',
+        state: msg.aborted ? 'aborted' : 'done', total: msg.total, processed: msg.processed || 0,
+        counters: { updated: msg.updated, failed: msg.failed },
+      });
       // Full reload to re-sort and ensure consistency.
       setTimeout(loadData, 300);
       finish();
@@ -722,7 +855,9 @@ function runFix(videoIds, force, label) {
     }
 
     if (msg.type === 'ERROR') {
-      fixStatus.textContent = `失敗: ${msg.error || 'unknown'}`;
+      showJobMessage(`失敗: ${msg.error || 'unknown'}`, {
+        kind: maintenanceKey, label: force ? 'チャンネル名を再取得' : 'チャンネル名を補完', state: 'error', error: msg.error,
+      });
       finish();
       return;
     }
@@ -736,8 +871,8 @@ function runFix(videoIds, force, label) {
 const fixBtn = document.getElementById('fixChannels');
 if (fixBtn) {
   fixBtn.addEventListener('click', () => {
-    if (runningMaintenance) {
-      fixStatus.textContent = '他のメンテナンス処理が実行中';
+    if (hasRunningMaintenance()) {
+      showJobMessage('他のメンテナンス処理が実行中', { state: 'error' });
       return;
     }
     // Only videos missing channel (across allData, not just visible)
@@ -750,7 +885,7 @@ if (fixBtn) {
 let activeCreditsPort = null;
 function runFixCredits(videoIds, sources, label) {
   if (!videoIds.length) {
-    fixStatus.textContent = '対象なし';
+    showJobMessage('対象なし');
     return;
   }
   if (!confirm(`${label}: ${videoIds.length}件の動画から作曲/作詞/編曲を概要欄で補完します。続行しますか？\n\n※YouTubeタブを1つ以上開いたままにしてください（Cookie経由でfetchするため）。`)) {
@@ -758,14 +893,17 @@ function runFixCredits(videoIds, sources, label) {
   }
 
   if (!beginMaintenance('fixCredits', { activeText: '実行中…（中止）', allowAbort: true })) {
-    fixStatus.textContent = '他のメンテナンス処理が実行中';
+    showJobMessage('他のメンテナンス処理が実行中', { state: 'error' });
     return;
   }
 
   const total = videoIds.length;
   let remaining = total;
   const fixCreditsBtn = document.getElementById('fixCredits');
-  fixStatus.textContent = `処理中... 残り${remaining}/${total}（更新0 / 失敗0）`;
+  showJobMessage(`処理中... 残り${remaining}/${total}（更新0 / 情報なし0 / 取得失敗0）`, {
+    kind: 'fixCredits', label: '概要欄からクレジット補完', state: 'running',
+    total, processed: 0, counters: { updated: 0, noCredits: 0, fetchFailed: 0 }, abortable: true,
+  });
   if (fixCreditsBtn) {
     fixCreditsBtn.dataset.mode = 'abort';
   }
@@ -791,7 +929,11 @@ function runFixCredits(videoIds, sources, label) {
           if (msg.credits.arranger && !rec.arranger) rec.arranger = msg.credits.arranger;
         }
       }
-      fixStatus.textContent = `処理中... 残り${remaining}/${total}（更新${msg.updated} / 情報なし${msg.noCredits} / 取得失敗${msg.fetchFailed}）`;
+      showJobMessage(`処理中... 残り${remaining}/${total}（更新${msg.updated} / 情報なし${msg.noCredits} / 取得失敗${msg.fetchFailed}）`, {
+        kind: 'fixCredits', label: '概要欄からクレジット補完', state: 'running',
+        total, processed: msg.processed,
+        counters: { updated: msg.updated, noCredits: msg.noCredits, fetchFailed: msg.fetchFailed }, abortable: true,
+      });
       if (msg.processed % 50 === 0 && msg.failReasons) {
         console.log('[Fix Credits] progress', msg.processed, 'failReasons:', msg.failReasons);
       }
@@ -801,17 +943,23 @@ function runFixCredits(videoIds, sources, label) {
       const reasons = msg.failReasons && Object.keys(msg.failReasons).length
         ? ` [${Object.entries(msg.failReasons).map(([k, v]) => `${k}:${v}`).join(', ')}]`
         : '';
-      let prefix = '完了';
-      if (msg.autoStopped) prefix = '⚠ 自動停止（Googleのbot検知 / 時間を空けて再実行）';
-      else if (msg.aborted) prefix = '⏸ 中止';
-      fixStatus.textContent = `${prefix}: 更新${msg.updated} / 情報なし${msg.noCredits} / 取得失敗${msg.fetchFailed} / 処理${msg.processed || 0}/${msg.total}${reasons}`;
+      let prefix = '概要欄からクレジットを補完しました';
+      if (msg.autoStopped) prefix = '概要欄からのクレジット補完を自動停止しました（Googleのbot検知 / 時間を空けて再実行）';
+      else if (msg.aborted) prefix = '概要欄からのクレジット補完を中止しました';
+      showJobMessage(`${prefix}: 更新${msg.updated} / 情報なし${msg.noCredits} / 取得失敗${msg.fetchFailed} / 処理${msg.processed || 0}/${msg.total}${reasons}`, {
+        kind: 'fixCredits', label: '概要欄からクレジット補完', state: msg.aborted ? 'aborted' : 'done',
+        total: msg.total, processed: msg.processed || 0,
+        counters: { updated: msg.updated, noCredits: msg.noCredits, fetchFailed: msg.fetchFailed },
+      });
       console.log('[Fix Credits] failReasons:', msg.failReasons);
       setTimeout(loadData, 300);
       finish();
       return;
     }
     if (msg.type === 'ERROR') {
-      fixStatus.textContent = `失敗: ${msg.error || 'unknown'}`;
+      showJobMessage(`失敗: ${msg.error || 'unknown'}`, {
+        kind: 'fixCredits', label: '概要欄からクレジット補完', state: 'error', error: msg.error,
+      });
       finish();
     }
   });
@@ -823,12 +971,14 @@ if (fixCreditsBtn) {
   fixCreditsBtn.addEventListener('click', () => {
     if (fixCreditsBtn.dataset.mode === 'abort' && activeCreditsPort) {
       try { activeCreditsPort.postMessage({ type: 'ABORT' }); } catch (_e) {}
-      fixStatus.textContent = '中止中...';
+      showJobMessage('中止中...', {
+        kind: 'fixCredits', label: '概要欄からクレジット補完', state: 'running', abortable: true,
+      });
       updateRunningMaintenance('fixCredits', { activeText: '中止中…', allowAbort: true });
       return;
     }
-    if (runningMaintenance) {
-      fixStatus.textContent = '他のメンテナンス処理が実行中';
+    if (hasRunningMaintenance()) {
+      showJobMessage('他のメンテナンス処理が実行中', { state: 'error' });
       return;
     }
     // Topicチャンネル優先。「一般も含める」ONなら非Topicも対象。
@@ -867,7 +1017,7 @@ let enrichCreditsController = null;
 if (enrichCreditsBtn && window.EnrichCredits) {
   enrichCreditsController = window.EnrichCredits.create({
     getRecords: () => allData,
-    notify: (message) => { fixStatus.textContent = message; },
+    notify: (message) => { showJobMessage(message, { label: 'クレジット補完（外部DB）' }); },
     reloadData: () => loadData(),
     beginMaintenance: (activeText, allowAbort) => beginMaintenance('enrichCredits', { activeText, allowAbort }),
     updateMaintenance: (activeText, allowAbort) => updateRunningMaintenance('enrichCredits', { activeText, allowAbort }),
@@ -875,8 +1025,8 @@ if (enrichCreditsBtn && window.EnrichCredits) {
   });
 
   enrichCreditsBtn.addEventListener('click', () => {
-    if (runningMaintenance && runningMaintenance !== 'enrichCredits') {
-      fixStatus.textContent = '他のメンテナンス処理が実行中';
+    if (hasRunningMaintenance() && runningMaintenance !== 'enrichCredits') {
+      showJobMessage('他のメンテナンス処理が実行中', { state: 'error' });
       return;
     }
     enrichCreditsController.open();
@@ -886,7 +1036,7 @@ if (enrichCreditsBtn && window.EnrichCredits) {
 let activeDurationsPort = null;
 function runFixDurations(videoIds) {
   if (!videoIds.length) {
-    fixStatus.textContent = '対象なし';
+    showJobMessage('対象なし');
     return;
   }
   if (!confirm(`動画時間補完: ${videoIds.length}件の動画時間をwatchページから補完します。続行しますか？\n\n※YouTubeタブを1つ以上開いたままにしてください（Cookie経由でfetchするため）。ライブ動画は -1 として記録します。`)) {
@@ -894,14 +1044,17 @@ function runFixDurations(videoIds) {
   }
 
   if (!beginMaintenance('fixDurations', { activeText: '実行中…（中止）', allowAbort: true })) {
-    fixStatus.textContent = '他のメンテナンス処理が実行中';
+    showJobMessage('他のメンテナンス処理が実行中', { state: 'error' });
     return;
   }
 
   const total = videoIds.length;
   let remaining = total;
   const btn = document.getElementById('fixDurations');
-  fixStatus.textContent = `処理中... 残り${remaining}/${total}（更新0 / ライブ0 / 取得失敗0）`;
+  showJobMessage(`処理中... 残り${remaining}/${total}（更新0 / ライブ0 / 取得失敗0）`, {
+    kind: 'fixDurations', label: '動画の長さを補完', state: 'running',
+    total, processed: 0, counters: { updated: 0, live: 0, fetchFailed: 0 }, abortable: true,
+  });
   if (btn) {
     btn.dataset.mode = 'abort';
   }
@@ -927,23 +1080,33 @@ function runFixDurations(videoIds) {
         rec.durationSec = null;
         rec.durationFetchFailed = msg.reason;
       }
-      fixStatus.textContent = `処理中... 残り${remaining}/${total}（更新${msg.updated} / ライブ${msg.live} / 取得失敗${msg.fetchFailed}）`;
+      showJobMessage(`処理中... 残り${remaining}/${total}（更新${msg.updated} / ライブ${msg.live} / 取得失敗${msg.fetchFailed}）`, {
+        kind: 'fixDurations', label: '動画の長さを補完', state: 'running',
+        total, processed: msg.processed,
+        counters: { updated: msg.updated, live: msg.live, fetchFailed: msg.fetchFailed }, abortable: true,
+      });
       return;
     }
     if (msg.type === 'DONE') {
       const reasons = msg.failReasons && Object.keys(msg.failReasons).length
         ? ` [${Object.entries(msg.failReasons).map(([k, v]) => `${k}:${v}`).join(', ')}]`
         : '';
-      let prefix = '完了';
-      if (msg.autoStopped) prefix = '⚠ 自動停止（Googleのbot検知 / 時間を空けて再実行）';
-      else if (msg.aborted) prefix = '⏸ 中止';
-      fixStatus.textContent = `${prefix}: 更新${msg.updated} / ライブ${msg.live} / 取得失敗${msg.fetchFailed} / 処理${msg.processed || 0}/${msg.total}${reasons}`;
+      let prefix = '動画の長さを補完しました';
+      if (msg.autoStopped) prefix = '動画の長さの補完を自動停止しました（Googleのbot検知 / 時間を空けて再実行）';
+      else if (msg.aborted) prefix = '動画の長さの補完を中止しました';
+      showJobMessage(`${prefix}: 更新${msg.updated} / ライブ${msg.live} / 取得失敗${msg.fetchFailed} / 処理${msg.processed || 0}/${msg.total}${reasons}`, {
+        kind: 'fixDurations', label: '動画の長さを補完', state: msg.aborted ? 'aborted' : 'done',
+        total: msg.total, processed: msg.processed || 0,
+        counters: { updated: msg.updated, live: msg.live, fetchFailed: msg.fetchFailed },
+      });
       setTimeout(loadData, 300);
       finish();
       return;
     }
     if (msg.type === 'ERROR') {
-      fixStatus.textContent = `失敗: ${msg.error || 'unknown'}`;
+      showJobMessage(`失敗: ${msg.error || 'unknown'}`, {
+        kind: 'fixDurations', label: '動画の長さを補完', state: 'error', error: msg.error,
+      });
       finish();
     }
   });
@@ -955,12 +1118,14 @@ if (fixDurationsBtn) {
   fixDurationsBtn.addEventListener('click', () => {
     if (fixDurationsBtn.dataset.mode === 'abort' && activeDurationsPort) {
       try { activeDurationsPort.postMessage({ type: 'ABORT' }); } catch (_e) {}
-      fixStatus.textContent = '中止中...';
+      showJobMessage('中止中...', {
+        kind: 'fixDurations', label: '動画の長さを補完', state: 'running', abortable: true,
+      });
       updateRunningMaintenance('fixDurations', { activeText: '中止中…', allowAbort: true });
       return;
     }
-    if (runningMaintenance) {
-      fixStatus.textContent = '他のメンテナンス処理が実行中';
+    if (hasRunningMaintenance()) {
+      showJobMessage('他のメンテナンス処理が実行中', { state: 'error' });
       return;
     }
     const targets = allData
@@ -973,8 +1138,8 @@ if (fixDurationsBtn) {
 const fixForceBtn = document.getElementById('fixChannelsForce');
 if (fixForceBtn) {
   fixForceBtn.addEventListener('click', () => {
-    if (runningMaintenance) {
-      fixStatus.textContent = '他のメンテナンス処理が実行中';
+    if (hasRunningMaintenance()) {
+      showJobMessage('他のメンテナンス処理が実行中', { state: 'error' });
       return;
     }
     // Force-overwrite for currently visible (filtered+sorted) entries
