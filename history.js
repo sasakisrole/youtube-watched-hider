@@ -883,12 +883,19 @@ if (fixBtn) {
 
 // Fix credits (composer/lyricist/arranger) for Topic-channel videos.
 let activeCreditsPort = null;
-function runFixCredits(videoIds, sources, label) {
+function runFixCredits(videoIds, sources, label, heldBack) {
+  // 間隔待ちで今回外れた件数を添える。設定の説明がツールチップにしか無く気づけないため。
+  const held = Number(heldBack) > 0 ? Number(heldBack) : 0;
+  const heldNote = held
+    ? `\n\n※前に調べて情報が見つからなかった${held.toLocaleString()}件は、しばらく間隔を空けるため今回は対象外です（「チェック済みスキップ」を外すと全部やり直せます）。`
+    : '';
   if (!videoIds.length) {
-    showJobMessage('対象なし');
+    showJobMessage(held
+      ? `対象なし（間隔待ち ${held.toLocaleString()}件）`
+      : '対象なし');
     return;
   }
-  if (!confirm(`${label}: ${videoIds.length}件の動画から作曲/作詞/編曲を概要欄で補完します。続行しますか？\n\n※YouTubeタブを1つ以上開いたままにしてください（Cookie経由でfetchするため）。`)) {
+  if (!confirm(`${label}: ${videoIds.length}件の動画から作曲/作詞/編曲を概要欄で補完します。続行しますか？${heldNote}\n\n※YouTubeタブを1つ以上開いたままにしてください（Cookie経由でfetchするため）。`)) {
     return;
   }
 
@@ -996,19 +1003,24 @@ if (fixCreditsBtn) {
     // unchanged 概要欄 every run can't hammer YouTube, but a video checked long ago
     // (parser improved / description edited) becomes eligible again.
     const now = Date.now();
-    const targets = allData
-      .filter(v => {
-        if (!v.channel) return false;
-        const isTopic = window.CreditTarget.isTopicChannelName(v.channel);
-        return isTopic || includeGen;
-      })
+    const inScope = allData.filter(v => {
+      if (!v.channel) return false;
+      const isTopic = window.CreditTarget.isTopicChannelName(v.channel);
+      return isTopic || includeGen;
+    });
+    const targets = inScope
       .filter(v => window.CreditTarget.isFixCreditsTarget(v, { skipChecked: skip, now }))
       .map(v => {
         sources[v.videoId] = window.CreditTarget.isTopicChannelName(v.channel) ? 'topic' : 'general';
         return v.videoId;
       });
+    // 役割は空いているのに、再取得の間隔待ちで今回だけ外れた数。
+    const heldBack = skip
+      ? inScope.filter(v => window.CreditTarget.hasMissingCreditRole(v)
+          && !window.CreditTarget.isFixCreditsTarget(v, { skipChecked: true, now })).length
+      : 0;
     const label = includeGen ? 'クレジット補完（Topic+一般）' : 'Topic動画のクレジット補完';
-    runFixCredits(targets, sources, label);
+    runFixCredits(targets, sources, label, heldBack);
   });
 }
 
