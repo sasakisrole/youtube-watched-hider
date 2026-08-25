@@ -179,18 +179,29 @@ function extractVideoId(url) {
 
 // Track which videos have been recorded this session to avoid duplicate writes
 const recentlyRecorded = new Set();
+const recordingInProgress = new Set();
+
+async function notifyVideoDetected(tabId, videoId) {
+  if (recentlyRecorded.has(videoId) || recordingInProgress.has(videoId)) return;
+  recordingInProgress.add(videoId);
+  try {
+    await chrome.tabs.sendMessage(tabId, {
+      type: 'VIDEO_DETECTED',
+      videoId
+    });
+    recentlyRecorded.add(videoId);
+  } catch (e) {
+    console.error('[YT-Watched] Video detection message failed:', videoId, e);
+  } finally {
+    recordingInProgress.delete(videoId);
+  }
+}
 
 // Listen for tab URL changes to detect video plays
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.url) {
     const videoId = extractVideoId(changeInfo.url);
-    if (videoId && !recentlyRecorded.has(videoId)) {
-      recentlyRecorded.add(videoId);
-      chrome.tabs.sendMessage(tabId, {
-        type: 'VIDEO_DETECTED',
-        videoId
-      }).catch(() => {});
-    }
+    if (videoId) notifyVideoDetected(tabId, videoId);
   }
 });
 
@@ -1144,7 +1155,9 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (!videoId) return;
 
   const type = info.menuItemId === 'yt-queue' ? 'QUEUE_VIDEO' : 'WATCH_LATER_VIDEO';
-  chrome.tabs.sendMessage(tab.id, { type, videoId }).catch(() => {});
+  chrome.tabs.sendMessage(tab.id, { type, videoId }).catch((e) => {
+    console.error('[YT-Watched] Context menu message failed:', type, videoId, e);
+  });
 });
 
 // Handle messages from content script and popup

@@ -182,6 +182,23 @@ window._ytWatchedHider = (() => {
     pendingLookup.delete(videoId);
   }
 
+  function recordSeekbarWatched(card, videoId, title, channel, durationSec) {
+    hideCard(card, videoId);
+    rememberWatched(videoId);
+    return DBClient.addWatched(videoId, title, 'seekbar', channel, durationSec).then((res) => {
+      if (res && res.isNew) showImportToast(1);
+      return res;
+    }).catch((e) => {
+      forgetWatched(videoId);
+      if (card.dataset.watchedHidden === 'true' && card.dataset.watchedVideoId === videoId) {
+        card.style.display = '';
+        delete card.dataset.watchedHidden;
+        delete card.dataset.watchedVideoId;
+      }
+      console.error('[YT-Watched-Hider] Error recording seekbar video:', e);
+    });
+  }
+
   function getCachedWatchedState(videoId) {
     if (!videoId) return false;
     if (watchedPositive.has(videoId)) return true;
@@ -767,7 +784,9 @@ window._ytWatchedHider = (() => {
         const title = getWatchPageTitle();
         const channel = getWatchPageChannel();
         if (title || channel) {
-          DBClient.updateTitleAndChannel(videoId, title, channel).catch(() => {});
+          DBClient.updateTitleAndChannel(videoId, title, channel).catch((e) => {
+            console.error('[YT-Watched-Hider] Error updating video metadata:', videoId, e);
+          });
           return;
         }
       }
@@ -934,14 +953,10 @@ window._ytWatchedHider = (() => {
 
         // Check YouTube seekbar first (no DB needed)
         if (hasYouTubeSeekbar(card)) {
-          hideCard(card, videoId);
-          rememberWatched(videoId);
           const title = getTitleFromCard(card);
           const channel = getChannelFromCard(card);
           const durationSec = getDurationFromCard(card);
-          DBClient.addWatched(videoId, title, 'seekbar', channel, durationSec).then((res) => {
-            if (res && res.isNew) showImportToast(1);
-          }).catch(() => {});
+          recordSeekbarWatched(card, videoId, title, channel, durationSec);
           // If we couldn't extract title or channel from the card (some
           // layout variants expose neither), schedule an oEmbed backfill
           // so the entry doesn't stay blank forever.
@@ -1690,14 +1705,10 @@ window._ytWatchedHider = (() => {
         }
         // Check YouTube seekbar first (hide immediately, no DB lookup needed)
         if (hasYouTubeSeekbar(card)) {
-          hideCard(card, videoId);
-          rememberWatched(videoId);
           const title = getTitleFromCard(card);
           const channel = getChannelFromCard(card);
           const durationSec = getDurationFromCard(card);
-          DBClient.addWatched(videoId, title, 'seekbar', channel, durationSec).then((res) => {
-            if (res && res.isNew) showImportToast(1);
-          }).catch(() => {});
+          recordSeekbarWatched(card, videoId, title, channel, durationSec);
           // If we couldn't extract title or channel from the card (some
           // layout variants expose neither), schedule an oEmbed backfill
           // so the entry doesn't stay blank forever.
