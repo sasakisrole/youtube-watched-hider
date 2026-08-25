@@ -391,10 +391,45 @@ async function testA11y() {
     && HTML.includes('@media (max-width:900px)') && HTML.includes('@media (prefers-color-scheme: dark)'));
 }
 
+// 実データ(13,475件)を一度に描くと JS 2.0秒 + レイアウト 10.5秒 ブラウザが固まったので、
+// 自動候補タブと同じ分割描画を入れた。ここはその上限が効き続けることを見張る。
+async function testManualPaging() {
+  console.log('manual paging');
+  const many = Array.from({ length: 130 }, (_, i) => base('page-' + String(i).padStart(3, '0')));
+  const ui = load(many);
+  const cards = () => findAll(ui.list, (e) => e.className === 'manual-video-card');
+  const label = () => ui.doc.getElementById('enrichManualCount').textContent;
+
+  check('manual view renders a first chunk instead of every row', cards().length === 50);
+  check('count label keeps the real total and says how many are shown',
+    label() === '対象 130件 / 不足 390役割（50件を表示中）');
+  check('remaining rows are reachable by scrolling', !!ui.list.listeners.scroll);
+
+  ui.controller.renderMoreManualRows();
+  check('the next chunk is appended', cards().length === 100);
+  ui.controller.renderMoreManualRows();
+  check('paging stops at the total and drops the "shown" suffix',
+    cards().length === 130 && label() === '対象 130件 / 不足 390役割');
+
+  const search = ui.doc.getElementById('enrichManualSearch');
+  search.value = 'page-';
+  await search.trigger('input');
+  check('changing the search starts from the first chunk again', cards().length === 50);
+
+  // 保存すると pin される。pin は行の末尾へ回るので、上限で切ると
+  // 「直した動画が消えた」に見える。上限より後ろでも必ず描くこと。
+  const pinned = load(many);
+  pinned.controller.manualPinnedVideoIds.add('page-120');
+  pinned.controller.renderManualView();
+  const ids = findAll(pinned.list, (e) => e.className === 'manual-video-card').map((e) => e.dataset.videoId);
+  check('a row you already saved is never cut off by the cap',
+    ids.length === 51 && ids.includes('page-120'));
+}
+
 async function main() {
   await testPure(); await testRowsValidation(); await testResults(); await testCopy(); await testGenerationPreCount();
   await testAutoCommitGuards();
-  await testActions(); await testA11y();
+  await testActions(); await testA11y(); await testManualPaging();
   console.log(`\n${pass} passed, ${fail} failed`); if (fail) process.exit(1);
 }
 main().catch((e) => { console.error(e); process.exit(1); });

@@ -6,6 +6,9 @@
   const AUTO_SIM_THRESHOLD = 0.95;
   const REVIEW_SIM_THRESHOLD = 0.85;
   const RENDER_CHUNK_SIZE = 50;
+  // 手動確認も自動候補と同じく分割して描く。実測 13,475件を一度に描くと
+  // JS 2.0秒 + レイアウト 10.5秒 の間ブラウザが固まる（DOM 約60万ノード）。
+  const MANUAL_CHUNK_SIZE = 50;
 
   // DESIGN_enrich_credits.md test-case hooks:
   // Case 1: createRuleCandidate() returns source="rule", sim=null, selected=true.
@@ -445,6 +448,7 @@
       this.manualEditing = new Set();
       this.manualPinnedVideoIds = new Set();
       this.manualBusy = new Set();
+      this.manualRenderedRows = 0;
       this.previousFocus = null;
       this.bind();
       this.renderAll();
@@ -469,7 +473,16 @@
       }
       this.manualSearchEl && this.manualSearchEl.addEventListener('input', () => {
         this.manualSearch = this.manualSearchEl.value || '';
+        // 検索を変えると別の結果集合になるので、ここだけ表示件数を戻す。
+        // 保存・undo 経由の再描画では戻さない（編集直後に先頭へ飛ぶため）。
+        this.manualRenderedRows = 0;
         this.renderManualView();
+      });
+      this.manualListEl && this.manualListEl.addEventListener('scroll', () => {
+        if (this.manualListEl.scrollTop + this.manualListEl.clientHeight
+          >= this.manualListEl.scrollHeight - 80) {
+          this.renderMoreManualRows();
+        }
       });
       this.tableWrap && this.tableWrap.addEventListener('scroll', () => {
         if (this.tableWrap.scrollTop + this.tableWrap.clientHeight >= this.tableWrap.scrollHeight - 80) {
@@ -734,22 +747,51 @@
       return button;
     }
 
+    renderMoreManualRows() {
+      if (this.manualRenderedRows >= this.getManualDisplayRows().length) return;
+      this.manualRenderedRows += MANUAL_CHUNK_SIZE;
+      this.renderManualView();
+    }
+
     renderManualView() {
       if (!this.manualListEl) return;
       const rows = this.getManualDisplayRows();
+      // 不足役割の合計は「今描いている分」でなく対象全件で数える（絞り込みの目安なので）。
+      let missingCount = 0;
+      for (const record of rows) missingCount += sharedMissingCreditRoles(record).length;
+
+      const limit = Math.min(rows.length, Math.max(MANUAL_CHUNK_SIZE, this.manualRenderedRows));
+      this.manualRenderedRows = limit;
+      const shown = rows.slice(0, limit);
+      // 保存済み(pin)のレコードは getManualDisplayRows が末尾へ足すので、
+      // 上限で切ると「直したものが消えた」に見える。必ず出す。
+      const shownIds = new Set(shown.map((record) => record.videoId));
+      for (const record of rows) {
+        if (this.manualPinnedVideoIds.has(record.videoId) && !shownIds.has(record.videoId)) {
+          shown.push(record);
+          shownIds.add(record.videoId);
+        }
+      }
+
       this.manualListEl.textContent = '';
       const fragment = document.createDocumentFragment();
-      let missingCount = 0;
-      for (const record of rows) {
-        missingCount += sharedMissingCreditRoles(record).length;
-        fragment.appendChild(this.renderManualVideoCard(record));
-      }
+      for (const record of shown) fragment.appendChild(this.renderManualVideoCard(record));
       this.manualListEl.appendChild(fragment);
+
       setHidden(this.manualEmptyEl, rows.length > 0);
-      if (this.manualCountEl) this.manualCountEl.textContent = `対象 ${rows.length}件 / 不足 ${missingCount}役割`;
-      if (this.manualStatusEl) this.manualStatusEl.textContent = rows.length
-        ? '検索語のコピーはクリップボードだけを使用します。'
-        : '条件に一致する手動確認対象はありません。';
+      const rest = rows.length - shown.length;
+      if (this.manualCountEl) {
+        this.manualCountEl.textContent = rest > 0
+          ? `対象 ${rows.length}件 / 不足 ${missingCount}役割（${shown.length}件を表示中）`
+          : `対象 ${rows.length}件 / 不足 ${missingCount}役割`;
+      }
+      if (this.manualStatusEl) {
+        this.manualStatusEl.textContent = !rows.length
+          ? '条件に一致する手動確認対象はありません。'
+          : (rest > 0
+            ? `下へスクロールすると続きを読み込みます（残り ${rest}件）。検索で絞り込むこともできます。`
+            : '検索語のコピーはクリップボードだけを使用します。');
+      }
     }
 
     renderManualVideoCard(record) {
