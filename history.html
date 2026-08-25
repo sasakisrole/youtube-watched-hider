@@ -990,7 +990,7 @@
           <span>クレジット補完（外部DB）</span>
         </button>
         <button class="sort-btn" id="fixDurations" title="動画時間をwatchページから補完（ライブは-1として記録）">動画の長さを補完</button>
-        <label class="chk" title="最近チェック済み（30日以内）の動画は除外して取得。作曲・作詞・編曲のどれかが空なら、それより前にチェックした動画は再取得の対象"><input type="checkbox" id="skipCreditsChecked" checked>チェック済みスキップ</label>
+        <label class="chk" title="一度調べた動画をしばらく再取得しない。何か補完できた動画は30日、概要欄に情報が無くて空のままだった動画は180日→360日→720日と間隔が延びる（同じ概要欄を読み直しても埋まらないため）。外すと、空きのある動画を間隔に関係なく全部取り直す"><input type="checkbox" id="skipCreditsChecked" checked>チェック済みスキップ</label>
         <label class="chk" title="非Topicチャンネル（MV・公式配信など）も対象にする。ラベル付き行のみ採用"><input type="checkbox" id="includeGeneralCredits">一般も含める</label>
       </div>
       <div class="maint-group">
