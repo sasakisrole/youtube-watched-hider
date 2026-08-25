@@ -46,6 +46,7 @@
 <p>以下のデータを、ブラウザ内（IndexedDB および <code>chrome.storage.local</code>）にのみ保存します。</p>
 <ul>
   <li>IndexedDB <code>watchedVideos</code>: 視聴した YouTube 動画の ID・タイトル・チャンネル名・視聴日時・初回視聴日時・再生回数・検出元・動画長（<code>durationSec</code>）・動画長取得失敗理由・作曲/作詞/編曲クレジット等</li>
+  <li>上記のうちクレジット関連では、次回いつ調べ直すかの判定に使う情報（最終チェック日時・概要欄から取れなかった回数・楽曲データベース照会の再照会期限）と、<strong>「データ修復」で空欄へ戻した際の元の値</strong>を各レコード内に保存します。元の値は修復を取り消せるようにするためのもので、外部へは送信しません。</li>
   <li>IndexedDB <code>likedVideos</code>: ユーザー操作により同期した高評価動画の ID・タイトル・チャンネル名・同期日時・プレイリスト順等</li>
   <li><code>chrome.storage.local</code>: 本拡張の設定値（非表示トグル、ショート/映画非表示、自動バックアップ等）、高評価同期メタ情報（<code>likedSyncMeta</code>）、最終バックアップ日時・件数・失敗理由（<code>lastBackup</code> / <code>lastBackupCount</code> / <code>lastBackupError</code>）、移行・クリーンアップ状態等</li>
 </ul>
@@ -74,7 +75,7 @@
 <hr>
 
 <h2>English</h2>
-<p>This extension ("YouTube Watched Hider") does <strong>not</strong> collect, transmit, or share personal data with the developer or any third party. Watch history, liked-video sync data, extension settings, backup status, and sync metadata are stored locally in the browser (<code>chrome.storage.local</code> / IndexedDB). Liked sync metadata does not store YouTube cookies or authorization headers.</p>
+<p>This extension ("YouTube Watched Hider") does <strong>not</strong> collect, transmit, or share personal data with the developer or any third party. Watch history, liked-video sync data, extension settings, backup status, and sync metadata are stored locally in the browser (<code>chrome.storage.local</code> / IndexedDB). Liked sync metadata does not store YouTube cookies or authorization headers. Credit-related records also keep the information used to decide when to look a video up again, and — when you run the credit repair under データ修復 ("Data repair") — the original values that were cleared, so that the repair can be undone; none of this is sent anywhere.</p>
 <p>The extension uses Chrome's offscreen document feature for internal IndexedDB access and Blob URL generation for JSON export / backup. This does not transmit data externally.</p>
 <p>External requests go to YouTube endpoints such as <code>oembed</code>, public <code>watch</code> page HTML for metadata / credits / duration backfill, <code>playlist?list=LL</code>, and <code>youtubei/v1/browse</code>, and to the MusicBrainz music database (<code>https://musicbrainz.org/ws/2/...</code>) — only when you run "Fix Credits" — to look up composer / lyricist / arranger candidates. Only search strings derived from the artist name and track title are sent to MusicBrainz; no cookies or YouTube credentials are sent, and requests do not pass through any developer server. When the extension proxies same-origin requests from a YouTube tab, the browser may attach YouTube cookies or an authorization header for YouTube only. These credentials are never sent to the developer or any third party and are not stored by the extension.</p>
 <p>Uninstalling the extension removes all stored data.</p>
