@@ -482,11 +482,41 @@ if (typeof WatchedDB === 'undefined') {
 
     function isCurrentCreditRepairEntry(entry) {
       return !!entry && entry.reason === 'invalid-credit-value'
-        && CREDIT_ROLES.includes(entry.role)
-        && Object.prototype.hasOwnProperty.call(entry, 'sourceBefore');
+        && CREDIT_ROLES.includes(entry.role);
     }
 
-    async function runCreditMutation({ dryRun, expectedValues, inspectRecord, applyRecord, at }) {
+    function fingerprintCreditMutationTargets(targets) {
+      const canonical = targets
+        .map(([videoId, role]) => [String(videoId), role])
+        .sort((a, b) => {
+          if (a[0] !== b[0]) return a[0] < b[0] ? -1 : 1;
+          if (a[1] !== b[1]) return a[1] < b[1] ? -1 : 1;
+          return 0;
+        });
+      const serialized = JSON.stringify(canonical);
+      let hash = 14695981039346656037n;
+      const prime = 1099511628211n;
+      const mask = 0xffffffffffffffffn;
+      for (let index = 0; index < serialized.length; index++) {
+        const code = serialized.charCodeAt(index);
+        hash = ((hash ^ BigInt(code & 0xff)) * prime) & mask;
+        hash = ((hash ^ BigInt(code >>> 8)) * prime) & mask;
+      }
+      return `fnv1a64:${hash.toString(16).padStart(16, '0')}`;
+    }
+
+    let creditRepairRunSequence = 0;
+    function createCreditRepairRunId() {
+      if (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
+        return `credit-repair:${globalThis.crypto.randomUUID()}`;
+      }
+      creditRepairRunSequence++;
+      return `credit-repair:${creditRepairRunSequence.toString(36)}:${Math.random().toString(36).slice(2)}`;
+    }
+
+    async function runCreditMutation({
+      dryRun, expectedValues, expectedFingerprint, inspectRecord, prepareApply, applyRecord,
+    }) {
       const previewOnly = dryRun !== false;
       const result = {
         dryRun: previewOnly,
@@ -496,27 +526,37 @@ if (typeof WatchedDB === 'undefined') {
         skipped: 0,
         byRole: { composer: 0, lyricist: 0, arranger: 0 },
       };
-      if (typeof at === 'number') result.at = at;
       const db = await openDB();
       return new Promise((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, previewOnly ? 'readonly' : 'readwrite');
         const store = tx.objectStore(STORE_NAME);
         const plans = new Map();
+        const targets = [];
         const cursorReq = store.openCursor();
         cursorReq.onsuccess = (event) => {
           const cursor = event.target.result;
           if (!cursor) {
+            result.fingerprint = fingerprintCreditMutationTargets(targets);
             if (previewOnly) return;
 
             const expected = expectedValues === undefined ? null : expectedValues;
-            if (expectedValues === undefined || expectedValues !== result.values) {
+            const expectedTargetFingerprint = typeof expectedFingerprint === 'string'
+              ? expectedFingerprint
+              : null;
+            if (expectedValues === undefined || expectedValues !== result.values
+              || expectedTargetFingerprint === null
+              || expectedTargetFingerprint !== result.fingerprint) {
               result.mismatch = true;
+              result.reason = 'preview-target-mismatch';
               result.expected = expected;
               result.actual = result.values;
+              result.expectedFingerprint = expectedTargetFingerprint;
+              result.actualFingerprint = result.fingerprint;
               return;
             }
 
             if (plans.size === 0) return;
+            if (prepareApply) prepareApply(result);
             const applyCursorReq = store.openCursor();
             applyCursorReq.onsuccess = (applyEvent) => {
               const applyCursor = applyEvent.target.result;
@@ -524,7 +564,7 @@ if (typeof WatchedDB === 'undefined') {
               const applyRecordValue = applyCursor.value;
               const plan = plans.get(applyRecordValue && applyRecordValue.videoId);
               if (plan) {
-                applyRecord(applyRecordValue, plan);
+                applyRecord(applyRecordValue, plan, result);
                 applyCursor.update(applyRecordValue);
               }
               applyCursor.continue();
@@ -539,7 +579,10 @@ if (typeof WatchedDB === 'undefined') {
           if (items.length) {
             result.videos++;
             result.values += items.length;
-            for (const item of items) result.byRole[item.role]++;
+            for (const item of items) {
+              result.byRole[item.role]++;
+              targets.push([record.videoId, item.role]);
+            }
             plans.set(record.videoId, plan);
           }
           cursor.continue();
@@ -550,16 +593,19 @@ if (typeof WatchedDB === 'undefined') {
       });
     }
 
-    async function repairInvalidCredits({ dryRun, expectedValues } = {}) {
-      const at = Date.now();
+    async function repairInvalidCredits({ dryRun, expectedValues, expectedFingerprint } = {}) {
       return runCreditMutation({
         dryRun,
         expectedValues,
-        at,
+        expectedFingerprint,
         inspectRecord(record) {
           return { items: globalThis.CreditTarget.planCreditRepair(record) };
         },
-        applyRecord(record, plan) {
+        prepareApply(result) {
+          result.at = Date.now();
+          result.runId = createCreditRepairRunId();
+        },
+        applyRecord(record, plan, result) {
           const repairLog = Array.isArray(record.creditsRepairLog)
             ? record.creditsRepairLog.slice()
             : [];
@@ -576,7 +622,8 @@ if (typeof WatchedDB === 'undefined') {
               role: repair.role,
               before: repair.before,
               sourceBefore,
-              at,
+              at: result.at,
+              runId: result.runId,
               reason: 'invalid-credit-value',
             });
           }
@@ -586,25 +633,28 @@ if (typeof WatchedDB === 'undefined') {
       });
     }
 
-    async function restoreRepairedCredits({ dryRun, expectedValues } = {}) {
+    async function restoreRepairedCredits({ dryRun, expectedValues, expectedFingerprint } = {}) {
       return runCreditMutation({
         dryRun,
         expectedValues,
+        expectedFingerprint,
         inspectRecord(record) {
           const repairLog = Array.isArray(record.creditsRepairLog) ? record.creditsRepairLog : [];
-          const occupiedRoles = new Set(CREDIT_ROLES.filter(
+          const valueOccupiedRoles = new Set(CREDIT_ROLES.filter(
             (role) => !globalThis.CreditTarget.creditIsBlank(record[role])
           ));
+          const plannedRoles = new Set();
           const items = [];
           let skipped = 0;
           for (let index = repairLog.length - 1; index >= 0; index--) {
             const entry = repairLog[index];
             if (!isCurrentCreditRepairEntry(entry)) continue;
-            if (occupiedRoles.has(entry.role)) {
+            if (valueOccupiedRoles.has(entry.role)) {
               skipped++;
               continue;
             }
-            occupiedRoles.add(entry.role);
+            if (plannedRoles.has(entry.role)) continue;
+            plannedRoles.add(entry.role);
             items.push({ role: entry.role, index, entry });
           }
           return { items, skipped };
@@ -616,7 +666,10 @@ if (typeof WatchedDB === 'undefined') {
           const restoredIndexes = new Set(plan.items.map((item) => item.index));
           for (const item of plan.items) {
             record[item.role] = item.entry.before;
-            if (item.entry.sourceBefore === null) {
+            const sourceBefore = Object.prototype.hasOwnProperty.call(item.entry, 'sourceBefore')
+              ? item.entry.sourceBefore
+              : null;
+            if (sourceBefore === null) {
               if (record.creditRoleSources && typeof record.creditRoleSources === 'object'
                 && !Array.isArray(record.creditRoleSources)) {
                 delete record.creditRoleSources[item.role];
@@ -626,7 +679,7 @@ if (typeof WatchedDB === 'undefined') {
                 || Array.isArray(record.creditRoleSources)) {
                 record.creditRoleSources = {};
               }
-              record.creditRoleSources[item.role] = item.entry.sourceBefore;
+              record.creditRoleSources[item.role] = sourceBefore;
             }
           }
           record.creditsRepairLog = repairLog.filter((_entry, index) => !restoredIndexes.has(index));
@@ -634,17 +687,15 @@ if (typeof WatchedDB === 'undefined') {
       });
     }
 
-    async function verifyCreditRepair({ at } = {}) {
-      const requestedAt = typeof at === 'number' && Number.isFinite(at) ? at : null;
+    async function verifyCreditRepair({ runId } = {}) {
+      const requestedRunId = typeof runId === 'string' && runId ? runId : null;
       const result = {
-        at: requestedAt,
+        runId: requestedRunId,
         remainingInvalid: 0,
-        loggedTotal: 0,
-        loggedStillValid: 0,
-        restorable: 0,
+        loggedTotal: requestedRunId === null ? null : 0,
+        loggedStillValid: requestedRunId === null ? null : 0,
+        restorable: requestedRunId === null ? null : 0,
       };
-      const logged = [];
-      let latestAt = null;
       const db = await openDB();
       return new Promise((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, 'readonly');
@@ -652,29 +703,22 @@ if (typeof WatchedDB === 'undefined') {
         const cursorReq = store.openCursor();
         cursorReq.onsuccess = (event) => {
           const cursor = event.target.result;
-          if (!cursor) {
-            result.at = requestedAt === null ? latestAt : requestedAt;
-            for (const item of logged) {
-              if (item.entry.at !== result.at) continue;
-              result.loggedTotal++;
-              if (globalThis.CreditTarget.isValidCreditValue(item.entry.before, item.title)) {
-                result.loggedStillValid++;
-              }
-              if (item.roleBlank) result.restorable++;
-            }
-            return;
-          }
+          if (!cursor) return;
           const record = cursor.value;
           result.remainingInvalid += globalThis.CreditTarget.planCreditRepair(record).length;
+          if (requestedRunId === null) {
+            cursor.continue();
+            return;
+          }
           const repairLog = Array.isArray(record.creditsRepairLog) ? record.creditsRepairLog : [];
           for (const entry of repairLog) {
             if (!isCurrentCreditRepairEntry(entry)) continue;
-            if (typeof entry.at === 'number' && (latestAt === null || entry.at > latestAt)) latestAt = entry.at;
-            logged.push({
-              entry,
-              title: record.title,
-              roleBlank: globalThis.CreditTarget.creditIsBlank(record[entry.role]),
-            });
+            if (entry.runId !== requestedRunId) continue;
+            result.loggedTotal++;
+            if (globalThis.CreditTarget.isValidCreditValue(entry.before, record.title)) {
+              result.loggedStillValid++;
+            }
+            if (globalThis.CreditTarget.creditIsBlank(record[entry.role])) result.restorable++;
           }
           cursor.continue();
         };

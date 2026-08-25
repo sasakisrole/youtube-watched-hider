@@ -1056,6 +1056,12 @@ if (repairCreditsBtn) {
         kind: 'repairCredits', label: 'クレジットの不正値を修復', state: 'running',
       });
       const preview = await sendHistoryDbRpc('REPAIR_INVALID_CREDITS', { dryRun: true });
+      if (preview.mismatch) {
+        showJobMessage('別の下見が開始されたため、もう一度確認してください。', {
+          kind: 'repairCredits', label: 'クレジットの不正値を修復', state: 'error',
+        });
+        return;
+      }
       if (preview.values === 0) {
         showJobMessage('修復対象はありません', {
           kind: 'repairCredits', label: 'クレジットの不正値を修復', state: 'done',
@@ -1083,15 +1089,16 @@ if (repairCreditsBtn) {
       const applied = await sendHistoryDbRpc('REPAIR_INVALID_CREDITS', {
         dryRun: false,
         expectedValues: preview.values,
+        token: preview.token,
       });
       if (applied.mismatch) {
         showJobMessage(
-          `確認後に対象件数が ${applied.expected.toLocaleString()}件から ${applied.actual.toLocaleString()}件へ変わったため、修復しませんでした。もう一度確認してください。`,
+          '下見情報が無効になったか対象が変わったため、修復しませんでした。もう一度確認してください。',
           { kind: 'repairCredits', label: 'クレジットの不正値を修復', state: 'error' }
         );
         return;
       }
-      const verified = await sendHistoryDbRpc('VERIFY_CREDIT_REPAIR', { at: applied.at });
+      const verified = await sendHistoryDbRpc('VERIFY_CREDIT_REPAIR', { runId: applied.runId });
       const verificationOk = verified.remainingInvalid === 0
         && verified.loggedTotal === applied.values
         && verified.loggedStillValid === 0
@@ -1129,6 +1136,12 @@ if (restoreCreditsBtn) {
         kind: 'restoreCredits', label: '修復を元に戻す', state: 'running',
       });
       const preview = await sendHistoryDbRpc('RESTORE_REPAIRED_CREDITS', { dryRun: true });
+      if (preview.mismatch) {
+        showJobMessage('別の下見が開始されたため、もう一度確認してください。', {
+          kind: 'restoreCredits', label: '修復を元に戻す', state: 'error',
+        });
+        return;
+      }
       if (preview.values === 0) {
         const skipped = Number(preview.skipped) || 0;
         showJobMessage(
@@ -1160,10 +1173,11 @@ if (restoreCreditsBtn) {
       const restored = await sendHistoryDbRpc('RESTORE_REPAIRED_CREDITS', {
         dryRun: false,
         expectedValues: preview.values,
+        token: preview.token,
       });
       if (restored.mismatch) {
         showJobMessage(
-          `確認後に復元可能件数が ${restored.expected.toLocaleString()}件から ${restored.actual.toLocaleString()}件へ変わったため、復元しませんでした。もう一度確認してください。`,
+          '下見情報が無効になったか復元対象が変わったため、復元しませんでした。もう一度確認してください。',
           { kind: 'restoreCredits', label: '修復を元に戻す', state: 'error' }
         );
         return;

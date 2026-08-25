@@ -2,10 +2,62 @@
 // Keeps IndexedDB on the extension origin instead of youtube.com.
 
 const exportBlobUrls = new Map();
+const CREDIT_MUTATION_PREVIEW_TTL_MS = 10 * 60 * 1000;
+let pendingCreditMutationPreview = null;
+let creditMutationPreviewGeneration = 0;
 
 function createRequestId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
   return 'export-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+}
+
+function createCreditMutationToken() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'credit-preview-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+}
+
+function rejectCreditMutationApply(reason) {
+  return { dryRun: false, mismatch: true, reason };
+}
+
+async function handleCreditMutationRpc(op, message, mutate) {
+  const previewOnly = message.dryRun !== false;
+  if (previewOnly) {
+    const generation = ++creditMutationPreviewGeneration;
+    pendingCreditMutationPreview = null;
+    const result = await mutate({ dryRun: true });
+    if (generation !== creditMutationPreviewGeneration) {
+      return { ...result, op, mismatch: true, reason: 'preview-superseded' };
+    }
+    const token = createCreditMutationToken();
+    const issuedAt = Date.now();
+    pendingCreditMutationPreview = {
+      op,
+      token,
+      fingerprint: result.fingerprint,
+      values: result.values,
+      issuedAt,
+    };
+    return { ...result, op, token, issuedAt };
+  }
+
+  const preview = pendingCreditMutationPreview;
+  creditMutationPreviewGeneration++;
+  pendingCreditMutationPreview = null;
+  if (!message.token) return rejectCreditMutationApply('preview-token-required');
+  if (!preview) return rejectCreditMutationApply('preview-not-found');
+  if (preview.op !== op) return rejectCreditMutationApply('preview-operation-mismatch');
+  if (preview.token !== message.token) return rejectCreditMutationApply('preview-token-mismatch');
+  const now = Date.now();
+  if (now < preview.issuedAt || now - preview.issuedAt > CREDIT_MUTATION_PREVIEW_TTL_MS) {
+    return rejectCreditMutationApply('preview-token-expired');
+  }
+
+  return mutate({
+    dryRun: false,
+    expectedValues: preview.values,
+    expectedFingerprint: preview.fingerprint,
+  });
 }
 
 function createExportBlobUrl(envelope) {
@@ -234,17 +286,13 @@ async function handleDbRpc(message) {
     case 'CLEAN_ALL_CREDITS':
       return WatchedDB.cleanAllCredits();
     case 'REPAIR_INVALID_CREDITS':
-      return WatchedDB.repairInvalidCredits({
-        dryRun: message.dryRun === false ? false : true,
-        expectedValues: message.expectedValues,
-      });
+      return handleCreditMutationRpc(message.op, message,
+        (args) => WatchedDB.repairInvalidCredits(args));
     case 'RESTORE_REPAIRED_CREDITS':
-      return WatchedDB.restoreRepairedCredits({
-        dryRun: message.dryRun === false ? false : true,
-        expectedValues: message.expectedValues,
-      });
+      return handleCreditMutationRpc(message.op, message,
+        (args) => WatchedDB.restoreRepairedCredits(args));
     case 'VERIFY_CREDIT_REPAIR':
-      return WatchedDB.verifyCreditRepair({ at: message.at });
+      return WatchedDB.verifyCreditRepair({ runId: message.runId });
     default:
       throw new Error('Unknown DB op: ' + message.op);
   }
