@@ -1,4 +1,4 @@
-// Regression verification for iv0b v3 stored credit repair and restore.
+// Regression verification for iv0b v4 stored credit repair and restore.
 // Run: node tests/verify_credit_repair.js
 const fs = require('fs');
 const path = require('path');
@@ -769,6 +769,24 @@ function testWiringAndUi() {
 
   const repairButtonAt = html.indexOf('id="repairCredits"');
   const restoreButtonAt = html.indexOf('id="restoreCredits"');
+  const repairToggleAt = html.indexOf('id="repairToggle"');
+  const repairPanelAt = html.indexOf('id="repairPanel"');
+  const repairActionsEndAt = html.indexOf('</div>', restoreButtonAt);
+  const jobRecentAt = html.indexOf('id="jobRecentList"');
+  check('repair group is last, closed by default, and contains both existing action buttons',
+    repairToggleAt > jobRecentAt && repairPanelAt > repairToggleAt
+      && repairButtonAt > repairPanelAt && restoreButtonAt > repairButtonAt
+      && repairActionsEndAt > restoreButtonAt
+      && /<div id="repairPanel" class="repair-panel" hidden>/.test(html));
+  check('repair toggle uses the existing accessible disclosure contract',
+    /<button class="maint-toggle" id="repairToggle" type="button" aria-expanded="false" aria-controls="repairPanel">/.test(html)
+      && history.includes("repairToggle.setAttribute('aria-expanded', String(open))")
+      && history.includes('repairPanel.hidden = !open')
+      && history.includes("repairToggle.addEventListener('click', () => setRepairOpen(repairPanel.hidden))"));
+  check('repair panel explains the reversible operation and starts with an unexecuted status',
+    html.includes('補完対象に復帰させます。元の値は記録に残り、元に戻せます。')
+      && html.includes('id="repairLastRun" role="status" aria-live="polite">最終実行: 未実行</p>'));
+
   const restorePreviewAt = history.indexOf("sendHistoryDbRpc('RESTORE_REPAIRED_CREDITS', { dryRun: true })");
   const restoreZeroAt = history.indexOf('if (preview.values === 0)', restorePreviewAt);
   const restoreConfirmAt = history.indexOf('const confirmed = confirm(', restoreZeroAt);
@@ -780,6 +798,38 @@ function testWiringAndUi() {
       && history.indexOf('expectedValues: preview.values', restoreApplyAt) > restoreApplyAt
       && history.indexOf('token: preview.token', restoreApplyAt) > restoreApplyAt
       && history.includes('上書きせずスキップ'));
+
+  const repairZeroReturnAt = history.indexOf('return;', repairZeroAt);
+  const repairCancelAt = history.indexOf('if (!confirmed)', repairConfirmAt);
+  const repairCancelReturnAt = history.indexOf('return;', repairCancelAt);
+  const repairMismatchAt = history.indexOf('if (applied.mismatch)', repairApplyAt);
+  const repairMismatchReturnAt = history.indexOf('return;', repairMismatchAt);
+  const repairSaveAt = history.indexOf("saveCreditRepairLastRun('repair', applied)", repairApplyAt);
+  const restoreZeroReturnAt = history.indexOf('return;', restoreZeroAt);
+  const restoreCancelAt = history.indexOf('if (!confirmed)', restoreConfirmAt);
+  const restoreCancelReturnAt = history.indexOf('return;', restoreCancelAt);
+  const restoreMismatchAt = history.indexOf('if (restored.mismatch)', restoreApplyAt);
+  const restoreMismatchReturnAt = history.indexOf('return;', restoreMismatchAt);
+  const restoreSaveAt = history.indexOf("saveCreditRepairLastRun('restore', restored)", restoreApplyAt);
+  check('last-run metadata is saved only after successful repair apply, not zero, cancel, or mismatch exits',
+    repairZeroAt < repairZeroReturnAt && repairZeroReturnAt < repairConfirmAt
+      && repairCancelAt < repairCancelReturnAt && repairCancelReturnAt < repairApplyAt
+      && repairApplyAt < repairMismatchAt && repairMismatchAt < repairMismatchReturnAt
+      && repairMismatchReturnAt < repairSaveAt && repairSaveAt < verifyAt);
+  check('last-run metadata is saved only after successful restore apply, not zero, cancel, or mismatch exits',
+    restoreZeroAt < restoreZeroReturnAt && restoreZeroReturnAt < restoreConfirmAt
+      && restoreCancelAt < restoreCancelReturnAt && restoreCancelReturnAt < restoreApplyAt
+      && restoreApplyAt < restoreMismatchAt && restoreMismatchAt < restoreMismatchReturnAt
+      && restoreMismatchReturnAt < restoreSaveAt);
+  check('last-run storage keeps the requested shape, loads only on disclosure, and updates without reload',
+    history.includes("const CREDIT_REPAIR_LAST_RUN_KEY = 'creditRepairLastRunV1'")
+      && history.includes('await chrome.storage.local.set({ [CREDIT_REPAIR_LAST_RUN_KEY]: lastRun })')
+      && history.includes('runId: result && typeof result.runId === \'string\' ? result.runId : null')
+      && history.includes('values: Number(result && result.values) || 0')
+      && history.includes('videos: Number(result && result.videos) || 0')
+      && history.includes('if (open) loadCreditRepairLastRun()')
+      && history.includes('renderCreditRepairLastRun(lastRun)')
+      && (history.match(/saveCreditRepairLastRun\('(repair|restore)'/g) || []).length === 2);
 }
 
 async function main() {

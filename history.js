@@ -415,6 +415,68 @@ if (maintToggle && maintPanel) {
   });
 }
 
+const repairToggle = document.getElementById('repairToggle');
+const repairPanel = document.getElementById('repairPanel');
+const repairLastRun = document.getElementById('repairLastRun');
+const CREDIT_REPAIR_LAST_RUN_KEY = 'creditRepairLastRunV1';
+
+function formatCreditRepairLastRun(lastRun) {
+  if (!lastRun || !['repair', 'restore'].includes(lastRun.kind)) return '最終実行: 未実行';
+  const at = Number(lastRun.at);
+  if (!Number.isFinite(at) || at <= 0) return '最終実行: 未実行';
+  const date = new Date(at);
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  const values = Math.max(0, Math.trunc(Number(lastRun.values) || 0));
+  const videos = Math.max(0, Math.trunc(Number(lastRun.videos) || 0));
+  const action = lastRun.kind === 'repair' ? '修復' : '元に戻した';
+  return `最終実行: ${yyyy}-${mm}-${dd} ${hh}:${min} · ${values.toLocaleString()}件（${videos.toLocaleString()}動画）を${action}`;
+}
+
+function renderCreditRepairLastRun(lastRun) {
+  if (repairLastRun) repairLastRun.textContent = formatCreditRepairLastRun(lastRun);
+}
+
+async function loadCreditRepairLastRun() {
+  try {
+    const stored = await chrome.storage.local.get(CREDIT_REPAIR_LAST_RUN_KEY);
+    renderCreditRepairLastRun(stored && stored[CREDIT_REPAIR_LAST_RUN_KEY]);
+  } catch (_error) {
+    renderCreditRepairLastRun(null);
+  }
+}
+
+async function saveCreditRepairLastRun(kind, result) {
+  const lastRun = {
+    kind,
+    at: Date.now(),
+    runId: result && typeof result.runId === 'string' ? result.runId : null,
+    values: Number(result && result.values) || 0,
+    videos: Number(result && result.videos) || 0,
+  };
+  renderCreditRepairLastRun(lastRun);
+  try {
+    await chrome.storage.local.set({ [CREDIT_REPAIR_LAST_RUN_KEY]: lastRun });
+  } catch (_error) {
+    // 表示用記録の保存失敗だけで、完了済みの修復・復元を失敗扱いにはしない
+  }
+}
+
+function setRepairOpen(open) {
+  if (!repairToggle || !repairPanel) return;
+  repairPanel.hidden = !open;
+  repairToggle.setAttribute('aria-expanded', String(open));
+  if (open) loadCreditRepairLastRun();
+}
+
+if (repairToggle && repairPanel) {
+  setRepairOpen(false);
+  repairToggle.addEventListener('click', () => setRepairOpen(repairPanel.hidden));
+}
+
 function beginMaintenance(key, options = {}) {
   if (hasRunningMaintenance()) return false;
   runningMaintenance = key;
@@ -1098,6 +1160,7 @@ if (repairCreditsBtn) {
         );
         return;
       }
+      await saveCreditRepairLastRun('repair', applied);
       const verified = await sendHistoryDbRpc('VERIFY_CREDIT_REPAIR', { runId: applied.runId });
       const verificationOk = verified.remainingInvalid === 0
         && verified.loggedTotal === applied.values
@@ -1182,6 +1245,7 @@ if (restoreCreditsBtn) {
         );
         return;
       }
+      await saveCreditRepairLastRun('restore', restored);
       showJobMessage(
         `修復前のクレジットを復元しました: ${restored.values.toLocaleString()}件（${restored.videos.toLocaleString()}動画） / 上書きせずスキップ ${Number(restored.skipped || 0).toLocaleString()}件`,
         {

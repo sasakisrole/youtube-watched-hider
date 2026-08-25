@@ -126,6 +126,23 @@
       border-top: 1px dashed var(--border);
       width: 100%;
     }
+    .repair-panel {
+      display: grid;
+      gap: 10px;
+      width: 100%;
+    }
+    .repair-panel[hidden] { display: none; }
+    .repair-panel p {
+      margin: 0;
+      color: var(--text-muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .repair-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
     .toolbar-label {
       font-size: 11px;
       color: var(--text-faint);
@@ -985,8 +1002,6 @@
         <button class="sort-btn" id="fixChannels" title="oEmbed APIでチャンネル名を補正（未記録のみ）">チャンネル名を補完</button>
         <button class="sort-btn" id="fixChannelsForce" title="oEmbed APIでチャンネル名を上書き補正（表示中の全件）">チャンネル名を再取得</button>
         <button class="sort-btn" id="fixCredits" title="動画の作曲・作詞・編曲を概要欄から補完（ラベル行のみ採用）">概要欄からクレジット補完</button>
-        <button class="sort-btn" id="repairCredits" title="保存済みの作曲・作詞・編曲のうち、URL・権利表示・説明文の切れ端など人名でない値を空欄へ戻し、補完対象に復帰させる。元の値は記録に残す">クレジットの不正値を修復</button>
-        <button class="sort-btn" id="restoreCredits" title="修復で空欄にしたクレジットを記録から元に戻す。現在値が入っている役割は上書きしない">修復を元に戻す</button>
         <button class="sort-btn enrich-btn" id="enrichCredits" title="未割当creditsRawを外部DB照合で補完">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 12H3"></path><path d="M16 6H3"></path><path d="M16 18H3"></path><path d="M18 9v6"></path><path d="M21 12h-6"></path></svg>
           <span>クレジット補完（外部DB）</span>
@@ -1004,6 +1019,20 @@
       <div class="maint-group">
         <span class="toolbar-label" id="jobRecentLabel">最近の処理</span>
         <ol id="jobRecentList" aria-labelledby="jobRecentLabel"></ol>
+      </div>
+      <div class="maint-group">
+        <button class="maint-toggle" id="repairToggle" type="button" aria-expanded="false" aria-controls="repairPanel">
+          <svg class="icon chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+          <span>データ修復</span>
+        </button>
+        <div id="repairPanel" class="repair-panel" hidden>
+          <p>保存済みのクレジットのうち人名でない値を空欄へ戻し、補完対象に復帰させます。元の値は記録に残り、元に戻せます。</p>
+          <div class="repair-actions">
+            <button class="sort-btn" id="repairCredits" title="保存済みの作曲・作詞・編曲のうち、URL・権利表示・説明文の切れ端など人名でない値を空欄へ戻し、補完対象に復帰させる。元の値は記録に残す">クレジットの不正値を修復</button>
+            <button class="sort-btn" id="restoreCredits" title="修復で空欄にしたクレジットを記録から元に戻す。現在値が入っている役割は上書きしない">修復を元に戻す</button>
+          </div>
+          <p id="repairLastRun" role="status" aria-live="polite">最終実行: 未実行</p>
+        </div>
       </div>
     </div>
   </div>
