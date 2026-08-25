@@ -106,6 +106,18 @@
     return true;
   }
 
+  // Plan repairs for sticky, non-empty role values that the current save
+  // boundary would reject. The caller decides whether and how to apply them.
+  function planCreditRepair(record) {
+    return CREDIT_ROLES.reduce(function (repairs, role) {
+      var before = record && record[role];
+      if (!creditIsBlank(before) && !isValidCreditValue(before, record && record.title)) {
+        repairs.push({ role: role, before: before });
+      }
+      return repairs;
+    }, []);
+  }
+
   // True when at least one credit role is still blank (role-unit §3.1).
   function hasMissingCreditRole(record) {
     return getMissingCreditRoles(record).length > 0;
@@ -176,6 +188,7 @@
     getMissingCreditRoles: getMissingCreditRoles,
     effectiveRoleSource: effectiveRoleSource,
     isValidCreditValue: isValidCreditValue,
+    planCreditRepair: planCreditRepair,
     isTopicChannelName: isTopicChannelName,
     stripTopicChannelSuffix: stripTopicChannelSuffix,
     hasMissingCreditRole: hasMissingCreditRole,

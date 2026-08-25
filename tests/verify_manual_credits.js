@@ -65,6 +65,37 @@ function makeFake(watched = [], liked = []) {
           });
           return req;
         },
+        openCursor() {
+          outstanding++;
+          const req = {};
+          const keys = [...stores[name].keys()];
+          let index = 0;
+          const advance = () => {
+            setImmediate(() => {
+              if (index >= keys.length) {
+                if (req.onsuccess) req.onsuccess({ target: { result: null } });
+                outstanding--;
+                maybeComplete();
+                return;
+              }
+              const key = keys[index];
+              const cursor = {
+                value: clone(stores[name].get(key)),
+                update(value) {
+                  entry.puts.push({ store: name, key });
+                  stores[name].set(key, clone(value));
+                },
+                continue() {
+                  index++;
+                  advance();
+                },
+              };
+              if (req.onsuccess) req.onsuccess({ target: { result: cursor } });
+            });
+          };
+          advance();
+          return req;
+        },
         put(value) {
           entry.puts.push({ store: name, key: value.videoId });
           stores[name].set(value.videoId, clone(value));

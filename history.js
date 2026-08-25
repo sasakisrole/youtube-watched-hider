@@ -326,6 +326,7 @@ const maintenanceButtons = [
   { key: 'fixChannels', el: document.getElementById('fixChannels') },
   { key: 'fixChannelsForce', el: document.getElementById('fixChannelsForce') },
   { key: 'fixCredits', el: document.getElementById('fixCredits') },
+  { key: 'repairCredits', el: document.getElementById('repairCredits') },
   { key: 'enrichCredits', el: document.getElementById('enrichCredits') },
   { key: 'fixDurations', el: document.getElementById('fixDurations') },
   { key: 'scanWatchLater', el: document.getElementById('scanWatchLater') },
@@ -1021,6 +1022,79 @@ if (fixCreditsBtn) {
       : 0;
     const label = includeGen ? 'クレジット補完（Topic+一般）' : 'Topic動画のクレジット補完';
     runFixCredits(targets, sources, label, heldBack);
+  });
+}
+
+function sendHistoryDbRpc(op, payload = {}) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({ type: 'DB_RPC', op, ...payload }, (response) => {
+      const lastError = chrome.runtime.lastError;
+      if (lastError) {
+        reject(new Error(lastError.message));
+        return;
+      }
+      if (!response || !response.success) {
+        reject(new Error((response && response.error) || 'DB request failed'));
+        return;
+      }
+      resolve(response.result);
+    });
+  });
+}
+
+const repairCreditsBtn = document.getElementById('repairCredits');
+if (repairCreditsBtn) {
+  repairCreditsBtn.addEventListener('click', async () => {
+    if (!beginMaintenance('repairCredits', { activeText: '確認中…' })) {
+      showJobMessage('他のメンテナンス処理が実行中', { state: 'error' });
+      return;
+    }
+
+    try {
+      showJobMessage('クレジットの不正値を確認中…', {
+        kind: 'repairCredits', label: 'クレジットの不正値を修復', state: 'running',
+      });
+      const preview = await sendHistoryDbRpc('REPAIR_INVALID_CREDITS', { dryRun: true });
+      if (preview.values === 0) {
+        showJobMessage('修復対象はありません', {
+          kind: 'repairCredits', label: 'クレジットの不正値を修復', state: 'done',
+        });
+        return;
+      }
+
+      const byRole = preview.byRole || {};
+      const confirmed = confirm(
+        `クレジットの不正値 ${preview.values.toLocaleString()}件（${preview.videos.toLocaleString()}動画）を修復します。\n`
+        + `内訳: 作曲 ${Number(byRole.composer || 0).toLocaleString()}件 / 作詞 ${Number(byRole.lyricist || 0).toLocaleString()}件 / 編曲 ${Number(byRole.arranger || 0).toLocaleString()}件\n\n`
+        + '不正値を空欄へ戻し、補完対象に復帰させます。元の値は記録に残ります。続行しますか？'
+      );
+      if (!confirmed) {
+        showJobMessage('クレジットの不正値修復をキャンセルしました', {
+          kind: 'repairCredits', label: 'クレジットの不正値を修復', state: 'aborted',
+        });
+        return;
+      }
+
+      updateRunningMaintenance('repairCredits', { activeText: '修復中…' });
+      showJobMessage('クレジットの不正値を修復中…', {
+        kind: 'repairCredits', label: 'クレジットの不正値を修復', state: 'running',
+      });
+      const applied = await sendHistoryDbRpc('REPAIR_INVALID_CREDITS', { dryRun: false });
+      showJobMessage(
+        `クレジットの不正値を修復しました: ${applied.values.toLocaleString()}件（${applied.videos.toLocaleString()}動画）`,
+        {
+          kind: 'repairCredits', label: 'クレジットの不正値を修復', state: 'done',
+          total: applied.values, processed: applied.values, counters: applied.byRole,
+        }
+      );
+      setTimeout(loadData, 300);
+    } catch (error) {
+      showJobMessage(`クレジットの不正値修復に失敗しました: ${error.message}`, {
+        kind: 'repairCredits', label: 'クレジットの不正値を修復', state: 'error', error: error.message,
+      });
+    } finally {
+      endMaintenance('repairCredits');
+    }
   });
 }
 

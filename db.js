@@ -480,6 +480,64 @@ if (typeof WatchedDB === 'undefined') {
       });
     }
 
+    async function repairInvalidCredits({ dryRun } = {}) {
+      const previewOnly = !!dryRun;
+      const at = Date.now();
+      const result = {
+        dryRun: previewOnly,
+        scanned: 0,
+        videos: 0,
+        values: 0,
+        byRole: { composer: 0, lyricist: 0, arranger: 0 },
+        at,
+      };
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, previewOnly ? 'readonly' : 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const cursorReq = store.openCursor();
+        cursorReq.onsuccess = (event) => {
+          const cursor = event.target.result;
+          if (!cursor) return;
+          result.scanned++;
+          const record = cursor.value;
+          const repairs = globalThis.CreditTarget.planCreditRepair(record);
+          if (repairs.length) {
+            result.videos++;
+            result.values += repairs.length;
+            for (const repair of repairs) result.byRole[repair.role]++;
+
+            if (!previewOnly) {
+              const repairLog = Array.isArray(record.creditsRepairLog)
+                ? record.creditsRepairLog.slice()
+                : [];
+              for (const repair of repairs) {
+                record[repair.role] = '';
+                if (record.creditRoleSources && typeof record.creditRoleSources === 'object'
+                  && !Array.isArray(record.creditRoleSources)) {
+                  delete record.creditRoleSources[repair.role];
+                }
+                repairLog.push({
+                  v: 1,
+                  role: repair.role,
+                  before: repair.before,
+                  at,
+                  reason: 'invalid-credit-value',
+                });
+              }
+              if (repairLog.length > 10) repairLog.splice(0, repairLog.length - 10);
+              record.creditsRepairLog = repairLog;
+              cursor.update(record);
+            }
+          }
+          cursor.continue();
+        };
+        tx.oncomplete = () => resolve(result);
+        tx.onerror = (event) => reject(event.target.error);
+        tx.onabort = (event) => reject(event.target.error);
+      });
+    }
+
     // Mark a Fix Credits attempt as failed for a specific videoId.
     // Reason is recorded so we can later analyze why retrieval failed.
     // creditsCheckedAt is intentionally NOT stamped — the videoId remains
@@ -1274,7 +1332,7 @@ if (typeof WatchedDB === 'undefined') {
       return { total: all.length, accounts: [...accounts.entries()] };
     }
 
-    return { openDB, addWatched, updateDuration, markDurationFailed, markDurationLive, updateTitle, updateTitleAndChannel, updateCredits, getCreditsForVideoIds, setManualCreditRole, markCreditsChecked, markCreditsFailed, cleanAllCredits, isWatched, checkMultiple, getStats, getAllIds, getWatchedIdsPage, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport, unwrapWatchedRecords, parseImportData, diffImport,
+    return { openDB, addWatched, updateDuration, markDurationFailed, markDurationLive, updateTitle, updateTitleAndChannel, updateCredits, getCreditsForVideoIds, setManualCreditRole, markCreditsChecked, markCreditsFailed, cleanAllCredits, repairInvalidCredits, isWatched, checkMultiple, getStats, getAllIds, getWatchedIdsPage, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport, unwrapWatchedRecords, parseImportData, diffImport,
       upsertLiked, getAllLiked, importLikedData, mergeLikedData, clearLikedByAccount, deleteManyRecords, replaceRecords, getLikedStats };
   })();
 }
