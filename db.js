@@ -269,6 +269,11 @@ if (typeof WatchedDB === 'undefined') {
           if (didUpdate && source && !existing.creditsSource) {
             existing.creditsSource = source;
           }
+          // A read that left a role blank means the description does not carry it;
+          // re-reading the same text cannot fill it, so only real progress resets.
+          existing.creditsEmptyCount = didUpdate
+            ? 0
+            : (typeof existing.creditsEmptyCount === 'number' && Number.isFinite(existing.creditsEmptyCount) ? existing.creditsEmptyCount : 0) + 1;
           // Always stamp "checked" so we can skip already-scanned videos next run.
           existing.creditsCheckedAt = Date.now();
           // Clear any prior failure reason — this attempt succeeded.
@@ -418,6 +423,7 @@ if (typeof WatchedDB === 'undefined') {
         getReq.onsuccess = () => {
           const existing = getReq.result;
           if (!existing) return;
+          existing.creditsEmptyCount = (typeof existing.creditsEmptyCount === 'number' && Number.isFinite(existing.creditsEmptyCount) ? existing.creditsEmptyCount : 0) + 1;
           existing.creditsCheckedAt = Date.now();
           if (existing.creditsFetchFailReason) {
             existing.creditsFetchFailReason = '';

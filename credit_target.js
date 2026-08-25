@@ -11,11 +11,9 @@
 // cool-down would re-fetch partial-credit videos every run and risk YouTube's
 // bot challenge. This lightweight form gates re-fetch by the existing
 // `creditsCheckedAt` timestamp (which, for this path, IS the YouTube-source
-// check time) instead of a per-source `attempts` schema (§3.4 full / DB v6,
-// deferred). A video checked within CREDIT_RECHECK_MS is skipped; one checked
-// longer ago (after a parser improvement or a description edit) is eligible
-// again. A never-checked video (creditsCheckedAt falsy — includes fetch
-// failures, which are intentionally not stamped) stays immediately eligible.
+// check time). Repeated empty descriptions get a longer, capped window; a
+// never-checked video (including unstamped fetch failures) stays immediately
+// eligible.
 //
 // Loaded as a plain script by the history/offscreen pages and service worker
 // (sets globalThis.CreditTarget), and as a CommonJS module in Node tests.
@@ -27,6 +25,9 @@
 
   // 30 days — matches DESIGN B-9 RETRY.YOUTUBE_NOT_FOUND.
   var CREDIT_RECHECK_MS = 30 * 24 * 60 * 60 * 1000;
+  var CREDIT_RECHECK_EMPTY_MS = 180 * 24 * 60 * 60 * 1000;
+  var CREDIT_RECHECK_EMPTY_MAX_MS = 720 * 24 * 60 * 60 * 1000;
+  var CREDIT_RECHECK_SPREAD_MS = 30 * 24 * 60 * 60 * 1000;
 
   var TOPIC_SUFFIX_RE = /\s*-\s*(?:topic|トピック)\s*$/i;
   var CREDIT_ROLE_TEXT_RE = /(?:作詞(?:家|者)?|作詩|作曲(?:家|者)?|編曲(?:家|者)?|作編曲|lyrics?(?:\s+by)?|lyricists?|written\s+by|songwriters?|words\s*(?:&|and)\s*music|compos(?:e|ed\s+by|er|ers|ition)|arrang(?:e|ed\s+by|er|ers|ement))/iu;
@@ -110,11 +111,45 @@
     return getMissingCreditRoles(record).length > 0;
   }
 
+  // How many times a 概要欄 read came back without filling the blanks. A read that
+  // leaves a role blank means the description does not carry that role — reading the
+  // same description again cannot fill it, so those videos must not return on the
+  // short window. Records written before this counter existed are inferred: already
+  // checked, still incomplete => at least one fruitless read.
+  function creditsLookedEmptyCount(record) {
+    var storedCount = record && record.creditsEmptyCount;
+    if (typeof storedCount === 'number' && Number.isFinite(storedCount)) return Math.max(0, storedCount);
+    var checkedAt = record && record.creditsCheckedAt;
+    var wasChecked = typeof checkedAt === 'number' && checkedAt > 0;
+    return wasChecked && hasMissingCreditRole(record) ? 1 : 0;
+  }
+
+  // Videos read in one batch share a check timestamp, so a single window would put
+  // them all back on the queue on the same day — rebuilding the very pile the long
+  // window exists to prevent. Spread each video deterministically (same id always
+  // lands on the same offset, so the due date never drifts between runs).
+  function creditRecheckSpreadMs(record) {
+    var id = record && record.videoId;
+    if (typeof id !== 'string' || !id) return 0;
+    var hash = 0;
+    for (var i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+    return hash % CREDIT_RECHECK_SPREAD_MS;
+  }
+
+  function creditRecheckWindowMs(record) {
+    var emptyCount = creditsLookedEmptyCount(record);
+    if (emptyCount <= 0) return CREDIT_RECHECK_MS;
+    var base = emptyCount === 1
+      ? CREDIT_RECHECK_EMPTY_MS
+      : (emptyCount === 2 ? CREDIT_RECHECK_EMPTY_MS * 2 : CREDIT_RECHECK_EMPTY_MAX_MS);
+    return base + creditRecheckSpreadMs(record);
+  }
+
   // True when this video was credit-checked within the cool-down window and so
   // should not be re-fetched yet. `now` and `windowMs` are injectable for tests.
   function recentlyCreditChecked(record, now, windowMs) {
     if (typeof now !== 'number') now = Date.now();
-    if (typeof windowMs !== 'number') windowMs = CREDIT_RECHECK_MS;
+    if (typeof windowMs !== 'number') windowMs = creditRecheckWindowMs(record);
     var at = record && record.creditsCheckedAt;
     return typeof at === 'number' && at > 0 && (now - at) < windowMs;
   }
@@ -133,6 +168,10 @@
   var api = {
     CREDIT_ROLES: CREDIT_ROLES,
     CREDIT_RECHECK_MS: CREDIT_RECHECK_MS,
+    CREDIT_RECHECK_EMPTY_MS: CREDIT_RECHECK_EMPTY_MS,
+    CREDIT_RECHECK_EMPTY_MAX_MS: CREDIT_RECHECK_EMPTY_MAX_MS,
+    CREDIT_RECHECK_SPREAD_MS: CREDIT_RECHECK_SPREAD_MS,
+    creditRecheckSpreadMs: creditRecheckSpreadMs,
     creditIsBlank: creditIsBlank,
     getMissingCreditRoles: getMissingCreditRoles,
     effectiveRoleSource: effectiveRoleSource,
@@ -140,6 +179,8 @@
     isTopicChannelName: isTopicChannelName,
     stripTopicChannelSuffix: stripTopicChannelSuffix,
     hasMissingCreditRole: hasMissingCreditRole,
+    creditsLookedEmptyCount: creditsLookedEmptyCount,
+    creditRecheckWindowMs: creditRecheckWindowMs,
     recentlyCreditChecked: recentlyCreditChecked,
     isFixCreditsTarget: isFixCreditsTarget,
   };
