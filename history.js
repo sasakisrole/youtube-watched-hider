@@ -400,7 +400,9 @@ function setMaintOpen(open, persist = true) {
 
 function updateMaintToggleLock() {
   if (!maintToggle) return;
-  const locked = hasRunningMaintenance();
+  // 後で見るの操作は折り畳みの外にあり中止ボタンも持たないので、開いたまま固定する理由がない
+  const running = runningMaintenance || persistedRunningMaintenance;
+  const locked = !!running && running !== 'scanWatchLater';
   // 走っている処理の中止ボタンは折り畳みの中にあるので、実行中は閉じさせない
   if (locked) setMaintOpen(true, false);
   maintToggle.disabled = locked;
@@ -666,18 +668,26 @@ const wlPanelRun = document.getElementById('wlPanelRun');
 const wlPanelCancel = document.getElementById('wlPanelCancel');
 const wlPanelStatus = document.getElementById('wlPanelStatus');
 let armedWatchLaterBatch = null;
+// 削除中は進捗がこのダイアログの中にしか出ないので、閉じさせない
+let wlPanelDeleting = false;
+let wlPanelPreviousFocus = null;
 
 function armWatchLaterBatch(res, preview) {
   armedWatchLaterBatch = (res && preview && preview.length)
     ? { syncSessionId: res.syncSessionId, rows: preview, truncated: !!res.previewTruncated }
     : null;
   if (bulkRemoveWatchLaterBtn) bulkRemoveWatchLaterBtn.disabled = !armedWatchLaterBatch;
-  if (wlPanel && !armedWatchLaterBatch) wlPanel.hidden = true;
+  if (!armedWatchLaterBatch) closeWatchLaterPanel();
 }
 
 function closeWatchLaterPanel() {
-  if (wlPanel) wlPanel.hidden = true;
+  if (!wlPanel || wlPanel.hidden || wlPanelDeleting) return;
+  wlPanel.hidden = true;
+  wlPanel.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('wl-modal-open');
   if (wlPanelStatus) wlPanelStatus.textContent = '';
+  if (wlPanelPreviousFocus && typeof wlPanelPreviousFocus.focus === 'function') wlPanelPreviousFocus.focus();
+  wlPanelPreviousFocus = null;
 }
 
 function openWatchLaterPanel() {
@@ -706,7 +716,10 @@ function openWatchLaterPanel() {
   wlPanelLimit.max = String(rows.length);
   wlPanelLimit.value = String(Math.min(5, rows.length));
   wlPanelStatus.textContent = '';
+  wlPanelPreviousFocus = document.activeElement || null;
   wlPanel.hidden = false;
+  wlPanel.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('wl-modal-open');
   wlPanelLimit.focus();
 }
 
@@ -728,6 +741,15 @@ if (bulkRemoveWatchLaterBtn) {
   bulkRemoveWatchLaterBtn.addEventListener('click', openWatchLaterPanel);
 }
 if (wlPanelCancel) wlPanelCancel.addEventListener('click', closeWatchLaterPanel);
+if (wlPanel) {
+  // 背景を押したときだけ閉じる（ダイアログの中を押しても閉じない）
+  wlPanel.addEventListener('click', (event) => {
+    if (event.target === wlPanel) closeWatchLaterPanel();
+  });
+}
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && wlPanel && !wlPanel.hidden) closeWatchLaterPanel();
+});
 
 if (wlPanelRun) {
   wlPanelRun.addEventListener('click', () => {
@@ -747,7 +769,9 @@ if (wlPanelRun) {
       return;
     }
     // 押し直しによる二重実行を防ぐ。武装解除は完了時にまとめて行う。
+    wlPanelDeleting = true;
     wlPanelRun.disabled = true;
+    if (wlPanelCancel) wlPanelCancel.disabled = true;
     if (bulkRemoveWatchLaterBtn) bulkRemoveWatchLaterBtn.disabled = true;
     if (removeOneWatchLaterBtn) removeOneWatchLaterBtn.disabled = true;
     wlPanelStatus.textContent = '削除中…';
@@ -757,8 +781,10 @@ if (wlPanelRun) {
     const finish = (text, state = 'done', processed = 0, total = limit) => {
       if (settled) return;
       settled = true;
+      wlPanelDeleting = false;
       endMaintenance('scanWatchLater');
       wlPanelRun.disabled = false;
+      if (wlPanelCancel) wlPanelCancel.disabled = false;
       armedWatchLaterTarget = null;
       armWatchLaterBatch(null, null);
       showJobMessage(text, {

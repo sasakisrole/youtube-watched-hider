@@ -203,27 +203,42 @@
       pointer-events: none;
     }
     .sort-btn:focus-visible,
-    .wl-panel input:focus-visible {
+    .wl-dialog input:focus-visible {
       outline: 2px solid var(--accent);
       outline-offset: 2px;
     }
-    /* 後で見るの削除対象プレビュー。取り消せない一括操作なので、実行前に全件を目で見る */
+    /* 後で見るの削除対象プレビュー。取り消せない一括操作なので、実行前に全件を目で見る。
+       データ管理の折り畳みを開くと下へ押し出されて読めないので、画面中央に重ねて出す */
+    body.wl-modal-open { overflow: hidden; }
+    .wl-panel[hidden] { display: none; }
     .wl-panel {
-      max-width: 1200px;
-      margin: 0 auto 16px;
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      background: rgba(10, 10, 12, 0.52);
+    }
+    .wl-dialog {
+      width: min(760px, calc(100vw - 36px));
+      max-height: min(720px, calc(100vh - 36px));
       padding: 16px;
       border: 1px solid var(--border-strong);
       border-radius: var(--radius);
       background: var(--surface);
+      display: flex;
+      flex-direction: column;
     }
-    .wl-panel[hidden] { display: none; }
-    .wl-panel h2 { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
-    .wl-panel .wl-note { font-size: 12px; color: var(--text-muted); margin: 0 0 12px; }
+    .wl-dialog h2 { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
+    .wl-dialog .wl-note { font-size: 12px; color: var(--text-muted); margin: 0 0 12px; }
     .wl-list {
       list-style: none;
       margin: 0 0 12px;
       padding: 0;
-      max-height: 40vh;
+      flex: 1 1 auto;
+      min-height: 4em;
       overflow-y: auto;
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
@@ -775,8 +790,15 @@
     @media (prefers-color-scheme: dark) {
       .sort-btn.enrich-primary { color: #0f1115; }
       .enrich-modal { background: rgba(0, 0, 0, 0.66); }
+      .wl-panel { background: rgba(0, 0, 0, 0.66); }
     }
     @media (max-width: 760px) {
+      .wl-panel { padding: 0; }
+      .wl-dialog {
+        width: 100vw;
+        max-height: 100vh;
+        border-radius: 0;
+      }
       .enrich-dialog {
         width: 100vw;
         height: 100vh;
@@ -983,7 +1005,15 @@
       <button class="sort-btn" id="filterNoChannel" title="チャンネル名が未記録の動画だけ表示">チャンネル名なし</button>
     </div>
 
-    <!-- Row 3: メンテナンスの開閉バー。進捗(#fixStatus)は畳んでも見えるようここに置く -->
+    <!-- Row 3: 後で見る。よく使うので折り畳みの外に置く（対象一覧は中央のダイアログで出す） -->
+    <div class="toolbar-row">
+      <span class="toolbar-label">後で見る</span>
+      <button class="sort-btn" id="scanWatchLater" title="後で見るの全件を取得し、視聴済みデータベースと一致する件数を数える。削除はしない">照合</button>
+      <button class="sort-btn" id="removeOneWatchLater" title="照合で見つかった先頭の1件だけを後で見るから削除する。取り消せない" disabled>1件だけ削除</button>
+      <button class="sort-btn" id="bulkRemoveWatchLater" title="照合で見つかった視聴済みの動画を一覧で確認してから、まとめて削除する。取り消せない" disabled>まとめて削除</button>
+    </div>
+
+    <!-- Row 4: メンテナンスの開閉バー。進捗(#fixStatus)は畳んでも見えるようここに置く -->
     <div class="toolbar-row maint-bar">
       <button class="maint-toggle" id="maintToggle" type="button" aria-expanded="false" aria-controls="maintPanel">
         <svg class="icon chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
@@ -995,7 +1025,7 @@
       </div>
     </div>
 
-    <!-- Row 4: メンテナンス本体（既定は折り畳み・実行中は開いたまま固定） -->
+    <!-- Row 5: メンテナンス本体（既定は折り畳み・実行中は開いたまま固定） -->
     <div class="toolbar-row maint" id="maintPanel" hidden>
       <div class="maint-group">
         <span class="toolbar-label">補完</span>
@@ -1009,12 +1039,6 @@
         <button class="sort-btn" id="fixDurations" title="動画時間をwatchページから補完（ライブは-1として記録）">動画の長さを補完</button>
         <label class="chk" title="一度調べた動画をしばらく再取得しない。何か補完できた動画は30日、概要欄に情報が無くて空のままだった動画は180日→360日→720日と間隔が延びる（同じ概要欄を読み直しても埋まらないため）。外すと、空きのある動画を間隔に関係なく全部取り直す"><input type="checkbox" id="skipCreditsChecked" checked>チェック済みスキップ</label>
         <label class="chk" title="非Topicチャンネル（MV・公式配信など）も対象にする。ラベル付き行のみ採用"><input type="checkbox" id="includeGeneralCredits">一般も含める</label>
-      </div>
-      <div class="maint-group">
-        <span class="toolbar-label">後で見る</span>
-        <button class="sort-btn" id="scanWatchLater" title="後で見るの全件を取得し、視聴済みデータベースと一致する件数を数える。削除はしない">照合</button>
-        <button class="sort-btn" id="removeOneWatchLater" title="照合で見つかった先頭の1件だけを後で見るから削除する。取り消せない" disabled>1件だけ削除</button>
-        <button class="sort-btn" id="bulkRemoveWatchLater" title="照合で見つかった視聴済みの動画を一覧で確認してから、まとめて削除する。取り消せない" disabled>まとめて削除</button>
       </div>
       <div class="maint-group">
         <span class="toolbar-label" id="jobRecentLabel">最近の処理</span>
@@ -1037,18 +1061,20 @@
     </div>
   </div>
 
-  <section class="wl-panel" id="wlPanel" hidden aria-labelledby="wlPanelTitle">
-    <h2 id="wlPanelTitle">まとめて削除する動画</h2>
-    <p class="wl-note" id="wlPanelNote"></p>
-    <ul class="wl-list" id="wlPanelList"></ul>
-    <div class="wl-actions">
-      <label for="wlPanelLimit">今回削除する件数</label>
-      <input type="number" id="wlPanelLimit" min="1" step="1" value="5">
-      <button class="sort-btn wl-danger" id="wlPanelRun" type="button">削除を実行</button>
-      <button class="sort-btn" id="wlPanelCancel" type="button">やめる</button>
-      <span id="wlPanelStatus"></span>
-    </div>
-  </section>
+  <div class="wl-panel" id="wlPanel" hidden aria-hidden="true">
+    <section class="wl-dialog" role="dialog" aria-modal="true" aria-labelledby="wlPanelTitle">
+      <h2 id="wlPanelTitle">まとめて削除する動画</h2>
+      <p class="wl-note" id="wlPanelNote"></p>
+      <ul class="wl-list" id="wlPanelList"></ul>
+      <div class="wl-actions">
+        <label for="wlPanelLimit">今回削除する件数</label>
+        <input type="number" id="wlPanelLimit" min="1" step="1" value="5">
+        <button class="sort-btn wl-danger" id="wlPanelRun" type="button">削除を実行</button>
+        <button class="sort-btn" id="wlPanelCancel" type="button">やめる</button>
+        <span id="wlPanelStatus" role="status" aria-live="polite"></span>
+      </div>
+    </section>
+  </div>
 
   <div class="enrich-modal" id="enrichModal" hidden aria-hidden="true">
     <div class="enrich-dialog" role="dialog" aria-modal="true" aria-labelledby="enrichTitle">
