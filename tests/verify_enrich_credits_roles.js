@@ -100,9 +100,9 @@ check('upper limit applies to both estimate bounds and maximum request count',
   };
   const groups = new Map([['Artist', [video]]]);
   check('MusicBrainz cooldown removes the video from minimum request count',
-    H.getMinimumEnrichmentRequestCount(groups, [], new Map(), { now }) === 0);
+    H.getMinimumEnrichmentRequestCount(groups, [], new Map(), [], { now }) === 0);
   check('MusicBrainz cooldown bypass restores the video to minimum request count',
-    H.getMinimumEnrichmentRequestCount(groups, [], new Map(), { now, ignoreCooldown: true }) === 1);
+    H.getMinimumEnrichmentRequestCount(groups, [], new Map(), [], { now, ignoreCooldown: true }) === 1);
 }
 
 // --- coveredNeededRoles -----------------------------------------------------

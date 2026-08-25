@@ -191,7 +191,8 @@ async function exerciseGeneration({ records, rules, cachedVideoIds = [], ruleLoa
 
   const groups = controller.groupUnassigned(records);
   const minimumRequestCount = window.EnrichCreditsTestHooks
-    .getMinimumEnrichmentRequestCount(groups, rules, controller.fetchCache.mb, { ignoreCooldown });
+    .getMinimumEnrichmentRequestCount(
+      groups, rules, controller.fetchCache.mb, records, { ignoreCooldown });
   const hooks = window.EnrichCreditsTestHooks;
   const expectedEstimate = hooks.buildEnrichmentConfirmText(
     hooks.getEnrichmentPreCount(records),

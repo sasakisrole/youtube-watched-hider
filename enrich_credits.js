@@ -20,7 +20,7 @@
   //         SOME roles filled (composer set, arranger blank) is still enriched (was: all-or-nothing).
   // Case 7: renderTabs() only sees channels present in candidatesByChannel, so zero-hit channels are hidden.
   // Case 8: generateCandidates() no longer short-circuits after a rule match — remaining missing roles
-  //         still flow to MusicBrainz per video (HANDOFF §3.2/§3.3, role-unit waterfall).
+  //         flow through same-song donors to MusicBrainz per video (role-unit waterfall).
 
   function unwrapWatchedRecords(data) {
     if (Array.isArray(data)) return data;
@@ -42,7 +42,8 @@
   const CREDIT_ROLE_SEARCH_LABELS = Object.freeze({ composer: '作曲者', lyricist: '作詞者', arranger: '編曲者' });
   const CREDIT_SOURCE_LABELS = Object.freeze({
     topic: 'Topic 概要欄', general: '一般動画の概要欄',
-    'enrich:rule': '固定ルール', 'enrich:mb': 'MusicBrainz', manual: '手動入力',
+    'enrich:rule': '固定ルール', 'enrich:same-song': '同一楽曲の別動画',
+    'enrich:mb': 'MusicBrainz', manual: '手動入力',
     '': '由来なし',
   });
 
@@ -226,8 +227,9 @@
     return `${cleanArtistFromChannel(channel)}\n${title}`;
   }
 
-  function getMinimumEnrichmentRequestCount(groups, rules, mbCache, opts = {}) {
+  function getMinimumEnrichmentRequestCount(groups, rules, mbCache, records, opts = {}) {
     const ruleByChannel = new Map((rules || []).map((rule) => [rule.channel, rule]));
+    const sameSongDonorIndex = createSameSongDonorIndex(records || []);
     const api = window.CreditTarget;
     const now = typeof opts.now === 'number' ? opts.now : Date.now();
     let requestCount = 0;
@@ -239,6 +241,9 @@
           coveredNeededRoles(createRuleCandidate(video, rule), missing)
             .forEach((role) => missing.delete(role));
         }
+        coveredNeededRoles(createSameSongDonorCandidate(video, sameSongDonorIndex), missing)
+          .forEach((role) => missing.delete(role));
+        if (!missing.size) continue;
         const title = video.title || '';
         const artist = cleanArtistFromChannel(channel);
         const eligible = !api || typeof api.shouldQueryMb !== 'function'
@@ -330,6 +335,97 @@
       source: 'rule',
       sourceDetail: rule.evidence || '',
       matchedTitle: '',
+      sim: null,
+      selected: true,
+    };
+  }
+
+  const SAME_SONG_DECORATOR_RE = /\b(?:official|music\s+video|mv|audio|lyrics?|full|hd|4k|remaster(?:ed)?|live|cover|feat\.?|ft\.?|short\s+ver\.?|tv\s+size)\b/giu;
+  const SAME_SONG_DISALLOWED_RE = /[^a-z0-9\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/gu;
+
+  function normalizeSameSongTitle(value) {
+    return String(value || '')
+      .normalize('NFKC')
+      .toLowerCase()
+      .replace(/[\(\uff08\[\u3010][\s\S]*?[\)\uff09\]\u3011]/g, '')
+      .replace(SAME_SONG_DECORATOR_RE, '')
+      .replace(SAME_SONG_DISALLOWED_RE, '');
+  }
+
+  function normalizeSameSongChannel(value) {
+    return String(value || '')
+      .normalize('NFKC')
+      .toLowerCase()
+      .replace(/\s*-\s*topic\s*$/u, '')
+      .replace(SAME_SONG_DISALLOWED_RE, '');
+  }
+
+  function sameSongGroupKey(record) {
+    const title = normalizeSameSongTitle(record && record.title);
+    const channel = normalizeSameSongChannel(record && record.channel);
+    return title && channel ? `${title}\n${channel}` : '';
+  }
+
+  function hasKnownDuration(record) {
+    return !!(record && Number.isFinite(record.durationSec) && record.durationSec > 0);
+  }
+
+  function isSameSongDuration(record, donor) {
+    if (!hasKnownDuration(record) || !hasKnownDuration(donor)) return false;
+    return Math.abs(record.durationSec - donor.durationSec)
+      / Math.max(record.durationSec, donor.durationSec) <= 0.1;
+  }
+
+  function createSameSongDonorIndex(records) {
+    const groups = new Map();
+    for (const record of Array.isArray(records) ? records : []) {
+      const key = sameSongGroupKey(record);
+      if (!key) continue;
+      if (!groups.has(key)) {
+        groups.set(key, Object.fromEntries(CREDIT_ROLES.map((role) => [role, new Map()])));
+      }
+      const roleValues = groups.get(key);
+      for (const role of CREDIT_ROLES) {
+        if (isBlank(record && record[role])) continue;
+        const value = String(record[role]).trim();
+        if (!roleValues[role].has(value)) roleValues[role].set(value, []);
+        roleValues[role].get(value).push(record);
+      }
+    }
+    return groups;
+  }
+
+  function createSameSongDonorCandidate(record, donorIndex) {
+    const key = sameSongGroupKey(record);
+    const roleValues = key && donorIndex && donorIndex.get(key);
+    if (!roleValues) return null;
+
+    const values = { composer: '', lyricist: '', arranger: '' };
+    const sources = [];
+    let matchedTitle = '';
+    for (const role of getMissingCreditRoles(record)) {
+      const donorsByValue = roleValues[role];
+      if (!donorsByValue || donorsByValue.size !== 1) continue;
+      const [value, donors] = donorsByValue.entries().next().value;
+      const donor = donors.find((candidate) => candidate !== record
+        && candidate.videoId !== record.videoId
+        && isSameSongDuration(record, candidate));
+      if (!donor) continue;
+      values[role] = value;
+      sources.push(`${role}:${donor.videoId || '?'}`);
+      if (!matchedTitle) matchedTitle = donor.title || '';
+    }
+    if (!CREDIT_ROLES.some((role) => values[role])) return null;
+
+    return {
+      id: createCandidateId(record.videoId, 'same-song'),
+      videoId: record.videoId,
+      title: record.title || record.videoId,
+      channel: record.channel || '',
+      ...values,
+      source: 'same-song',
+      sourceDetail: sources.join(', '),
+      matchedTitle,
       sim: null,
       selected: true,
     };
@@ -551,7 +647,7 @@
       }
       if (this.subtitleEl) this.subtitleEl.textContent = manual
         ? '不足している作曲・作詞・編曲を確認し、役割ごとに保存します。'
-        : '未割当 creditsRaw を固定ルール、MusicBrainz の順に照合します。';
+        : '未割当 creditsRaw を固定ルール、同一楽曲の別動画、MusicBrainz の順に照合します。';
       if (manual) this.renderManualView();
       else this.renderAll();
       const focusTarget = manual ? this.manualViewTab : this.autoViewTab;
@@ -993,7 +1089,7 @@
       if (!hasCandidates && !this.generating && this.commitBtn) this.commitBtn.disabled = true;
     }
 
-    confirmGeneration(preCount, rateLimitMs, groups, rules, loadRulesForEstimate = null) {
+    confirmGeneration(preCount, rateLimitMs, groups, rules, loadRulesForEstimate = null, records = []) {
       const host = this.autoView || this.modal;
       if (!host || typeof document.createElement !== 'function') return Promise.resolve(false);
       let estimateRules = Array.isArray(rules) ? rules : null;
@@ -1004,6 +1100,7 @@
           limitedGroups,
           estimateRules,
           this.fetchCache.mb,
+          records,
           { ignoreCooldown },
         );
         return buildEnrichmentConfirmText(preCount, rateLimitMs, limit, minimumRequestCount);
@@ -1270,6 +1367,7 @@
           allGroups,
           rules,
           loadRulesForEstimate,
+          records,
         );
       } catch (error) {
         this.setMessage(`候補生成の事前確認に失敗しました: ${error.message}`, 'error');
@@ -1300,6 +1398,7 @@
           rules = rulesLoadAttempt ? await rulesLoadAttempt : await this.loadRules();
         }
         const ruleByChannel = new Map(rules.map((rule) => [rule.channel, rule]));
+        const sameSongDonorIndex = createSameSongDonorIndex(records);
         const entries = Array.from(groups.entries());
         for (let i = 0; i < entries.length; i++) {
           const [channel, videos] = entries[i];
@@ -1332,6 +1431,13 @@
               if (!state.missing.size) continue;
               applyCandidate(state, createRuleCandidate(state.video, rule));
             }
+          }
+
+          // Source 2: transfer role-specific values from another video of the
+          // same normalized song. Conflicts and incompatible/unknown durations
+          // are rejected locally before MusicBrainz is consulted.
+          for (const state of stillMissing()) {
+            applyCandidate(state, createSameSongDonorCandidate(state.video, sameSongDonorIndex));
           }
 
           // Source 3: MusicBrainz per still-missing video (no channel-level gate —
@@ -1771,6 +1877,12 @@
     limitCandidateToRoles,
     waterfallAccept,
     createRuleCandidate,
+    normalizeSameSongTitle,
+    normalizeSameSongChannel,
+    sameSongGroupKey,
+    isSameSongDuration,
+    createSameSongDonorIndex,
+    createSameSongDonorCandidate,
     candidateFromSong,
     sourceToCreditsSource,
   };
