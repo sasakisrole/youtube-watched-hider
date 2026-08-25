@@ -215,6 +215,13 @@
     return window.CreditTarget.stripTopicChannelSuffix(channel);
   }
 
+  // Keep the progress line on one row; count by code point so surrogate pairs
+  // are not split mid-character.
+  function truncateProgressTitle(value, limit = 30) {
+    const chars = Array.from(String(value == null ? '' : value).trim());
+    return chars.length > limit ? `${chars.slice(0, limit).join('')}…` : chars.join('');
+  }
+
   function getMbCacheKey(channel, title) {
     return `${cleanArtistFromChannel(channel)}\n${title}`;
   }
@@ -1329,8 +1336,16 @@
 
           // Source 3: MusicBrainz per still-missing video (no channel-level gate —
           // one success elsewhere no longer starves the other videos, HANDOFF §3.3).
-          for (const state of stillMissing()) {
+          const pending = stillMissing();
+          for (let j = 0; j < pending.length; j++) {
+            const state = pending[j];
             if (this.abortRequested) break;
+            // Per-video progress: a single large channel is one MusicBrainz call
+            // per second, so channel-level progress looks frozen for minutes.
+            this.updateProgress(
+              `${progressLabel} — ${j + 1}/${pending.length}曲: ${truncateProgressTitle(state.video.title)}`,
+              (i + j / pending.length) / entries.length,
+            );
             const title = state.video.title || '';
             const artist = cleanArtistFromChannel(channel);
             const missingRoles = Array.from(state.missing);
