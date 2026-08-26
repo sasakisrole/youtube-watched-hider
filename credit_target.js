@@ -59,6 +59,134 @@
     return record && typeof record.creditsSource === 'string' ? record.creditsSource : '';
   }
 
+  // Pure, role-unit classification for the future Credit Review Center (N4).
+  // Candidate objects use the same role fields/source/selected shape as
+  // enrich_credits.js. `rules` and `donorIndex` may be passed directly so the
+  // caller does not need to mutate a record or persist an enrichment plan.
+  var REVIEW_SAME_SONG_DECORATOR_RE = /\b(?:official|music\s+video|mv|audio|lyrics?|full|hd|4k|remaster(?:ed)?|live|cover|feat\.?|ft\.?|short\s+ver\.?|tv\s+size)\b/giu;
+  var REVIEW_SAME_SONG_DISALLOWED_RE = /[^a-z0-9\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/gu;
+
+  function reviewSameSongTitle(value) {
+    return String(value || '')
+      .normalize('NFKC')
+      .toLowerCase()
+      .replace(/[\(\uff08\[\u3010][\s\S]*?[\)\uff09\]\u3011]/g, '')
+      .replace(REVIEW_SAME_SONG_DECORATOR_RE, '')
+      .replace(REVIEW_SAME_SONG_DISALLOWED_RE, '');
+  }
+
+  function reviewSameSongChannel(value) {
+    return String(value || '')
+      .normalize('NFKC')
+      .toLowerCase()
+      .replace(/\s*-\s*topic\s*$/u, '')
+      .replace(REVIEW_SAME_SONG_DISALLOWED_RE, '');
+  }
+
+  function reviewSameSongKey(record) {
+    var title = reviewSameSongTitle(record && record.title);
+    var channel = reviewSameSongChannel(record && record.channel);
+    return title && channel ? title + '\n' + channel : '';
+  }
+
+  function reviewDurationMatches(record, donor) {
+    if (!record || !donor || !Number.isFinite(record.durationSec) || record.durationSec <= 0
+      || !Number.isFinite(donor.durationSec) || donor.durationSec <= 0) return false;
+    return Math.abs(record.durationSec - donor.durationSec)
+      / Math.max(record.durationSec, donor.durationSec) <= 0.1;
+  }
+
+  function addReviewCandidate(target, role, candidate, defaultSource, defaultSelected) {
+    var rawValue = candidate && (candidate.role === role && !creditIsBlank(candidate.value)
+      ? candidate.value : candidate[role]);
+    if (creditIsBlank(rawValue)) return;
+    target.push({
+      value: String(rawValue).trim(),
+      source: typeof candidate.source === 'string' ? candidate.source : defaultSource,
+      sourceDetail: typeof candidate.sourceDetail === 'string' ? candidate.sourceDetail : '',
+      selected: typeof candidate.selected === 'boolean' ? candidate.selected : defaultSelected,
+    });
+  }
+
+  function collectReviewCandidates(record, role, materials) {
+    materials = materials || {};
+    var collected = [];
+    var supplied = Array.isArray(materials.candidates) ? materials.candidates : [];
+    supplied.forEach(function (candidate) {
+      // Missing auto-eligibility is deliberately not inferred.
+      addReviewCandidate(collected, role, candidate, '', false);
+    });
+
+    var rules = Array.isArray(materials.rules) ? materials.rules : [];
+    if (materials.rule && typeof materials.rule === 'object') rules = rules.concat([materials.rule]);
+    rules.forEach(function (rule) {
+      if (rule && (!rule.channel || rule.channel === (record && record.channel))) {
+        addReviewCandidate(collected, role, rule, 'rule', true);
+      }
+    });
+
+    var donorIndex = materials.donorIndex;
+    var key = reviewSameSongKey(record);
+    var roleValues = key && donorIndex && typeof donorIndex.get === 'function' ? donorIndex.get(key) : null;
+    var donorsByValue = roleValues && roleValues[role];
+    if (donorsByValue && typeof donorsByValue.forEach === 'function') {
+      donorsByValue.forEach(function (donors, value) {
+        var matchingDonor = Array.isArray(donors) && donors.find(function (donor) {
+          return donor !== record && donor && donor.videoId !== (record && record.videoId)
+            && reviewDurationMatches(record, donor);
+        });
+        if (!matchingDonor) return;
+        addReviewCandidate(collected, role, {
+          value: value,
+          role: role,
+          source: 'same-song',
+          sourceDetail: role + ':' + (matchingDonor.videoId || '?'),
+          selected: true,
+        }, 'same-song', true);
+      });
+    }
+    return collected;
+  }
+
+  function getCreditReviewStates(record, materials) {
+    return CREDIT_ROLES.reduce(function (states, role) {
+      var existingValue = creditIsBlank(record && record[role]) ? '' : String(record[role]).trim();
+      var existingSource = effectiveRoleSource(record, role);
+      var candidates = collectReviewCandidates(record, role, materials);
+
+      if (existingValue && existingSource === 'manual') {
+        states[role] = { state: 'verified', value: existingValue, candidates: candidates, source: existingSource };
+        return states;
+      }
+      // A non-manual existing value must not be replaced by a candidate, but
+      // the current data does not prove that a person confirmed it.
+      if (existingValue) {
+        states[role] = { state: 'needs_review', value: existingValue, candidates: candidates, source: existingSource };
+        return states;
+      }
+      if (!candidates.length) {
+        states[role] = { state: 'unresolved', value: '', candidates: [], source: '' };
+        return states;
+      }
+
+      var values = Array.from(new Set(candidates.map(function (candidate) { return candidate.value; })));
+      if (values.length > 1) {
+        states[role] = { state: 'conflict', value: '', candidates: candidates, source: '' };
+        return states;
+      }
+      if (values.length === 1 && candidates.every(function (candidate) { return candidate.selected === true; })) {
+        var sources = Array.from(new Set(candidates.map(function (candidate) { return candidate.source; }).filter(Boolean)));
+        states[role] = {
+          state: 'auto_candidate', value: values[0], candidates: candidates,
+          source: sources.length === 1 ? sources[0] : '',
+        };
+        return states;
+      }
+      states[role] = { state: 'needs_review', value: values.length === 1 ? values[0] : '', candidates: candidates, source: '' };
+      return states;
+    }, {});
+  }
+
   function normalizeSharedText(value) {
     return String(value == null ? '' : value).normalize('NFKC').trim();
   }
@@ -245,6 +373,7 @@
     creditIsBlank: creditIsBlank,
     getMissingCreditRoles: getMissingCreditRoles,
     effectiveRoleSource: effectiveRoleSource,
+    getCreditReviewStates: getCreditReviewStates,
     isValidCreditValue: isValidCreditValue,
     planCreditRepair: planCreditRepair,
     isTopicChannelName: isTopicChannelName,
