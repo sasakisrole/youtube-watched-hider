@@ -311,6 +311,18 @@
     .credit-review-filters { display: flex; flex-wrap: wrap; gap: 8px; }
     .credit-review-filter { min-height: 44px; font-variant-numeric: tabular-nums; }
     .credit-review-summary { min-height: 1.5em; color: var(--text-muted); font-size: 12px; }
+    .credit-review-feedback {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 10px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      background: var(--accent-soft);
+      font-size: 12px;
+    }
+    .credit-review-feedback[hidden] { display: none; }
     .credit-review-list {
       flex: 1 1 auto;
       min-height: 5em;
@@ -347,6 +359,11 @@
     }
     .credit-review-values dt { color: var(--text-muted); }
     .credit-review-values dd { margin: 0; overflow-wrap: anywhere; }
+    .credit-review-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .credit-review-action { min-height: 44px; }
+    .credit-review-message { margin-top: 8px; font-size: 12px; line-height: 1.5; }
+    .credit-review-message.success { color: var(--success, #26734d); }
+    .credit-review-message.error { color: var(--danger); }
     .credit-review-empty {
       padding: 28px 16px;
       border: 1px dashed var(--border-strong);
@@ -1168,7 +1185,7 @@
       <div class="credit-review-header">
         <div class="credit-review-heading">
           <h2 id="creditReviewTitle">クレジット確認センター</h2>
-          <p class="credit-review-note" id="creditReviewNote">動画ごとの作曲・作詞・編曲を、現在値と候補を並べて確認できます。この画面からデータは変更されません。</p>
+          <p class="credit-review-note" id="creditReviewNote">動画ごとの作曲・作詞・編曲を、現在値と候補を並べて確認し、役割ごとに1件ずつ採用できます。</p>
         </div>
         <button class="sort-btn credit-review-close" id="creditReviewClose" type="button" aria-label="クレジット確認センターを閉じる">閉じる</button>
       </div>
@@ -1181,6 +1198,7 @@
         <button class="sort-btn credit-review-filter" type="button" data-credit-review-state="verified" aria-pressed="false">確認済み <span data-credit-review-count="verified">0</span></button>
       </div>
       <p class="credit-review-summary" id="creditReviewSummary" role="status" aria-live="polite"></p>
+      <div class="credit-review-feedback" id="creditReviewFeedback" role="status" aria-live="polite" hidden></div>
       <div class="credit-review-list" id="creditReviewList"></div>
       <div class="credit-review-empty" id="creditReviewEmpty" hidden>該当なし</div>
     </section>

@@ -388,6 +388,7 @@ if (typeof WatchedDB === 'undefined') {
 
     async function setManualCreditRole(args = {}) {
       const { videoId, role, value, expectedCurrent, expectedSource, restoreRoleSource } = args;
+      const adoptCandidate = args.adoptCandidate === true;
       const hasRestoreRoleSource = Object.prototype.hasOwnProperty.call(args, 'restoreRoleSource');
       if (!CREDIT_ROLES.includes(role)) return { error: 'bad_role' };
       const db = await openDB();
@@ -419,7 +420,13 @@ if (typeof WatchedDB === 'undefined') {
             result = { error: 'invalid_value' };
             return;
           }
-          if ((!currentIsBlank || nextIsBlank) && currentSource !== 'manual') {
+          // Review-center adoption may replace an unverified automatic value,
+          // but it must never be usable as a back door to overwrite manual data.
+          if (adoptCandidate && (nextIsBlank || currentSource === 'manual')) {
+            result = { error: currentSource === 'manual' ? 'already_verified' : 'invalid_value' };
+            return;
+          }
+          if (!adoptCandidate && (!currentIsBlank || nextIsBlank) && currentSource !== 'manual') {
             result = { error: 'not_manual' };
             return;
           }

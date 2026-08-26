@@ -286,6 +286,7 @@ async function handleDbRpc(message) {
         expectedCurrent: message.expectedCurrent,
         expectedSource: message.expectedSource,
       };
+      if (message.adoptCandidate === true) args.adoptCandidate = true;
       if (Object.prototype.hasOwnProperty.call(message, 'restoreRoleSource')) {
         args.restoreRoleSource = message.restoreRoleSource;
       }
