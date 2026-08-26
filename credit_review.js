@@ -44,6 +44,19 @@
     return text(item && item.value);
   }
 
+  function candidateSignature(item) {
+    var values = uniqueCandidateValues(item && item.candidates);
+    var fallback = text(item && item.value);
+    if (!values.length && fallback) values.push(fallback);
+    return JSON.stringify(values.sort());
+  }
+
+  function rejectedSignature(record, role) {
+    var rejections = record && record.creditReviewRejections;
+    return rejections && typeof rejections === 'object' && !Array.isArray(rejections)
+      && typeof rejections[role] === 'string' ? rejections[role] : '';
+  }
+
   function createActionButton(label, action, item, disabled) {
     var button = document.createElement('button');
     button.type = 'button';
@@ -90,14 +103,55 @@
       conflict.className = 'credit-review-message error';
       conflict.textContent = '値が食い違っています。内容を確認してください。';
       card.appendChild(conflict);
+      var choices = document.createElement('fieldset');
+      choices.className = 'credit-review-conflict-choices';
+      var legend = document.createElement('legend');
+      legend.textContent = '確定する候補を選択';
+      choices.appendChild(legend);
+      candidates.forEach(function (value, index) {
+        var label = document.createElement('label');
+        var input = document.createElement('input');
+        input.type = 'radio';
+        input.name = 'credit-review-choice-' + item.videoId + '-' + item.role;
+        input.value = value;
+        input.dataset.creditReviewChoice = 'candidate';
+        input.dataset.videoId = item.videoId;
+        input.dataset.role = item.role;
+        input.checked = options.hasConflictSelection && options.conflictSelection === value;
+        input.disabled = !!options.busy;
+        var choiceText = document.createElement('span');
+        choiceText.textContent = value;
+        label.append(input, choiceText);
+        choices.appendChild(label);
+      });
+      var noneLabel = document.createElement('label');
+      var noneInput = document.createElement('input');
+      noneInput.type = 'radio';
+      noneInput.name = 'credit-review-choice-' + item.videoId + '-' + item.role;
+      noneInput.value = '';
+      noneInput.dataset.creditReviewChoice = 'none';
+      noneInput.dataset.videoId = item.videoId;
+      noneInput.dataset.role = item.role;
+      noneInput.checked = options.hasConflictSelection && options.conflictSelection === '';
+      noneInput.disabled = !!options.busy;
+      var noneText = document.createElement('span');
+      noneText.textContent = 'どれも選ばない';
+      noneLabel.append(noneInput, noneText);
+      choices.appendChild(noneLabel);
+      card.appendChild(choices);
     }
     var canAdopt = (item.state === 'auto_candidate' || item.state === 'needs_review')
       && !!adoptionValue(item);
+    var canReject = item.state === 'auto_candidate' || item.state === 'needs_review';
+    var canResolve = item.state === 'conflict';
     var canUndo = !!options.canUndo;
-    if (canAdopt || canUndo) {
+    if (canAdopt || canReject || canResolve || canUndo) {
       var actions = document.createElement('div');
       actions.className = 'credit-review-actions';
       if (canAdopt) actions.appendChild(createActionButton('採用', 'adopt', item, options.busy));
+      if (canReject) actions.appendChild(createActionButton('却下', 'reject', item, options.busy));
+      if (canResolve) actions.appendChild(createActionButton('選択を確定', 'resolve', item,
+        options.busy || !options.hasConflictSelection));
       if (canUndo) actions.appendChild(createActionButton('元に戻す', 'undo', item, options.busy));
       card.appendChild(actions);
     }
@@ -127,6 +181,7 @@
     this.busy = new Set();
     this.messages = new Map();
     this.undoActions = new Map();
+    this.conflictSelections = new Map();
     this.lastUndoKey = '';
     this.previousFocus = null;
     this.bind();
@@ -149,11 +204,21 @@
       if (!button || !button.dataset) return;
       if (button.dataset.creditReviewAction === 'adopt') {
         self.adopt(button.dataset.videoId, button.dataset.role);
+      } else if (button.dataset.creditReviewAction === 'reject') {
+        self.reject(button.dataset.videoId, button.dataset.role);
+      } else if (button.dataset.creditReviewAction === 'resolve') {
+        self.resolveConflict(button.dataset.videoId, button.dataset.role);
       } else if (button.dataset.creditReviewAction === 'undo') {
         self.undo(button.dataset.videoId, button.dataset.role);
       }
     }
     if (this.list) this.list.addEventListener('click', handleAction);
+    if (this.list) this.list.addEventListener('change', function (event) {
+      var input = event.target;
+      if (input && input.dataset && input.dataset.creditReviewChoice) {
+        self.selectConflict(input.dataset.videoId, input.dataset.role, input.value);
+      }
+    });
     if (this.feedback) this.feedback.addEventListener('click', handleAction);
     this.modal.addEventListener('click', function (event) {
       if (event.target === self.modal) self.close();
@@ -197,8 +262,32 @@
     this.recordsByVideoId = new Map(records.map(function (record) {
       return [(record && record.videoId != null) ? String(record.videoId) : '', record || {}];
     }));
-    this.reviewList = root.CreditTarget.getCreditReviewList(
-      records, this.getMaterials(), this.getLimit());
+    var rawList = root.CreditTarget.getCreditReviewList(records, this.getMaterials());
+    var recordsByVideoId = this.recordsByVideoId;
+    var allItems = rawList.groups.reduce(function (items, group) { return items.concat(group.items); }, [])
+      .filter(function (item) {
+        if (item.state !== 'auto_candidate' && item.state !== 'needs_review') return true;
+        var record = recordsByVideoId.get(item.videoId);
+        return rejectedSignature(record, item.role) !== candidateSignature(item);
+      });
+    var limit = this.getLimit();
+    var displayed = allItems.slice(0, limit);
+    var counts = {};
+    Object.keys(STATE_LABELS).forEach(function (state) { counts[state] = 0; });
+    allItems.forEach(function (item) { counts[item.state]++; });
+    this.reviewList = {
+      totalCount: allItems.length,
+      displayedCount: displayed.length,
+      omittedCount: allItems.length - displayed.length,
+      truncated: displayed.length < allItems.length,
+      limit: limit,
+      counts: counts,
+      groups: Object.keys(STATE_LABELS).map(function (state) {
+        var totalCount = counts[state];
+        var items = displayed.filter(function (item) { return item.state === state; });
+        return { state: state, totalCount: totalCount, displayedCount: items.length, items: items };
+      }),
+    };
     this.updateCounts();
     this.render();
   };
@@ -225,15 +314,20 @@
     else delete record.creditRoleSources;
   };
 
-  CreditReviewController.prototype.adopt = async function (videoId, role) {
+  CreditReviewController.prototype.applySavedRejection = function (record, role, signature) {
+    if (!record) return;
+    var rejections = record.creditReviewRejections && typeof record.creditReviewRejections === 'object'
+      && !Array.isArray(record.creditReviewRejections)
+      ? Object.assign({}, record.creditReviewRejections) : {};
+    if (signature) rejections[role] = signature;
+    else delete rejections[role];
+    if (Object.keys(rejections).length) record.creditReviewRejections = rejections;
+    else delete record.creditReviewRejections;
+  };
+
+  CreditReviewController.prototype.commitCandidate = async function (videoId, role, value, label) {
     var key = this.roleKey(videoId, role);
-    if (this.busy.has(key)) return { error: 'busy' };
-    var item = this.findItem(videoId, role);
     var record = this.recordsByVideoId.get(String(videoId));
-    var value = adoptionValue(item);
-    if (!item || !record || (item.state !== 'auto_candidate' && item.state !== 'needs_review') || !value) {
-      return { error: 'not_adoptable' };
-    }
     var expectedSource = root.CreditTarget.effectiveRoleSource(record, role);
     this.busy.add(key);
     this.messages.set(key, { text: '保存しています。', tone: '' });
@@ -245,22 +339,103 @@
         adoptCandidate: true,
       });
       if (!result || result.updated !== true) {
-        this.messages.set(key, { text: '採用の保存に失敗しました。データは変更されていません。', tone: 'error' });
+        this.messages.set(key, { text: label + 'の保存に失敗しました。データは変更されていません。', tone: 'error' });
         return result || { error: 'save_failed' };
       }
       this.applySavedState(record, role, result.post, null, false);
-      this.undoActions.set(key, { previous: result.previous, post: result.post });
+      this.undoActions.set(key, { kind: 'adopt', previous: result.previous, post: result.post });
       this.lastUndoKey = key;
-      this.messages.set(key, { text: '採用しました。', tone: 'success' });
+      this.conflictSelections.delete(key);
+      this.messages.set(key, { text: label + 'しました。', tone: 'success' });
       this.refreshReviewList();
       return result;
     } catch (_error) {
-      this.messages.set(key, { text: '採用の保存に失敗しました。データは変更されていません。', tone: 'error' });
+      this.messages.set(key, { text: label + 'の保存に失敗しました。データは変更されていません。', tone: 'error' });
       return { error: 'save_failed' };
     } finally {
       this.busy.delete(key);
       this.render();
     }
+  };
+
+  CreditReviewController.prototype.adopt = async function (videoId, role) {
+    var key = this.roleKey(videoId, role);
+    if (this.busy.has(key)) return { error: 'busy' };
+    var item = this.findItem(videoId, role);
+    var record = this.recordsByVideoId.get(String(videoId));
+    var value = adoptionValue(item);
+    if (!item || !record || (item.state !== 'auto_candidate' && item.state !== 'needs_review') || !value) {
+      return { error: 'not_adoptable' };
+    }
+    return this.commitCandidate(videoId, role, value, '採用');
+  };
+
+  CreditReviewController.prototype.reject = async function (videoId, role) {
+    var key = this.roleKey(videoId, role);
+    if (this.busy.has(key)) return { error: 'busy' };
+    var item = this.findItem(videoId, role);
+    var record = this.recordsByVideoId.get(String(videoId));
+    if (!item || !record || (item.state !== 'auto_candidate' && item.state !== 'needs_review')) {
+      return { error: 'not_rejectable' };
+    }
+    var signature = candidateSignature(item);
+    if (!signature || signature === '[]') return { error: 'not_rejectable' };
+    this.busy.add(key);
+    this.messages.set(key, { text: '却下を保存しています。', tone: '' });
+    this.render();
+    try {
+      var result = await this.sendMutation({
+        videoId: String(videoId), role: role,
+        value: record[role], expectedCurrent: record[role],
+        expectedSource: root.CreditTarget.effectiveRoleSource(record, role),
+        rejectCandidate: signature,
+      });
+      if (!result || result.updated !== true) {
+        this.messages.set(key, { text: '却下の保存に失敗しました。候補は表示されたままです。', tone: 'error' });
+        return result || { error: 'save_failed' };
+      }
+      this.applySavedRejection(record, role, result.post && result.post.rejection);
+      this.undoActions.set(key, { kind: 'reject', previous: result.previous, post: result.post });
+      this.lastUndoKey = key;
+      this.messages.set(key, { text: '却下しました。', tone: 'success' });
+      this.refreshReviewList();
+      return result;
+    } catch (_error) {
+      this.messages.set(key, { text: '却下の保存に失敗しました。候補は表示されたままです。', tone: 'error' });
+      return { error: 'save_failed' };
+    } finally {
+      this.busy.delete(key);
+      this.render();
+    }
+  };
+
+  CreditReviewController.prototype.selectConflict = function (videoId, role, value) {
+    var item = this.findItem(videoId, role);
+    var values = uniqueCandidateValues(item && item.candidates);
+    if (!item || item.state !== 'conflict' || (value !== '' && values.indexOf(value) === -1)) {
+      return { error: 'invalid_selection' };
+    }
+    this.conflictSelections.set(this.roleKey(videoId, role), value);
+    this.render();
+    return { selected: true };
+  };
+
+  CreditReviewController.prototype.resolveConflict = async function (videoId, role) {
+    var key = this.roleKey(videoId, role);
+    if (this.busy.has(key)) return { error: 'busy' };
+    var item = this.findItem(videoId, role);
+    var record = this.recordsByVideoId.get(String(videoId));
+    if (!item || !record || item.state !== 'conflict' || !this.conflictSelections.has(key)) {
+      return { error: 'not_resolvable' };
+    }
+    var value = this.conflictSelections.get(key);
+    if (value === '') {
+      this.messages.set(key, { text: '変更せず、そのまま残しました。', tone: '' });
+      this.render();
+      return { unchanged: true };
+    }
+    if (uniqueCandidateValues(item.candidates).indexOf(value) === -1) return { error: 'invalid_selection' };
+    return this.commitCandidate(videoId, role, value, '確定');
   };
 
   CreditReviewController.prototype.undo = async function (videoId, role) {
@@ -273,23 +448,33 @@
     this.messages.set(key, { text: '元に戻しています。', tone: '' });
     this.render();
     try {
-      var result = await this.sendMutation({
+      var payload = {
         videoId: String(videoId), role: role, value: action.previous.value,
         expectedCurrent: action.post.value, expectedSource: action.post.source,
-        restoreRoleSource: restoreRoleSource,
-      });
+      };
+      if (action.kind === 'reject') {
+        payload.restoreCandidateRejection = action.previous.rejectionPresent
+          ? action.previous.rejection : null;
+      } else {
+        payload.restoreRoleSource = restoreRoleSource;
+      }
+      var result = await this.sendMutation(payload);
       if (!result || result.updated !== true) {
-        this.messages.set(key, { text: '取り消しの保存に失敗しました。採用済みの状態は変わっていません。', tone: 'error' });
+        this.messages.set(key, { text: '取り消しの保存に失敗しました。現在の状態は変わっていません。', tone: 'error' });
         return result || { error: 'save_failed' };
       }
-      this.applySavedState(record, role, result.post, restoreRoleSource, true);
+      if (action.kind === 'reject') {
+        this.applySavedRejection(record, role, result.post && result.post.rejection);
+      } else {
+        this.applySavedState(record, role, result.post, restoreRoleSource, true);
+      }
       this.undoActions.delete(key);
       if (this.lastUndoKey === key) this.lastUndoKey = '';
       this.messages.set(key, { text: '元に戻しました。', tone: 'success' });
       this.refreshReviewList();
       return result;
     } catch (_error) {
-      this.messages.set(key, { text: '取り消しの保存に失敗しました。採用済みの状態は変わっていません。', tone: 'error' });
+      this.messages.set(key, { text: '取り消しの保存に失敗しました。現在の状態は変わっていません。', tone: 'error' });
       return { error: 'save_failed' };
     } finally {
       this.busy.delete(key);
@@ -364,6 +549,8 @@
         busy: self.busy.has(key),
         canUndo: self.undoActions.has(key),
         message: self.messages.get(key),
+        hasConflictSelection: self.conflictSelections.has(key),
+        conflictSelection: self.conflictSelections.get(key),
       }));
     });
     this.list.appendChild(fragment);
@@ -389,7 +576,8 @@
         var videoId = this.lastUndoKey.slice(0, separator);
         var role = this.lastUndoKey.slice(separator + 1);
         var notice = document.createElement('span');
-        notice.textContent = text(ROLE_LABELS[role], role) + 'を採用しました。';
+        notice.textContent = text(ROLE_LABELS[role], role)
+          + (latest.kind === 'reject' ? 'を却下しました。' : 'を採用しました。');
         this.feedback.append(notice, createActionButton('元に戻す', 'undo', {
           videoId: videoId, role: role,
         }, this.busy.has(this.lastUndoKey)));

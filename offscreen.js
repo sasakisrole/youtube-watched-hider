@@ -287,6 +287,10 @@ async function handleDbRpc(message) {
         expectedSource: message.expectedSource,
       };
       if (message.adoptCandidate === true) args.adoptCandidate = true;
+      if (typeof message.rejectCandidate === 'string') args.rejectCandidate = message.rejectCandidate;
+      if (Object.prototype.hasOwnProperty.call(message, 'restoreCandidateRejection')) {
+        args.restoreCandidateRejection = message.restoreCandidateRejection;
+      }
       if (Object.prototype.hasOwnProperty.call(message, 'restoreRoleSource')) {
         args.restoreRoleSource = message.restoreRoleSource;
       }

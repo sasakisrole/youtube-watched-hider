@@ -389,8 +389,14 @@ if (typeof WatchedDB === 'undefined') {
     async function setManualCreditRole(args = {}) {
       const { videoId, role, value, expectedCurrent, expectedSource, restoreRoleSource } = args;
       const adoptCandidate = args.adoptCandidate === true;
+      const rejectCandidate = typeof args.rejectCandidate === 'string' ? args.rejectCandidate : '';
       const hasRestoreRoleSource = Object.prototype.hasOwnProperty.call(args, 'restoreRoleSource');
+      const hasRestoreCandidateRejection = Object.prototype.hasOwnProperty.call(args, 'restoreCandidateRejection');
       if (!CREDIT_ROLES.includes(role)) return { error: 'bad_role' };
+      if ((rejectCandidate && hasRestoreCandidateRejection)
+        || ((rejectCandidate || hasRestoreCandidateRejection) && (adoptCandidate || hasRestoreRoleSource))) {
+        return { error: 'invalid_value' };
+      }
       const db = await openDB();
       return new Promise((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -412,6 +418,48 @@ if (typeof WatchedDB === 'undefined') {
 
           const nextIsBlank = normalizeCasBlank(value) === '';
           const currentIsBlank = globalThis.CreditTarget.creditIsBlank(currentValue);
+          if (rejectCandidate || hasRestoreCandidateRejection) {
+            if (currentSource === 'manual') {
+              result = { error: 'already_verified' };
+              return;
+            }
+            const priorRejections = existing.creditReviewRejections;
+            const rejectionPresent = !!(priorRejections && !Array.isArray(priorRejections)
+              && Object.prototype.hasOwnProperty.call(priorRejections, role));
+            const previousRejection = rejectionPresent && typeof priorRejections[role] === 'string'
+              ? priorRejections[role] : '';
+            const rejections = {};
+            if (priorRejections && typeof priorRejections === 'object' && !Array.isArray(priorRejections)) {
+              CREDIT_ROLES.forEach((candidateRole) => {
+                if (typeof priorRejections[candidateRole] === 'string' && priorRejections[candidateRole]) {
+                  rejections[candidateRole] = priorRejections[candidateRole];
+                }
+              });
+            }
+            if (rejectCandidate) {
+              rejections[role] = rejectCandidate;
+            } else if (typeof args.restoreCandidateRejection === 'string'
+              && args.restoreCandidateRejection) {
+              rejections[role] = args.restoreCandidateRejection;
+            } else {
+              delete rejections[role];
+            }
+            if (Object.keys(rejections).length) existing.creditReviewRejections = rejections;
+            else delete existing.creditReviewRejections;
+            store.put(existing);
+            result = {
+              updated: true,
+              previous: {
+                value: currentValue, source: currentSource,
+                rejection: previousRejection, rejectionPresent,
+              },
+              post: {
+                value: currentValue, source: currentSource,
+                rejection: rejections[role] || '',
+              },
+            };
+            return;
+          }
           if (hasRestoreRoleSource && restoreRoleSource !== null && !CREDIT_ROLE_SOURCES.has(restoreRoleSource)) {
             result = { error: 'invalid_value' };
             return;
