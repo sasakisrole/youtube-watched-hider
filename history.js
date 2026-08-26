@@ -1311,6 +1311,21 @@ if (enrichCreditsBtn && window.EnrichCredits) {
   });
 }
 
+// --- クレジット確認センター（N4・読み取り専用） ---
+// 候補生成済みなら、その場のメモリ上の候補も表示材料にする。ここからの保存・通信は行わない。
+const creditReviewBtn = document.getElementById('creditReviewOpen');
+let creditReviewController = null;
+if (creditReviewBtn && window.CreditReview) {
+  creditReviewController = window.CreditReview.create({
+    getRecords: () => allData,
+    getMaterials: () => ({
+      candidates: enrichCreditsController && typeof enrichCreditsController.getAllCandidates === 'function'
+        ? enrichCreditsController.getAllCandidates()
+        : [],
+    }),
+  });
+}
+
 let activeDurationsPort = null;
 function runFixDurations(videoIds) {
   if (!videoIds.length) {

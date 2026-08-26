@@ -278,6 +278,87 @@
       font-size: 12px;
       font-variant-numeric: tabular-nums;
     }
+
+    /* クレジット確認センター。後で見ると同じ中央ダイアログの開閉作法を使う。 */
+    body.credit-review-modal-open { overflow: hidden; }
+    .credit-review-modal[hidden] { display: none; }
+    .credit-review-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 101;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      background: rgba(10, 10, 12, 0.52);
+    }
+    .credit-review-dialog {
+      width: min(920px, calc(100vw - 36px));
+      max-height: min(760px, calc(100vh - 36px));
+      padding: 16px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius);
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .credit-review-header { display: flex; align-items: flex-start; gap: 12px; }
+    .credit-review-heading { flex: 1; min-width: 0; }
+    .credit-review-heading h2 { font-size: 16px; font-weight: 650; margin: 0 0 4px; }
+    .credit-review-note { color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+    .credit-review-close { min-width: 44px; min-height: 44px; }
+    .credit-review-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+    .credit-review-filter { min-height: 44px; font-variant-numeric: tabular-nums; }
+    .credit-review-summary { min-height: 1.5em; color: var(--text-muted); font-size: 12px; }
+    .credit-review-list {
+      flex: 1 1 auto;
+      min-height: 5em;
+      overflow-y: auto;
+      display: grid;
+      gap: 8px;
+      align-content: start;
+    }
+    .credit-review-item {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      background: var(--surface-2);
+    }
+    .credit-review-item-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    .credit-review-title { flex: 1 1 20em; font-weight: 650; overflow-wrap: anywhere; }
+    .credit-review-channel { color: var(--text-muted); font-size: 12px; }
+    .credit-review-badge {
+      border: 1px solid var(--border-strong);
+      border-radius: 999px;
+      padding: 2px 8px;
+      color: var(--accent-strong);
+      background: var(--accent-soft);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .credit-review-values {
+      display: grid;
+      grid-template-columns: max-content minmax(0, 1fr);
+      gap: 4px 10px;
+      margin-top: 8px;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .credit-review-values dt { color: var(--text-muted); }
+    .credit-review-values dd { margin: 0; overflow-wrap: anywhere; }
+    .credit-review-empty {
+      padding: 28px 16px;
+      border: 1px dashed var(--border-strong);
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      text-align: center;
+    }
+    .credit-review-empty[hidden] { display: none; }
+    .credit-review-modal button:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
     .wl-actions .sort-btn { min-height: 44px; }
     .sort-btn.wl-danger { border-color: var(--danger); color: var(--danger); }
     .sort-btn.wl-danger:hover {
@@ -1013,6 +1094,12 @@
       <button class="sort-btn" id="bulkRemoveWatchLater" title="照合で見つかった視聴済みの動画を一覧で確認してから、まとめて削除する。取り消せない" disabled>まとめて削除</button>
     </div>
 
+    <!-- クレジット確認。入口は常時表示し、一覧は中央の読み取り専用ダイアログに出す。 -->
+    <div class="toolbar-row">
+      <span class="toolbar-label">クレジット</span>
+      <button class="sort-btn" id="creditReviewOpen" type="button" title="動画ごとの作曲・作詞・編曲の状態を読み取り専用で確認">クレジット確認センター</button>
+    </div>
+
     <!-- Row 4: メンテナンスの開閉バー。進捗(#fixStatus)は畳んでも見えるようここに置く -->
     <div class="toolbar-row maint-bar">
       <button class="maint-toggle" id="maintToggle" type="button" aria-expanded="false" aria-controls="maintPanel">
@@ -1073,6 +1160,29 @@
         <button class="sort-btn" id="wlPanelCancel" type="button">やめる</button>
         <span id="wlPanelStatus" role="status" aria-live="polite"></span>
       </div>
+    </section>
+  </div>
+
+  <div class="credit-review-modal" id="creditReviewModal" hidden aria-hidden="true">
+    <section class="credit-review-dialog" role="dialog" aria-modal="true" aria-labelledby="creditReviewTitle" aria-describedby="creditReviewNote">
+      <div class="credit-review-header">
+        <div class="credit-review-heading">
+          <h2 id="creditReviewTitle">クレジット確認センター</h2>
+          <p class="credit-review-note" id="creditReviewNote">動画ごとの作曲・作詞・編曲を、現在値と候補を並べて確認できます。この画面からデータは変更されません。</p>
+        </div>
+        <button class="sort-btn credit-review-close" id="creditReviewClose" type="button" aria-label="クレジット確認センターを閉じる">閉じる</button>
+      </div>
+      <div class="credit-review-filters" id="creditReviewFilters" role="group" aria-label="確認状態で絞り込み">
+        <button class="sort-btn credit-review-filter active" type="button" data-credit-review-state="all" aria-pressed="true">すべて <span data-credit-review-count="all">0</span></button>
+        <button class="sort-btn credit-review-filter" type="button" data-credit-review-state="conflict" aria-pressed="false">競合 <span data-credit-review-count="conflict">0</span></button>
+        <button class="sort-btn credit-review-filter" type="button" data-credit-review-state="needs_review" aria-pressed="false">要確認 <span data-credit-review-count="needs_review">0</span></button>
+        <button class="sort-btn credit-review-filter" type="button" data-credit-review-state="auto_candidate" aria-pressed="false">自動候補 <span data-credit-review-count="auto_candidate">0</span></button>
+        <button class="sort-btn credit-review-filter" type="button" data-credit-review-state="unresolved" aria-pressed="false">未解決 <span data-credit-review-count="unresolved">0</span></button>
+        <button class="sort-btn credit-review-filter" type="button" data-credit-review-state="verified" aria-pressed="false">確認済み <span data-credit-review-count="verified">0</span></button>
+      </div>
+      <p class="credit-review-summary" id="creditReviewSummary" role="status" aria-live="polite"></p>
+      <div class="credit-review-list" id="creditReviewList"></div>
+      <div class="credit-review-empty" id="creditReviewEmpty" hidden>該当なし</div>
     </section>
   </div>
 
@@ -1280,6 +1390,7 @@
   <script src="official_profile_store.js"></script>
   <script src="analyze_official_profiles.js"></script>
   <script src="enrich_credits.js"></script>
+  <script src="credit_review.js"></script>
   <script src="history.js"></script>
   <script src="analyzer.js"></script>
   <script src="trends.js"></script>
