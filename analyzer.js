@@ -817,6 +817,26 @@
 
     void paint();
 
+    // 確認欄は「いまフォームに入っている値」に対する申告なので、値が変わったら申告を捨てる。
+    // 確認用リンクも新しいURLへ差し替える（古いURLのまま確認し直せると同じ穴が開く）。
+    function invalidateOfficialConfirmation() {
+      const url = document.getElementById('azOfficialChannelUrl').value.trim();
+      const target = document.getElementById('azOfficialTarget');
+      if (target) {
+        if (url) target.href = url;
+        else target.removeAttribute('href');
+      }
+      const confirmed = document.getElementById('azOfficialConfirmed');
+      if (!confirmed || !confirmed.checked) return;
+      confirmed.checked = false;
+      setOfficialRegistrationStatus(
+        '入力を変更したので確認を取り消しました。リンク先を確認し直してからチェックしてください。',
+        true
+      );
+    }
+    document.getElementById('azOfficialProfileName').oninput = invalidateOfficialConfirmation;
+    document.getElementById('azOfficialChannelUrl').oninput = invalidateOfficialConfirmation;
+
     saveButton.onclick = async () => {
       if (!currentOfficialCandidate) {
         setOfficialRegistrationStatus('先に候補を選んでください。', true);
