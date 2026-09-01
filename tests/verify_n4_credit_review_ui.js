@@ -132,8 +132,11 @@ function countFor(ui, state) {
 
 async function testMarkupAndIntegration() {
   console.log('markup / integration');
-  check('history has a permanent opener and labelled modal dialog', HTML.includes('id="creditReviewOpen"')
-    && HTML.includes('id="creditReviewModal"') && HTML.includes('aria-labelledby="creditReviewTitle"'));
+  // 2026-09-02: 入口を外してクレジット補完へ統合した。markup と読み込みは1版だけ
+  // 残すので、「入口が無い」ことと「戻せる形で残っている」ことを両方固定する。
+  check('the history page no longer offers a review-center entry point', !HTML.includes('id="creditReviewOpen"'));
+  check('the dialog markup is still shipped so the entry point can be restored',
+    HTML.includes('id="creditReviewModal"') && HTML.includes('aria-labelledby="creditReviewTitle"'));
   check('credit review script is loaded before history integration', HTML.indexOf('credit_review.js') > 0
     && HTML.indexOf('credit_review.js') < HTML.indexOf('history.js'));
   check('history integrates current records and in-memory candidates', HISTORY_SOURCE.includes('window.CreditReview.create')

@@ -1129,11 +1129,10 @@
       <button class="sort-btn" id="bulkRemoveWatchLater" title="照合で見つかった視聴済みの動画を一覧で確認してから、まとめて削除する。取り消せない" disabled>まとめて削除</button>
     </div>
 
-    <!-- クレジット確認。入口は常時表示し、一覧は中央の読み取り専用ダイアログに出す。 -->
-    <div class="toolbar-row">
-      <span class="toolbar-label">クレジット</span>
-      <button class="sort-btn" id="creditReviewOpen" type="button" title="動画ごとの作曲・作詞・編曲の状態を読み取り専用で確認">クレジット確認センター</button>
-    </div>
+    <!-- クレジット確認センターの入口は外した（2026-09-02）。実データでは意味を持つ
+         状態が要確認と未解決だけで、どちらもクレジット補完側の仕事だったため。
+         ダイアログの markup と credit_review.js は1版だけ残す（戻すならここへ
+         button#creditReviewOpen を書き戻すだけで復活する）。 -->
 
     <!-- Row 4: メンテナンスの開閉バー。進捗(#fixStatus)は畳んでも見えるようここに置く -->
     <div class="toolbar-row maint-bar">
