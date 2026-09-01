@@ -315,6 +315,20 @@
     return roles;
   }
 
+  // 却下の記録は確認センターと同じ形（値の配列のJSON）で持つ。同じ鍵を読み書き
+  // しないと、片方で却下した候補がもう片方で復活する。
+  function candidateRejectionSignature(value) {
+    const text = value == null ? '' : String(value).trim();
+    return text ? JSON.stringify([text]) : '';
+  }
+
+  function isRejectedCandidateValue(record, role, value) {
+    const rejections = record && record.creditReviewRejections;
+    if (!rejections || typeof rejections !== 'object' || Array.isArray(rejections)) return false;
+    const signature = candidateRejectionSignature(value);
+    return !!signature && rejections[role] === signature;
+  }
+
   function sourceToCreditsSource(source) {
     return `enrich:${source}`;
   }
@@ -530,6 +544,7 @@
 
       this.rules = null;
       this.candidatesByChannel = new Map();
+      this.rejecting = new Set();
       this.activeChannel = '';
       this.sortKey = 'default';
       this.sortDir = 'asc';
@@ -1415,7 +1430,10 @@
           const stillMissing = () => states.filter((s) => s.missing.size && !this.abortRequested);
           const applyCandidate = (state, candidate) => {
             if (this.abortRequested || !candidate) return;
-            const roles = coveredNeededRoles(candidate, state.missing);
+            // 一度却下した値は出し直さない。毎回同じ候補が並ぶと、却下という操作に
+            // 意味が無くなる。
+            const roles = coveredNeededRoles(candidate, state.missing)
+              .filter((role) => !isRejectedCandidateValue(state.video, role, candidate[role]));
             if (!roles.length) return;
             // Add a role-limited copy so a candidate accepted for one role does
             // not carry (and later force-overwrite) another role's value.
@@ -1719,7 +1737,76 @@
       simCell.textContent = candidate.sim == null ? '-' : candidate.sim.toFixed(3);
       row.appendChild(simCell);
 
+      const rejectCell = document.createElement('td');
+      const reject = document.createElement('button');
+      reject.type = 'button';
+      reject.className = 'sort-btn';
+      reject.textContent = '却下';
+      reject.setAttribute('aria-label', `${candidate.title || candidate.videoId} の候補を却下`);
+      reject.disabled = this.rejecting.has(candidate.id);
+      reject.addEventListener('click', () => { void this.rejectCandidate(candidate); });
+      rejectCell.appendChild(reject);
+      row.appendChild(rejectCell);
+
       return row;
+    }
+
+    // 却下は「この値はこの動画には当たらない」という記録。確認センターから移設した
+    // （2026-09-01）ので、書き込む鍵は向こうと同じ creditReviewRejections。
+    async rejectCandidate(candidate) {
+      if (!candidate || this.rejecting.has(candidate.id)) return;
+      const record = (this.getRecords() || [])
+        .find((entry) => entry && String(entry.videoId) === String(candidate.videoId));
+      if (!record) {
+        this.setMessage('この動画の記録が見つからないため却下できません。', 'error');
+        return;
+      }
+      this.rejecting.add(candidate.id);
+      this.renderTable(true);
+      try {
+        for (const entry of roleEntries(candidate)) {
+          const signature = candidateRejectionSignature(entry.value);
+          if (!signature) continue;
+          const result = await this.sendManualMutation({
+            videoId: String(candidate.videoId),
+            role: entry.key,
+            value: record[entry.key],
+            expectedCurrent: record[entry.key],
+            expectedSource: this.effectiveManualSource(record, entry.key),
+            rejectCandidate: signature,
+          });
+          if (!result || result.updated !== true) {
+            this.setMessage('却下を保存できませんでした。候補は残しています。', 'error');
+            return;
+          }
+          const rejections = record.creditReviewRejections
+            && typeof record.creditReviewRejections === 'object'
+            && !Array.isArray(record.creditReviewRejections)
+            ? record.creditReviewRejections : {};
+          rejections[entry.key] = signature;
+          record.creditReviewRejections = rejections;
+        }
+        this.removeCandidate(candidate);
+        this.setMessage('候補を却下しました。次回の候補生成でも出てきません。', 'success');
+      } catch (error) {
+        this.setMessage(`却下を保存できませんでした: ${error.message}`, 'error');
+      } finally {
+        this.rejecting.delete(candidate.id);
+        this.renderAll();
+        this.updateTotals();
+        this.updateButtons();
+      }
+    }
+
+    removeCandidate(candidate) {
+      for (const [channel, list] of this.candidatesByChannel) {
+        const index = list.findIndex((entry) => entry.id === candidate.id);
+        if (index === -1) continue;
+        list.splice(index, 1);
+        if (!list.length) this.candidatesByChannel.delete(channel);
+        return true;
+      }
+      return false;
     }
 
     updateTotals() {
@@ -1875,6 +1962,8 @@
     limitEnrichmentGroups,
     coveredNeededRoles,
     limitCandidateToRoles,
+    candidateRejectionSignature,
+    isRejectedCandidateValue,
     waterfallAccept,
     createRuleCandidate,
     normalizeSameSongTitle,
