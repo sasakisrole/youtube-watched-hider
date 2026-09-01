@@ -1767,7 +1767,10 @@
         for (const entry of roleEntries(candidate)) {
           const signature = candidateRejectionSignature(entry.value);
           if (!signature) continue;
-          const result = await this.sendManualMutation({
+          // DB_RPC の応答は {success, result:{updated,...}} の入れ子。既存の
+          // performManualMutation と同じ読み方をする（直に updated を見ると、
+          // 保存できていても失敗と判定する）。
+          const response = await this.sendManualMutation({
             videoId: String(candidate.videoId),
             role: entry.key,
             value: record[entry.key],
@@ -1775,8 +1778,9 @@
             expectedSource: this.effectiveManualSource(record, entry.key),
             rejectCandidate: signature,
           });
-          if (!result || result.updated !== true) {
-            this.setMessage('却下を保存できませんでした。候補は残しています。', 'error');
+          if (!response || response.success !== true || (response.result || {}).updated !== true) {
+            const detail = (response && response.error) || '保存できませんでした';
+            this.setMessage(`却下を保存できませんでした（${detail}）。候補は残しています。`, 'error');
             return;
           }
           const rejections = record.creditReviewRejections

@@ -54,5 +54,18 @@ check('壊れた却下記録でも落ちない',
 check('空の候補値は却下判定に掛けない',
   H.isRejectedCandidateValue(rejected, 'composer', '') === false);
 
+// DB_RPC の応答は {success, result:{updated}} の入れ子。直に updated を見ると保存
+// できていても失敗と判定する（2026-09-02 実機検証で踏んだ）。読み方を固定する。
+console.log('保存応答の読み方');
+const rejectSource = src.slice(src.indexOf('async rejectCandidate('), src.indexOf('removeCandidate(candidate)'));
+check('応答は success と result.updated の両方で判定している',
+  rejectSource.includes('response.success !== true')
+  && rejectSource.includes('(response.result || {}).updated !== true'));
+check('入れ子を無視した判定を書いていない',
+  !/\bresponse\.updated\b/.test(rejectSource) && !/\bresult\.updated !== true/.test(rejectSource));
+check('保存に失敗したら候補を消さない',
+  rejectSource.indexOf('候補は残しています') < rejectSource.indexOf('this.removeCandidate')
+  || !rejectSource.includes('this.removeCandidate'));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
