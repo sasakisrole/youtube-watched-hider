@@ -271,22 +271,25 @@
         return rejectedSignature(record, item.role) !== candidateSignature(item);
       });
     var limit = this.getLimit();
-    var displayed = allItems.slice(0, limit);
     var counts = {};
     Object.keys(STATE_LABELS).forEach(function (state) { counts[state] = 0; });
     allItems.forEach(function (item) { counts[item.state]++; });
+    // 上限は状態ごとに掛ける。一覧全体を先に切ると、並び順で先に来る状態が枠を
+    // 使い切り、他の状態はタブに件数が出ているのに中身が空になる（実データでは
+    // 要確認が27,215件あり、それ以外のタブが全滅した・2026-09-01）。
+    var groups = Object.keys(STATE_LABELS).map(function (state) {
+      var items = allItems.filter(function (item) { return item.state === state; }).slice(0, limit);
+      return { state: state, totalCount: counts[state], displayedCount: items.length, items: items };
+    });
+    var displayedCount = groups.reduce(function (sum, group) { return sum + group.displayedCount; }, 0);
     this.reviewList = {
       totalCount: allItems.length,
-      displayedCount: displayed.length,
-      omittedCount: allItems.length - displayed.length,
-      truncated: displayed.length < allItems.length,
+      displayedCount: displayedCount,
+      omittedCount: allItems.length - displayedCount,
+      truncated: displayedCount < allItems.length,
       limit: limit,
       counts: counts,
-      groups: Object.keys(STATE_LABELS).map(function (state) {
-        var totalCount = counts[state];
-        var items = displayed.filter(function (item) { return item.state === state; });
-        return { state: state, totalCount: totalCount, displayedCount: items.length, items: items };
-      }),
+      groups: groups,
     };
     this.updateCounts();
     this.render();
@@ -529,10 +532,17 @@
 
   CreditReviewController.prototype.visibleItems = function () {
     if (!this.reviewList) return [];
-    var groups = this.filterState === 'all'
-      ? this.reviewList.groups
-      : this.reviewList.groups.filter(function (group) { return group.state === this.filterState; }, this);
-    return groups.reduce(function (items, group) { return items.concat(group.items); }, []);
+    if (this.filterState !== 'all') {
+      var group = this.reviewList.groups.filter(function (candidate) {
+        return candidate.state === this.filterState;
+      }, this)[0];
+      return group ? group.items : [];
+    }
+    // すべて表示は全状態を混ぜるので、ここで一度だけ上限を掛け直す
+    // （状態ごとの上限をそのまま足すと、状態数の分だけ描画量が増える）。
+    return this.reviewList.groups
+      .reduce(function (items, group) { return items.concat(group.items); }, [])
+      .slice(0, this.reviewList.limit);
   };
 
   CreditReviewController.prototype.render = function () {

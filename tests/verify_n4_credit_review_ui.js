@@ -167,12 +167,28 @@ async function testCountsFilteringAndRows() {
 
 async function testTruncatedAndEmpty() {
   console.log('truncated / empty');
-  const data = fixture(); const limited = load(data.records, data.materials, 3);
+  // 上限は状態ごとに掛かる。counts は conflict 1 / needs_review 1 / auto_candidate 1 /
+  // unresolved 2 / verified 1 なので、上限1なら unresolved だけが1件削られる。
+  const data = fixture(); const limited = load(data.records, data.materials, 1);
   await limited.opener.trigger('click');
-  check('truncated list says N件中M件を表示', limited.summary.textContent.includes('6件中3件を表示'));
+  check('truncated list says N件中M件を表示', limited.summary.textContent.includes('6件中5件を表示'));
   await limited.filters.trigger('click', { target: limited.filterButtons.verified });
-  check('a state omitted by the global limit is not presented as truly empty', !limited.empty.hidden
-    && limited.empty.textContent === '表示上限内に該当なし' && countFor(limited, 'verified') === '1');
+  check('a state is not emptied by another state filling the limit', limited.empty.hidden
+    && cards(limited).length === 1 && countFor(limited, 'verified') === '1');
+  // 実データで起きた形: 1つの状態だけが上限を大きく超えている。
+  const crowdedRecords = Array.from({ length: 40 }, (unused, index) => ({
+    videoId: `crowded-${String(index).padStart(3, '0')}`,
+    composer: 'Imported Composer', lyricist: '', arranger: '',
+    creditRoleSources: { composer: 'topic' },
+  })).concat([{ videoId: 'verified-1', composer: 'Manual', lyricist: '', arranger: '',
+    creditRoleSources: { composer: 'manual' } }]);
+  const crowded = load(crowdedRecords, {}, 5);
+  await crowded.opener.trigger('click');
+  check('a state far over the limit does not hide the other states',
+    countFor(crowded, 'needs_review') === '40' && countFor(crowded, 'verified') === '1');
+  await crowded.filters.trigger('click', { target: crowded.filterButtons.verified });
+  check('the crowded-out state still shows its rows when selected',
+    crowded.empty.hidden && cards(crowded).length === 1);
   const emptyUi = load([], {}, 3); await emptyUi.opener.trigger('click');
   check('zero items show 該当なし instead of a blank list', !emptyUi.empty.hidden
     && emptyUi.empty.textContent === '該当なし' && emptyUi.list.hidden);
