@@ -78,6 +78,7 @@
     creditRelatedVideoIds: new Set(),
     creditLookupKey: '',
     creditLookupGeneration: 0,
+    creditLookupError: '',
     previewVideoIds: [],
     previewCreditsByVideoId: {},
     previewResults: {},
@@ -559,7 +560,10 @@
     const generation = ++state.creditLookupGeneration;
     state.creditCandidates = [];
     state.creditRelatedVideoIds = new Set();
+    const previousLookupError = state.creditLookupError;
+    state.creditLookupError = '';
     renderManagementState();
+    if (previousLookupError) setManagementStatus('');
     if (!canLookup) return;
 
     void dbRpc('GET_CREDITS_FOR_VIDEO_IDS', { videoIds })
@@ -599,16 +603,24 @@
           profileName: candidateProfile.displayName || candidateProfile.id,
         }));
         state.creditRelatedVideoIds = new Set(relatedInference.relatedVideoIds);
+        state.creditLookupError = '';
         scanSearchResults();
         renderManagementState();
       })
-      .catch(() => {
+      .catch((error) => {
         if (
+          !state.disposed &&
           generation === state.creditLookupGeneration &&
           lookupKey === state.creditLookupKey
         ) {
           // Fail open. A later real page mutation may retry the local DB read.
           state.creditLookupKey = '';
+          state.creditLookupError = error?.message || 'DB RPC failed';
+          renderManagementState();
+          setManagementStatus(
+            `クレジットDBから公式ソース候補を照会できませんでした: ${state.creditLookupError}`,
+            true
+          );
         }
       });
   }
@@ -1604,7 +1616,9 @@
           candidate.channel
         ) < 0;
       });
-      if (candidates.length === 0) {
+      if (state.creditLookupError) {
+        // The existing management status reports the lookup failure.
+      } else if (candidates.length === 0) {
         appendText(
           creditCandidateList,
           'li',

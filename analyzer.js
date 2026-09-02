@@ -681,6 +681,18 @@
     status.style.color = isError ? 'var(--danger, #e66)' : 'var(--text-muted)';
   }
 
+  function bindOfficialConfirmationReset() {
+    const confirmed = document.getElementById('azOfficialConfirmed');
+    if (!confirmed) return;
+    for (const id of ['azOfficialProfileName', 'azOfficialChannelUrl']) {
+      document.getElementById(id)?.addEventListener('input', () => {
+        confirmed.checked = false;
+      });
+    }
+  }
+
+  bindOfficialConfirmationReset();
+
   async function openOfficialCandidateReview(candidate) {
     const api = window.YWHAnalyzeOfficialProfiles;
     const review = document.getElementById('azOfficialReview');

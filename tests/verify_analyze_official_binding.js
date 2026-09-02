@@ -53,6 +53,46 @@ function registration(bindQuery, confirmed = true) {
   };
 }
 
+function createInput() {
+  const listeners = new Map();
+  return {
+    checked: false,
+    addEventListener(type, listener) {
+      const registered = listeners.get(type) || [];
+      registered.push(listener);
+      listeners.set(type, registered);
+    },
+    dispatch(type) {
+      for (const listener of listeners.get(type) || []) listener();
+    },
+  };
+}
+
+function verifyConfirmationReset(analyzer) {
+  const elements = {
+    azOfficialProfileName: createInput(),
+    azOfficialChannelUrl: createInput(),
+    azOfficialConfirmed: createInput(),
+  };
+  const start = analyzer.indexOf('let currentOfficialCandidate = null;');
+  const end = analyzer.indexOf('\n  async function runAnalysis()', start);
+  if (start < 0 || end < 0) return null;
+  const document = {
+    getElementById(id) {
+      return elements[id] || null;
+    },
+  };
+  new Function('document', 'window', analyzer.slice(start, end))(document, {});
+
+  elements.azOfficialConfirmed.checked = true;
+  elements.azOfficialProfileName.dispatch('input');
+  const profileReset = elements.azOfficialConfirmed.checked === false;
+  elements.azOfficialConfirmed.checked = true;
+  elements.azOfficialChannelUrl.dispatch('input');
+  const urlReset = elements.azOfficialConfirmed.checked === false;
+  return { profileReset, urlReset };
+}
+
 async function main() {
   const root = path.join(__dirname, '..');
   const html = fs.readFileSync(path.join(root, 'history.html'), 'utf8');
@@ -70,6 +110,11 @@ async function main() {
     !/confirmed:\s*true,\s*bindQuery:\s*false/s.test(analyzer));
   check('the candidate search term is passed as the binding query',
     /const query\s*=\s*String\(currentOfficialCandidate\.profileName/.test(analyzer));
+  const confirmationReset = verifyConfirmationReset(analyzer);
+  check('editing the official profile name clears confirmation',
+    confirmationReset?.profileReset === true);
+  check('editing the channel URL clears confirmation',
+    confirmationReset?.urlReset === true);
 
   console.log('binding persistence gate');
   const defaultStorage = createStorageStub();

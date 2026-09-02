@@ -1,6 +1,8 @@
 'use strict';
 
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 
 const {
   CATEGORY,
@@ -425,6 +427,69 @@ test(
   }
 );
 
-console.log(
-  '\nAll official search filter tests passed.'
-);
+async function verifyCreditLookupFailure() {
+  const settingsTestPath = path.join(
+    __dirname,
+    'verify_official_search_filter_settings.js'
+  );
+  const settingsSource = fs.readFileSync(settingsTestPath, 'utf8');
+  const helperSource = settingsSource.slice(
+    0,
+    settingsSource.lastIndexOf('\nasync function main() {')
+  );
+  const helpers = new Function(
+    'require',
+    '__dirname',
+    `${helperSource}\nreturn { createStorageStub, boundSettings, makeRuntime, panel, settle };`
+  )(require, __dirname);
+
+  const successfulStorage = helpers.createStorageStub(
+    helpers.boundSettings('official')
+  );
+  successfulStorage.chrome.runtime.sendMessage = (_message, callback) => {
+    callback({ success: true, result: {} });
+  };
+  const successfulRuntime = helpers.makeRuntime(successfulStorage);
+  await helpers.settle();
+  await helpers.settle();
+  const successfulPanel = helpers.panel(successfulRuntime);
+  assert.match(
+    successfulPanel.querySelector('[data-credit-candidate-list]').textContent,
+    /未登録候補はありません/
+  );
+  successfulRuntime.context._ywhOfficialSearchFilter.cleanup();
+
+  const failedStorage = helpers.createStorageStub(
+    helpers.boundSettings('official')
+  );
+  failedStorage.chrome.runtime.sendMessage = (_message, callback) => {
+    callback({ success: false, error: 'database unavailable' });
+  };
+  const failedRuntime = helpers.makeRuntime(failedStorage);
+  try {
+    await helpers.settle();
+    await helpers.settle();
+    const failedPanel = helpers.panel(failedRuntime);
+    const status = failedPanel.querySelector('#ywh-osf-management-status');
+    assert.strictEqual(status.dataset.status, 'error');
+    assert.match(status.textContent, /候補を照会できませんでした/);
+    assert.match(status.textContent, /database unavailable/);
+    assert.doesNotMatch(
+      failedPanel.querySelector('[data-credit-candidate-list]').textContent,
+      /未登録候補はありません/
+    );
+    console.log('✓ DB/RPC失敗を候補0件と区別してエラー表示');
+  } finally {
+    failedRuntime.context._ywhOfficialSearchFilter.cleanup();
+  }
+}
+
+verifyCreditLookupFailure()
+  .then(() => {
+    console.log('\nAll official search filter tests passed.');
+  })
+  .catch((error) => {
+    console.error('✗ DB/RPC失敗時の回帰テスト');
+    console.error(error);
+    process.exitCode = 1;
+  });
