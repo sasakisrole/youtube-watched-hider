@@ -117,7 +117,10 @@ v1.36.0以降のエクスポートJSONは`schemaVersion: 2`のenvelopeです。
 
 ## 支援
 
-個人が趣味で作って無償で公開しているツールです。役に立っていたら [GitHub Sponsors](https://github.com/sponsors/sasakisrole) から支援できます。
+個人が趣味で作って無償で公開しているツールです。役に立っていたら、次のどちらからでも支援できます。
+
+- [Ko-fi](https://ko-fi.com/srole) — アカウント登録なしで、カード・Apple Pay・Google Pay から一度だけ送れます
+- [GitHub Sponsors](https://github.com/sponsors/sasakisrole) — GitHub アカウントをお持ちの方向け
 
 支援しても機能は増えません。支援しない人と使える範囲は同じで、広告も入れません。
 
