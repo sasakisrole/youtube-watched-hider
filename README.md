@@ -115,6 +115,12 @@ v1.36.0以降のエクスポートJSONは`schemaVersion: 2`のenvelopeです。
 この拡張機能は**YouTube LLCおよびGoogle LLCとは無関係**の非公式ツールです。
 ユーザー自身のブラウザ内でのDOM操作と公開APIの利用にとどまり、YouTubeのサービス本体には何の影響も与えません。
 
+## 支援
+
+個人が趣味で作って無償で公開しているツールです。役に立っていたら [GitHub Sponsors](https://github.com/sponsors/sasakisrole) から支援できます。
+
+支援しても機能は増えません。支援しない人と使える範囲は同じで、広告も入れません。
+
 ## ライセンス
 
 MIT License — [LICENSE](LICENSE) を参照

@@ -92,6 +92,23 @@
     .older { border-top: 1px solid var(--border); padding: 10px 0; }
     .older .summary { margin: 4px 0 0; color: var(--text-muted); font-size: 13px; }
     .empty { color: var(--text-muted); }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .support-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 44px;
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--accent);
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .support-link:hover { background: var(--accent-soft); }
+    .support-link svg { width: 16px; height: 16px; flex-shrink: 0; }
+    .support-note { margin: 10px 0 0; color: var(--text-muted); font-size: 13px; }
   </style>
 </head>
 <body>
@@ -112,6 +129,14 @@
       <summary id="olderSummary">それより前の更新を表示</summary>
       <div id="older"></div>
     </details>
+
+    <h2>開発を支援する</h2>
+    <p class="section-note">個人が趣味で作って無償で公開しているツールです。</p>
+    <a class="support-link" href="https://github.com/sponsors/sasakisrole" target="_blank" rel="noopener noreferrer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></svg>
+      <span>GitHub Sponsors で支援する</span>
+    </a>
+    <p class="support-note">支援しても機能は増えません。支援しない人と使える範囲は同じです。広告は入れません。</p>
   </div>
 
   <script src="whatsnew_data.js"></script>
