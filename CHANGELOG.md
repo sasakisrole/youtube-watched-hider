@@ -373,7 +373,7 @@
   - `no-duration` / `empty-html` / `no-playerResponse` 等の一時失敗も保存されてしまい、次回 Fix Durations の対象から永続除外される問題があった
   - whitelist 方式に変更し、`playability-*`（age-restricted・removed・private 等）の動画固有の永続失敗のみ保存するよう修正
   - history.js の in-memory キャッシュ更新も同ロジックに同期
-  - レビュー指摘 M1 対応（codex-reports/ad-hoc/yt-watched-hider-v138-review_2026-05-12.md）
+  - レビュー指摘 M1 対応
 
 ## v1.38.0 (2026-05-12)
 - Feature: watchedVideos DB schema を v5 に更新し、視聴済みレコードへ `durationSec` を追加
