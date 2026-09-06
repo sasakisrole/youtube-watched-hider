@@ -41,11 +41,100 @@ window._ytWatchedHider = (() => {
   let harvestMode = false;
   const harvest = { running: false, added: 0, scanned: 0, noNewStreak: 0, timer: null, ui: null, styleEl: null };
 
+  // Extension context lifecycle (also extracted by the regression harness).
+  let contextInvalidated = false;
+  let contextReady = false;
+  const contextTimers = new Set();
+  const reloadNoticeId = '__yt_watched_hider_reload_notice';
+
+  // Own only this content script's timers so invalidation can cancel every retry.
+  function setTimeout(callback, delay) {
+    if (contextInvalidated) return null;
+    const timer = window.setTimeout(() => {
+      contextTimers.delete(timer);
+      if (!contextInvalidated) callback();
+    }, delay);
+    contextTimers.add(timer);
+    return timer;
+  }
+
+  function clearTimeout(timer) {
+    contextTimers.delete(timer);
+    window.clearTimeout(timer);
+  }
+
+  function showReloadNotice() {
+    if (document.getElementById(reloadNoticeId)) return;
+    const el = document.createElement('div');
+    el.id = reloadNoticeId;
+    el.setAttribute('role', 'alert');
+    el.style.cssText = [
+      'position:fixed', 'right:20px', 'bottom:20px', 'z-index:2147483647',
+      'max-width:calc(100vw - 40px)', 'box-sizing:border-box',
+      'background:rgba(30,30,30,0.96)', 'color:#fff', 'padding:12px 16px',
+      'border-radius:8px', 'font:500 14px/1.5 system-ui,sans-serif',
+      'box-shadow:0 4px 12px rgba(0,0,0,0.3)'
+    ].join(';');
+    const message = document.createElement('span');
+    message.textContent = 'YT-Watched-Hider が更新されました。このページを再読み込みしてください';
+    el.appendChild(message);
+    const reload = document.createElement('button');
+    reload.type = 'button';
+    reload.textContent = '再読み込み';
+    reload.style.cssText = 'margin:8px 0 0 12px;padding:6px 12px;cursor:pointer;background:#1a73e8;color:#fff;border:0;border-radius:4px;font:inherit';
+    reload.addEventListener('click', () => location.reload());
+    el.appendChild(reload);
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.textContent = '閉じる';
+    close.style.cssText = 'margin-left:8px;padding:6px 12px;cursor:pointer;background:#444;color:#fff;border:0;border-radius:4px;font:inherit';
+    close.addEventListener('click', () => el.remove());
+    el.appendChild(close);
+    (document.body || document.documentElement).appendChild(el);
+  }
+
+  function detectContextInvalidation(error) {
+    if (contextInvalidated) return true;
+    // CONTEXT_INVALIDATION_PREDICATE: the control test disables only this check.
+    const invalidated = !chrome.runtime?.id || String(error?.message || error || '').includes('Extension context invalidated');
+    if (!invalidated) return false;
+    contextInvalidated = true;
+    for (const timer of contextTimers) window.clearTimeout(timer);
+    contextTimers.clear();
+    if (contextReady) cleanup(true);
+    console.warn('[YT-Watched-Hider] 拡張が更新されました。このページを再読み込みしてください');
+    showReloadNotice();
+    return true;
+  }
+
+  function sendRuntimeMessage(message, callback) {
+    const finish = (response, error) => {
+      if (detectContextInvalidation(error)) {
+        error = Object.assign(new Error('Extension context invalidated'), { contextInvalidated: true });
+        response = undefined;
+      }
+      callback(response, error);
+    };
+    if (detectContextInvalidation()) {
+      finish();
+      return;
+    }
+    try {
+      chrome.runtime.sendMessage(message, (response) => {
+        const error = chrome.runtime?.lastError;
+        finish(response, error ? new Error(error.message) : undefined);
+      });
+    } catch (error) {
+      finish(undefined, error);
+    }
+  }
+  // End extension context lifecycle.
+
   // Import toast: shows "+N件 取り込み" when new records are added to DB.
   // Accumulates count during rapid imports and auto-dismisses after idle.
   const toastState = { el: null, count: 0, timer: null };
   function showImportToast(n) {
-    if (!n || n <= 0) return;
+    if (contextInvalidated || !n || n <= 0) return;
     toastState.count += n;
     if (!toastState.el) {
       const el = document.createElement('div');
@@ -107,13 +196,15 @@ window._ytWatchedHider = (() => {
   function dbRpc(op, payload = {}) {
     return new Promise((resolve, reject) => {
       try {
-        chrome.runtime.sendMessage({ type: 'DB_RPC', op, ...payload }, (response) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
+        sendRuntimeMessage({ type: 'DB_RPC', op, ...payload }, (response, error) => {
+          if (error) {
+            reject(error);
             return;
           }
           if (!response || !response.success) {
-            reject(new Error((response && response.error) || 'DB RPC failed'));
+            const error = new Error((response && response.error) || 'DB RPC failed');
+            if (detectContextInvalidation(error)) error.contextInvalidated = true;
+            reject(error);
             return;
           }
           resolve(response.result);
@@ -125,6 +216,7 @@ window._ytWatchedHider = (() => {
   }
 
   const DBClient = {
+    get contextInvalidated() { return contextInvalidated; },
     getAllIds: () => dbRpc('GET_ALL_IDS'),
     getWatchedIdsPage: (cursor, limit) => dbRpc('DB_GET_WATCHED_IDS_PAGE', { cursor, limit }),
     checkMultiple: (videoIds) => dbRpc('DB_CHECK_MULTIPLE', { videoIds }),
@@ -183,6 +275,7 @@ window._ytWatchedHider = (() => {
   }
 
   function recordSeekbarWatched(card, videoId, title, channel, durationSec) {
+    if (DBClient.contextInvalidated) return;
     hideCard(card, videoId);
     rememberWatched(videoId);
     return DBClient.addWatched(videoId, title, 'seekbar', channel, durationSec).then((res) => {
@@ -195,7 +288,7 @@ window._ytWatchedHider = (() => {
         delete card.dataset.watchedHidden;
         delete card.dataset.watchedVideoId;
       }
-      console.error('[YT-Watched-Hider] Error recording seekbar video:', e);
+      if (!e.contextInvalidated) console.error('[YT-Watched-Hider] Error recording seekbar video:', e);
     });
   }
 
@@ -265,7 +358,7 @@ window._ytWatchedHider = (() => {
           .catch((e) => {
             if (!errorLogged) {
               errorLogged = true;
-              console.warn('[YT-Watched-Hider] DB_CHECK_MULTIPLE failed:', e);
+              if (!e.contextInvalidated) console.warn('[YT-Watched-Hider] DB_CHECK_MULTIPLE failed:', e);
             }
             // §8.3 (H1): "confirmation failed" is NOT "not watched". Returning
             // false here used to get cached and surfaced downstream as a
@@ -353,7 +446,7 @@ window._ytWatchedHider = (() => {
       cacheLoadedPages = 0;
       cacheMode = 'error';
       dbStatus = 'error';
-      console.error(`[YT-Watched-Hider] DB load failed (${cacheLoadTime}ms):`, e);
+      if (!e.contextInvalidated) console.error(`[YT-Watched-Hider] DB load failed (${cacheLoadTime}ms):`, e);
       cacheLoaded = false;
     }
   }
@@ -425,8 +518,8 @@ window._ytWatchedHider = (() => {
 
   function maybeRunV135Migration() {
     if (location.hostname !== 'www.youtube.com' && location.hostname !== 'youtube.com') return;
-    chrome.runtime.sendMessage({ type: 'V135_CONTENT_READY' }, async (response) => {
-      if (chrome.runtime.lastError || !response || !response.run) return;
+    sendRuntimeMessage({ type: 'V135_CONTENT_READY' }, async (response, error) => {
+      if (error || !response || !response.run) return;
       let payload;
       try {
         payload = await exportLegacyV135Data();
@@ -434,8 +527,8 @@ window._ytWatchedHider = (() => {
       } catch (e) {
         payload = { success: false, error: e.message };
       }
-      chrome.runtime.sendMessage({ type: 'V135_LEGACY_EXPORT', payload }, (result) => {
-        if (chrome.runtime.lastError || !result || !result.success) return;
+      sendRuntimeMessage({ type: 'V135_LEGACY_EXPORT', payload }, (result, error) => {
+        if (error || !result || !result.success) return;
         const count = (result.watched || 0) + (result.liked || 0);
         if (count > 0) {
           watchedPositive.clear();
@@ -450,7 +543,8 @@ window._ytWatchedHider = (() => {
   maybeRunV135Migration();
 
   // Load settings — start seekbar-only processing immediately (no DB needed)
-  chrome.storage.local.get({ enabled: true, recordWhileOff: false, hideShorts: false, hideMovies: false, harvestMode: false }, (result) => {
+  if (!contextInvalidated) chrome.storage.local.get({ enabled: true, recordWhileOff: false, hideShorts: false, hideMovies: false, harvestMode: false }, (result) => {
+    if (detectContextInvalidation()) return;
     enabled = result.enabled;
     recordWhileOff = result.recordWhileOff;
     hideShorts = result.hideShorts;
@@ -775,6 +869,7 @@ window._ytWatchedHider = (() => {
   // backfill title/channel. Falls back to oEmbed (via background) after
   // timeout so we never leave an entry with empty fields.
   function backfillTitleChannel(videoId) {
+    if (DBClient.contextInvalidated) return;
     if (!videoId) return;
     const deadline = Date.now() + 12000; // 12s window
     const INTERVAL = 500;
@@ -785,7 +880,7 @@ window._ytWatchedHider = (() => {
         const channel = getWatchPageChannel();
         if (title || channel) {
           DBClient.updateTitleAndChannel(videoId, title, channel).catch((e) => {
-            console.error('[YT-Watched-Hider] Error updating video metadata:', videoId, e);
+            if (!e.contextInvalidated) console.error('[YT-Watched-Hider] Error updating video metadata:', videoId, e);
           });
           return;
         }
@@ -795,7 +890,7 @@ window._ytWatchedHider = (() => {
       } else {
         // Last resort: ask background to fetch via oEmbed.
         try {
-          chrome.runtime.sendMessage({
+          sendRuntimeMessage({
             type: 'FIX_CHANNELS',
             videoIds: [videoId],
             force: false
@@ -813,6 +908,7 @@ window._ytWatchedHider = (() => {
   // between "ended" firing and this function running could already have moved
   // the URL to the NEXT video, silently recording the wrong one as watched.
   async function recordCurrentVideo(boundVideoId) {
+    if (DBClient.contextInvalidated) return;
     if (!enabled && !recordWhileOff) return;
 
     const videoId = boundVideoId || getCurrentVideoId();
@@ -841,7 +937,7 @@ window._ytWatchedHider = (() => {
         backfillTitleChannel(videoId);
       }
     } catch (e) {
-      console.error('[YT-Watched-Hider] Error recording video:', e);
+      if (!e.contextInvalidated) console.error('[YT-Watched-Hider] Error recording video:', e);
     }
   }
 
@@ -850,6 +946,7 @@ window._ytWatchedHider = (() => {
   const VIDEO_RETRY_MAX = 10;
 
   function attachVideoEndedListener() {
+    if (DBClient.contextInvalidated) return;
     // Clean up previous listener
     if (currentVideoElement && endedHandler) {
       currentVideoElement.removeEventListener('ended', endedHandler);
@@ -901,6 +998,7 @@ window._ytWatchedHider = (() => {
 
   // Process all visible video cards (with queue to avoid lost updates)
   async function processPage() {
+    if (DBClient.contextInvalidated) return;
     if (!enabled) return;
     if (processRunning) {
       processQueued = true; // will re-run after current finishes
@@ -962,7 +1060,7 @@ window._ytWatchedHider = (() => {
           // so the entry doesn't stay blank forever.
           if (!title || !channel) {
             try {
-              chrome.runtime.sendMessage({
+              sendRuntimeMessage({
                 type: 'FIX_CHANNELS',
                 videoIds: [videoId],
                 force: false
@@ -1022,7 +1120,7 @@ window._ytWatchedHider = (() => {
         console.log(`[YT-Watched-Hider] Hidden ${totalHidden} videos (seekbar: ${hiddenBySeekbar}, cache: ${hiddenByCache}, db: ${hiddenByDb})`);
       }
     } catch (e) {
-      console.error('[YT-Watched-Hider] Error processing page:', e);
+      if (!e.contextInvalidated) console.error('[YT-Watched-Hider] Error processing page:', e);
     }
 
     processRunning = false;
@@ -1297,6 +1395,7 @@ window._ytWatchedHider = (() => {
   }
 
   async function scrapeHistoryPage(options = {}) {
+    if (DBClient.contextInvalidated) return { added: 0, scanned: 0 };
     const { removeProcessed = false } = options;
     const cards = document.querySelectorAll(HISTORY_CARD_SELECTOR);
     console.log(`[YT-Watched-Hider] History scrape: found ${cards.length} cards`);
@@ -1348,6 +1447,7 @@ window._ytWatchedHider = (() => {
       try {
         existing = await DBClient.checkMultiple(videoIds);
       } catch (e) {
+        if (e.contextInvalidated) return { added: 0, scanned: newlySeen };
         console.error('[YT-Watched-Hider] History checkMultiple failed:', e);
         // Confirmation-unable — do not mark completed, retry these next pass.
         for (const { card } of candidates) card.dataset.historyState = HISTORY_STATE.FAILED;
@@ -1392,6 +1492,7 @@ window._ytWatchedHider = (() => {
             added = newEntries.length;
             console.log(`[YT-Watched-Hider] Imported ${added} new videos from history`);
           } catch (e) {
+            if (e.contextInvalidated) return { added: 0, scanned: newlySeen };
             console.error('[YT-Watched-Hider] History batch import failed:', e);
             // Import unconfirmed — leave retriable rather than assuming completed.
             for (const { card } of newEntries) card.dataset.historyState = HISTORY_STATE.FAILED;
@@ -1521,6 +1622,7 @@ window._ytWatchedHider = (() => {
   }
 
   function startHarvest() {
+    if (contextInvalidated) return;
     if (harvest.running || !isHistoryPage()) return;
     harvest.running = true;
     harvest.added = 0;
@@ -1557,6 +1659,7 @@ window._ytWatchedHider = (() => {
     if (!harvest.running) return;
 
     const { added, scanned } = await scrapeHistoryPage({ removeProcessed: true });
+    if (!harvest.running) return;
     harvest.added += added;
     harvest.scanned += scanned;
     if (scanned === 0) {
@@ -1584,6 +1687,7 @@ window._ytWatchedHider = (() => {
   const SHORTS_SHELF_SELECTORS = `${SHORTS_SELECTORS.reelShelf}, ${SHORTS_SELECTORS.richShelf}`;
 
   const observer = new MutationObserver((mutations) => {
+    if (contextInvalidated) return;
     let hasRelevantChange = false;
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
@@ -1621,6 +1725,7 @@ window._ytWatchedHider = (() => {
 
   // Listen for YouTube SPA navigation
   function onNavigateFinish() {
+    if (contextInvalidated) return;
     if (location.pathname === '/watch') {
       attachVideoEndedListener();
       startRecoPolling();
@@ -1665,6 +1770,7 @@ window._ytWatchedHider = (() => {
   }
 
   async function checkRecommendations() {
+    if (DBClient.contextInvalidated) return;
     if (!enabled || location.pathname !== '/watch') return;
     if (document.hidden) return; // skip while tab is not visible
     if (recoChecking) return; // prevent overlap
@@ -1714,7 +1820,7 @@ window._ytWatchedHider = (() => {
           // so the entry doesn't stay blank forever.
           if (!title || !channel) {
             try {
-              chrome.runtime.sendMessage({
+              sendRuntimeMessage({
                 type: 'FIX_CHANNELS',
                 videoIds: [videoId],
                 force: false
@@ -2166,6 +2272,7 @@ window._ytWatchedHider = (() => {
   }
 
   function ensureQueueAllButton() {
+    if (contextInvalidated) return;
     const context = getBulkPageContext();
     if (!context) {
       removeQueueAllButton();
@@ -2404,6 +2511,7 @@ window._ytWatchedHider = (() => {
   }
 
   function ensureWatchLaterButton() {
+    if (contextInvalidated) return;
     const context = getBulkPageContext();
     if (!context) {
       removeWatchLaterButton();
@@ -2465,10 +2573,12 @@ window._ytWatchedHider = (() => {
   }
 
   function startRecoPolling() {
+    if (contextInvalidated) return;
     if (recoInterval) clearInterval(recoInterval);
     checkRecommendations();
     ensureQueueAllButton();
     ensureWatchLaterButton();
+    if (contextInvalidated) return;
     recoInterval = setInterval(() => {
       checkRecommendations();
       ensureQueueAllButton();
@@ -2809,10 +2919,23 @@ window._ytWatchedHider = (() => {
     }
   }
 
+  if (typeof chrome !== 'undefined' && detectContextInvalidation()) {
+    contextReady = true;
+    cleanup(true);
+    return { cleanup };
+  }
   chrome.runtime.onMessage.addListener(onMessage);
+  contextReady = true;
 
   // Cleanup function for re-injection
-  function cleanup() {
+  function cleanup(keepReloadNotice = false) {
+    for (const timer of contextTimers) window.clearTimeout(timer);
+    contextTimers.clear();
+    processQueued = false;
+    queueAbort = true;
+    watchLaterAbort = true;
+    if (toastState.el) { toastState.el.remove(); toastState.el = null; }
+    if (!keepReloadNotice) document.getElementById(reloadNoticeId)?.remove();
     observer.disconnect();
     if (recoInterval) clearInterval(recoInterval);
     if (currentVideoElement && endedHandler) {
@@ -2820,7 +2943,7 @@ window._ytWatchedHider = (() => {
     }
     document.removeEventListener('yt-navigate-finish', onNavigateFinish);
     removeHarvestUI();
-    chrome.runtime.onMessage.removeListener(onMessage);
+    if (!contextInvalidated && chrome.runtime?.id) chrome.runtime.onMessage.removeListener(onMessage);
     if (queueBtnObserver) { queueBtnObserver.disconnect(); queueBtnObserver = null; }
     if (queueAllBtn) { queueAllBtn.remove(); queueAllBtn = null; }
     if (watchLaterBtnObserver) { watchLaterBtnObserver.disconnect(); watchLaterBtnObserver = null; }

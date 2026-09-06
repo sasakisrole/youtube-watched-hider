@@ -180,6 +180,13 @@ function extractVideoId(url) {
 // Track which videos have been recorded this session to avoid duplicate writes
 const recentlyRecorded = new Set();
 const recordingInProgress = new Set();
+let contextMessageWarningShown = false;
+
+function warnContextMessageOnce(error) {
+  if (contextMessageWarningShown) return;
+  contextMessageWarningShown = true;
+  console.warn('[YT-Watched] ページとの接続が失われました。再読み込みしてください:', error.message);
+}
 
 async function notifyVideoDetected(tabId, videoId) {
   if (recentlyRecorded.has(videoId) || recordingInProgress.has(videoId)) return;
@@ -191,7 +198,11 @@ async function notifyVideoDetected(tabId, videoId) {
     });
     recentlyRecorded.add(videoId);
   } catch (e) {
-    console.error('[YT-Watched] Video detection message failed:', videoId, e);
+    if (/Could not establish connection|Extension context invalidated/.test(String(e?.message || e))) {
+      warnContextMessageOnce(e);
+    } else {
+      console.error('[YT-Watched] Video detection message failed:', videoId, e);
+    }
   } finally {
     recordingInProgress.delete(videoId);
   }
@@ -1156,7 +1167,11 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
   const type = info.menuItemId === 'yt-queue' ? 'QUEUE_VIDEO' : 'WATCH_LATER_VIDEO';
   chrome.tabs.sendMessage(tab.id, { type, videoId }).catch((e) => {
-    console.error('[YT-Watched] Context menu message failed:', type, videoId, e);
+    if (/Could not establish connection|Extension context invalidated/.test(String(e?.message || e))) {
+      warnContextMessageOnce(e);
+    } else {
+      console.error('[YT-Watched] Context menu message failed:', type, videoId, e);
+    }
   });
 });
 
