@@ -5,6 +5,11 @@
 const content = document.getElementById('content');
 const searchInput = document.getElementById('search');
 const totalCountEl = document.getElementById('totalCount');
+const totalCountOfEl = document.getElementById('totalCountOf');
+const undoToast = document.getElementById('undoToast');
+const undoToastText = document.getElementById('undoToastText');
+const undoToastBtn = document.getElementById('undoToastBtn');
+const backToTopBtn = document.getElementById('backToTop');
 const sortBtns = document.querySelectorAll('.sort-btn');
 
 let allData = [];
@@ -65,21 +70,94 @@ function sortData(data, mode) {
   return sorted;
 }
 
-// Delete a video entry
-function deleteVideo(videoId, rowEl) {
-  chrome.runtime.sendMessage({ type: 'DELETE_VIDEO', videoId }, (res) => {
-    if (res && res.success) {
-      // Remove from data arrays
-      allData = allData.filter(v => v.videoId !== videoId);
-      sortedCache = sortedCache.filter(v => v.videoId !== videoId);
-      totalCountEl.textContent = sortedCache.length.toLocaleString();
-      // Fade out and remove from DOM
-      rowEl.style.transition = 'opacity 0.2s';
-      rowEl.style.opacity = '0';
-      setTimeout(() => rowEl.remove(), 200);
+// 絞り込み中に母数が見えなくなるので、全体の件数を横に添える
+function updateTotalCount() {
+  totalCountEl.textContent = sortedCache.length.toLocaleString();
+  if (!totalCountOfEl) return;
+  totalCountOfEl.textContent = sortedCache.length === allData.length
+    ? ''
+    : `（全${allData.length.toLocaleString()}件）`;
+}
+
+// 履歴の1件削除。押した瞬間には消さず、猶予の間だけ画面から隠しておいて、
+// 猶予が切れてから実際の削除を送る。DBには1件を元どおり書き戻す口が無いので、
+// 「消してから戻す」ではなく「まだ消さない」で取り消しを成立させている。
+const UNDO_WINDOW_MS = 5000;
+let pendingDeletes = [];
+
+function renderUndoToast() {
+  if (!undoToast) return;
+  if (!pendingDeletes.length) {
+    undoToast.hidden = true;
+    return;
+  }
+  undoToastText.textContent = `${pendingDeletes.length}件を履歴から削除しました`;
+  undoToast.hidden = false;
+}
+
+function restoreDelete(entry) {
+  clearTimeout(entry.timer);
+  pendingDeletes = pendingDeletes.filter((e) => e !== entry);
+  if (entry.allIndex >= 0) allData.splice(Math.min(entry.allIndex, allData.length), 0, entry.video);
+  if (entry.sortedIndex >= 0) {
+    sortedCache.splice(Math.min(entry.sortedIndex, sortedCache.length), 0, entry.video);
+    if (entry.sortedIndex < renderedCount) renderedCount++;
+  }
+  entry.row.hidden = false;
+  updateTotalCount();
+  renderUndoToast();
+  // 猶予の間に検索・並べ替えが走ると、隠しておいた行はもう画面に無い
+  if (!entry.row.isConnected) render();
+}
+
+function commitDelete(entry) {
+  pendingDeletes = pendingDeletes.filter((e) => e !== entry);
+  renderUndoToast();
+  chrome.runtime.sendMessage({ type: 'DELETE_VIDEO', videoId: entry.video.videoId }, (res) => {
+    if (chrome.runtime.lastError || !res || !res.success) {
+      // 消せていないのに画面から消えたままだと、次に開いたとき黙って戻っている
+      restoreDelete(entry);
+      showJobMessage(`履歴から削除できませんでした: ${entry.video.title || entry.video.videoId}`, { state: 'error' });
+      return;
     }
+    entry.row.remove();
   });
 }
+
+function deleteVideo(video, rowEl) {
+  const allIndex = allData.indexOf(video);
+  const sortedIndex = sortedCache.indexOf(video);
+  if (allIndex >= 0) allData.splice(allIndex, 1);
+  if (sortedIndex >= 0) {
+    sortedCache.splice(sortedIndex, 1);
+    // renderedCount は sortedCache の添字。手前が1件減ったら一緒に詰めないと、
+    // 次に読み込む100件の先頭が1件ぶん飛んで黙って表示されなくなる
+    if (sortedIndex < renderedCount) renderedCount--;
+  }
+  rowEl.hidden = true;
+  updateTotalCount();
+  const entry = { video, row: rowEl, allIndex, sortedIndex, timer: null };
+  entry.timer = setTimeout(() => commitDelete(entry), UNDO_WINDOW_MS);
+  pendingDeletes.push(entry);
+  renderUndoToast();
+}
+
+if (undoToastBtn) {
+  undoToastBtn.addEventListener('click', () => {
+    // 後から消したものほど添字が新しいので、新しい順に戻すと元の位置へ収まる
+    [...pendingDeletes].reverse().forEach(restoreDelete);
+  });
+}
+
+// タブを閉じると猶予のタイマーごと消えるので、その場で実削除を送る。
+// 送り切れなかった場合は削除されないだけで、次に開けば一覧に残っている（安全側）
+window.addEventListener('pagehide', () => {
+  pendingDeletes.forEach((entry) => {
+    clearTimeout(entry.timer);
+    try { chrome.runtime.sendMessage({ type: 'DELETE_VIDEO', videoId: entry.video.videoId }); } catch (_e) { /* 閉じる途中は失敗しうる */ }
+  });
+  pendingDeletes = [];
+});
 
 // Build a single video row element
 function buildVideoRow(video) {
@@ -97,8 +175,8 @@ function buildVideoRow(video) {
     badge.className = 'badge badge-yt';
     badge.textContent = 'YT';
     badge.title = video.source === 'seekbar'
-      ? 'Detected via YouTube seekbar'
-      : 'Imported from YouTube history';
+      ? 'シークバーの動きから視聴を検出'
+      : 'YouTubeの履歴から取り込み';
     a.appendChild(badge);
   }
 
@@ -142,10 +220,10 @@ function buildVideoRow(video) {
   const delBtn = document.createElement('button');
   delBtn.className = 'delete-btn';
   delBtn.textContent = '\u00d7';
-  delBtn.title = 'Remove from history';
+  delBtn.title = '履歴から削除（削除後5秒は元に戻せます）';
   delBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    deleteVideo(video.videoId, row);
+    deleteVideo(video, row);
   });
   row.appendChild(delBtn);
 
@@ -197,7 +275,7 @@ function render() {
   }
 
   sortedCache = sortData(filtered, currentSort);
-  totalCountEl.textContent = sortedCache.length.toLocaleString();
+  updateTotalCount();
   renderedCount = 0;
   lastDateKeyRendered = '';
 
@@ -216,12 +294,21 @@ function render() {
 
 // Infinite scroll: load more when near bottom
 window.addEventListener('scroll', () => {
+  // 100件ずつ足していく一覧なので、下へ進むほど先頭が遠くなる
+  if (backToTopBtn) backToTopBtn.hidden = window.scrollY < 600;
   if (renderedCount >= sortedCache.length) return;
   // Load more when within 300px of bottom
   if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 300) {
     renderBatch();
   }
 });
+
+if (backToTopBtn) {
+  backToTopBtn.addEventListener('click', () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    searchInput.focus();
+  });
+}
 
 // Sort buttons — `data-sort` 属性を持つボタンだけが並べ替え用
 // （L2 fix: 旧コードは `.sort-btn` クラス全部を捕捉して filterNoChannel だけ id で除外
@@ -665,6 +752,7 @@ const wlPanelNote = document.getElementById('wlPanelNote');
 const wlPanelList = document.getElementById('wlPanelList');
 const wlPanelLimit = document.getElementById('wlPanelLimit');
 const wlPanelRun = document.getElementById('wlPanelRun');
+const wlPanelRunAll = document.getElementById('wlPanelRunAll');
 const wlPanelCancel = document.getElementById('wlPanelCancel');
 const wlPanelStatus = document.getElementById('wlPanelStatus');
 let armedWatchLaterBatch = null;
@@ -715,6 +803,9 @@ function openWatchLaterPanel() {
     `視聴済みとして記録がある${rows.length}件です${truncNote}。上から順に削除します。取り消せません。`;
   wlPanelLimit.max = String(rows.length);
   wlPanelLimit.value = String(Math.min(5, rows.length));
+  // 全件ボタンは件数まで文言に出す。押した後の確認ダイアログと同じ数がボタンにも見えていないと、
+  // 「全件」が一覧の200件までなのか候補すべてなのか読み取れない
+  if (wlPanelRunAll) wlPanelRunAll.textContent = `全${rows.length}件を削除`;
   wlPanelStatus.textContent = '';
   wlPanelPreviousFocus = document.activeElement || null;
   wlPanel.hidden = false;
@@ -751,110 +842,140 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && wlPanel && !wlPanel.hidden) closeWatchLaterPanel();
 });
 
-if (wlPanelRun) {
-  wlPanelRun.addEventListener('click', () => {
-    const armed = armedWatchLaterBatch;
-    if (!armed) {
-      wlPanelStatus.textContent = '先に「照合」を実行してください';
-      return;
-    }
-    const rows = armed.rows;
-    const limit = Math.max(1, Math.min(Number(wlPanelLimit.value) || 0, rows.length));
-    const head = rows.slice(0, limit).map(r => r.title || r.videoId);
-    const shown = head.slice(0, 5).join('\n');
-    const more = head.length > 5 ? `\n… ほか${head.length - 5}件` : '';
-    if (!confirm(`「後で見る」から${limit}件を削除します。取り消せません。\n\n${shown}${more}`)) return;
-    if (!beginMaintenance('scanWatchLater', { activeText: '削除中…' })) {
-      wlPanelStatus.textContent = '他のメンテナンス処理が実行中';
-      return;
-    }
-    // 押し直しによる二重実行を防ぐ。武装解除は完了時にまとめて行う。
-    wlPanelDeleting = true;
-    wlPanelRun.disabled = true;
-    if (wlPanelCancel) wlPanelCancel.disabled = true;
-    if (bulkRemoveWatchLaterBtn) bulkRemoveWatchLaterBtn.disabled = true;
-    if (removeOneWatchLaterBtn) removeOneWatchLaterBtn.disabled = true;
-    wlPanelStatus.textContent = '削除中…';
+// 数値欄をホイールで増減できるようにする。Chrome の既定はフォーカス中しか効かないので、
+// 一覧を読んでから件数を決めるこの画面では「欄へ乗せて回す」だけで動くほうが手数が少ない。
+// 取り消せない操作だが、実行前の確認ダイアログに必ず件数が出るので誤操作は止まる。
+function attachWheelStepper(input) {
+  if (!input) return;
+  input.addEventListener('wheel', (event) => {
+    if (!event.deltaY) return;
+    event.preventDefault();
+    const step = Number(input.step) || 1;
+    const min = input.min === '' ? -Infinity : Number(input.min);
+    const max = input.max === '' ? Infinity : Number(input.max);
+    const current = Number(input.value) || 0;
+    const next = Math.min(max, Math.max(min, current + (event.deltaY < 0 ? step : -step)));
+    if (next === current) return;
+    input.value = String(next);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }, { passive: false });
+}
+attachWheelStepper(wlPanelLimit);
 
-    const port = chrome.runtime.connect({ name: 'watch-later-batch' });
-    let settled = false;
-    const finish = (text, state = 'done', processed = 0, total = limit) => {
-      if (settled) return;
-      settled = true;
-      wlPanelDeleting = false;
-      endMaintenance('scanWatchLater');
-      wlPanelRun.disabled = false;
-      if (wlPanelCancel) wlPanelCancel.disabled = false;
-      armedWatchLaterTarget = null;
-      armWatchLaterBatch(null, null);
-      showJobMessage(text, {
-        kind: 'bulkRemoveWatchLater',
-        label: 'まとめて削除',
-        state,
-        processed,
-        total,
-        counters: { removed: processed },
+function startWatchLaterBatch(requestedLimit) {
+  const armed = armedWatchLaterBatch;
+  if (!armed) {
+    wlPanelStatus.textContent = '先に「照合」を実行してください';
+    return;
+  }
+  const rows = armed.rows;
+  const limit = Math.max(1, Math.min(Number(requestedLimit) || 0, rows.length));
+  const head = rows.slice(0, limit).map(r => r.title || r.videoId);
+  const shown = head.slice(0, 5).join('\n');
+  const more = head.length > 5 ? `\n… ほか${head.length - 5}件` : '';
+  const scope = limit === rows.length ? '一覧の全' : '';
+  if (!confirm(`「後で見る」から${scope}${limit}件を削除します。取り消せません。\n\n${shown}${more}`)) return;
+  if (!beginMaintenance('scanWatchLater', { activeText: '削除中…' })) {
+    wlPanelStatus.textContent = '他のメンテナンス処理が実行中';
+    return;
+  }
+  // 押し直しによる二重実行を防ぐ。武装解除は完了時にまとめて行う。
+  wlPanelDeleting = true;
+  wlPanelRun.disabled = true;
+  if (wlPanelRunAll) wlPanelRunAll.disabled = true;
+  if (wlPanelCancel) wlPanelCancel.disabled = true;
+  if (bulkRemoveWatchLaterBtn) bulkRemoveWatchLaterBtn.disabled = true;
+  if (removeOneWatchLaterBtn) removeOneWatchLaterBtn.disabled = true;
+  wlPanelStatus.textContent = '削除中…';
+
+  const port = chrome.runtime.connect({ name: 'watch-later-batch' });
+  let settled = false;
+  const finish = (text, state = 'done', processed = 0, total = limit) => {
+    if (settled) return;
+    settled = true;
+    wlPanelDeleting = false;
+    endMaintenance('scanWatchLater');
+    wlPanelRun.disabled = false;
+    if (wlPanelRunAll) wlPanelRunAll.disabled = false;
+    if (wlPanelCancel) wlPanelCancel.disabled = false;
+    armedWatchLaterTarget = null;
+    armWatchLaterBatch(null, null);
+    showJobMessage(text, {
+      kind: 'bulkRemoveWatchLater',
+      label: 'まとめて削除',
+      state,
+      processed,
+      total,
+      counters: { removed: processed },
+    });
+    wlPanelStatus.textContent = '';
+    closeWatchLaterPanel();
+  };
+  port.onMessage.addListener((msg) => {
+    if (msg.type === 'PROGRESS') {
+      wlPanelStatus.textContent = `${msg.done} / ${msg.total} 件目: ${msg.title}`;
+      showJobMessage(`削除中... ${msg.done}/${msg.total}件（削除${msg.done}件）`, {
+        kind: 'bulkRemoveWatchLater', label: 'まとめて削除', state: 'running',
+        processed: msg.done, total: msg.total, counters: { removed: msg.done }, abortable: true,
       });
-      wlPanelStatus.textContent = '';
-      closeWatchLaterPanel();
-    };
-    port.onMessage.addListener((msg) => {
-      if (msg.type === 'PROGRESS') {
-        wlPanelStatus.textContent = `${msg.done} / ${msg.total} 件目: ${msg.title}`;
-        showJobMessage(`削除中... ${msg.done}/${msg.total}件（削除${msg.done}件）`, {
-          kind: 'bulkRemoveWatchLater', label: 'まとめて削除', state: 'running',
-          processed: msg.done, total: msg.total, counters: { removed: msg.done }, abortable: true,
-        });
-        return;
-      }
-      if (msg.type === 'ERROR') {
-        finish('失敗: ' + (msg.error || 'unknown'), 'error');
-        return;
-      }
-      if (msg.type !== 'DONE') return;
-      if (!msg.success) {
-        finish(describeBatchStop(msg.reason), 'error');
-        return;
-      }
-      const parts = [`後で見るから${msg.removed.length}件をまとめて削除しました`];
-      if (msg.stopped) parts.push(describeBatchStop(msg.stopped));
-      const c = msg.counts;
-      if (c) parts.push(`残り: 後で見る ${c.total}件 / 視聴済み一致 ${c.candidates}件 / 未視聴 ${c.notWatched}件`);
-      if (msg.drift && msg.drift.changed) parts.push(`削除ID変化 ${msg.drift.changed}件`);
-      if (msg.finalScanFailed) parts.push('※削除後の再照合に失敗したため、件数は未確認です');
-      finish(parts.join(' / '), msg.aborted ? 'aborted' : 'done', msg.removed.length, msg.total || limit);
-    });
-    // service worker が落ちた場合、DONE が来ないまま切断される。
-    port.onDisconnect.addListener(() => finish('中断しました。照合し直して結果を確認してください', 'interrupted'));
+      return;
+    }
+    if (msg.type === 'ERROR') {
+      finish('失敗: ' + (msg.error || 'unknown'), 'error');
+      return;
+    }
+    if (msg.type !== 'DONE') return;
+    if (!msg.success) {
+      finish(describeBatchStop(msg.reason), 'error');
+      return;
+    }
+    const parts = [`後で見るから${msg.removed.length}件をまとめて削除しました`];
+    if (msg.stopped) parts.push(describeBatchStop(msg.stopped));
+    const c = msg.counts;
+    if (c) parts.push(`残り: 後で見る ${c.total}件 / 視聴済み一致 ${c.candidates}件 / 未視聴 ${c.notWatched}件`);
+    if (msg.drift && msg.drift.changed) parts.push(`削除ID変化 ${msg.drift.changed}件`);
+    if (msg.finalScanFailed) parts.push('※削除後の再照合に失敗したため、件数は未確認です');
+    finish(parts.join(' / '), msg.aborted ? 'aborted' : 'done', msg.removed.length, msg.total || limit);
+  });
+  // service worker が落ちた場合、DONE が来ないまま切断される。
+  port.onDisconnect.addListener(() => finish('中断しました。照合し直して結果を確認してください', 'interrupted'));
 
-    // 応答が完全に途絶えたときに「削除中…」のまま固まらないための保険。
-    // 削除が進んでいる間は PROGRESS ごとに延長するので、通常の実行では発火しない。
-    // 発火時は「消えたか不明」なので、成功とも失敗とも書かず照合し直させる。
-    let watchdog = null;
-    const armWatchdog = () => {
-      if (watchdog) clearTimeout(watchdog);
-      watchdog = setTimeout(() => {
-        finish('応答がないため中断しました。どこまで削除できたかは照合し直して確認してください', 'interrupted');
-        try { port.disconnect(); } catch (_e) {}
-      }, 60000);
-    };
-    const clearWatchdog = () => { if (watchdog) clearTimeout(watchdog); watchdog = null; };
-    port.onMessage.addListener(armWatchdog);
-    port.onDisconnect.addListener(clearWatchdog);
-    armWatchdog();
+  // 応答が完全に途絶えたときに「削除中…」のまま固まらないための保険。
+  // 削除が進んでいる間は PROGRESS ごとに延長するので、通常の実行では発火しない。
+  // 発火時は「消えたか不明」なので、成功とも失敗とも書かず照合し直させる。
+  let watchdog = null;
+  const armWatchdog = () => {
+    if (watchdog) clearTimeout(watchdog);
+    watchdog = setTimeout(() => {
+      finish('応答がないため中断しました。どこまで削除できたかは照合し直して確認してください', 'interrupted');
+      try { port.disconnect(); } catch (_e) {}
+    }, 60000);
+  };
+  const clearWatchdog = () => { if (watchdog) clearTimeout(watchdog); watchdog = null; };
+  port.onMessage.addListener(armWatchdog);
+  port.onDisconnect.addListener(clearWatchdog);
+  armWatchdog();
 
-    showJobMessage(`削除中... 0/${limit}件（削除0件）`, {
-      kind: 'bulkRemoveWatchLater', label: 'まとめて削除', state: 'running',
-      processed: 0, total: limit, counters: { removed: 0 }, abortable: true,
-    });
+  showJobMessage(`削除中... 0/${limit}件（削除0件）`, {
+    kind: 'bulkRemoveWatchLater', label: 'まとめて削除', state: 'running',
+    processed: 0, total: limit, counters: { removed: 0 }, abortable: true,
+  });
 
-    // 接続しただけでは background は動かない。承認済みの対象と件数を渡して開始する。
-    port.postMessage({
-      type: 'START',
-      syncSessionId: armed.syncSessionId,
-      videoIds: rows.map((r) => r.videoId),
-      limit,
-    });
+  // 接続しただけでは background は動かない。承認済みの対象と件数を渡して開始する。
+  port.postMessage({
+    type: 'START',
+    syncSessionId: armed.syncSessionId,
+    videoIds: rows.map((r) => r.videoId),
+    limit,
+  });
+}
+
+if (wlPanelRun) {
+  wlPanelRun.addEventListener('click', () => startWatchLaterBatch(wlPanelLimit.value));
+}
+if (wlPanelRunAll) {
+  wlPanelRunAll.addEventListener('click', () => {
+    startWatchLaterBatch(armedWatchLaterBatch ? armedWatchLaterBatch.rows.length : 0);
   });
 }
 
@@ -920,7 +1041,7 @@ function runFix(videoIds, force, label) {
         }
       }
 
-      totalCountEl.textContent = sortedCache.length.toLocaleString();
+      updateTotalCount();
       showJobMessage(`処理中... 残り${remaining}/${total}（更新${msg.updated} / 失敗${msg.failed}）`, {
         kind: maintenanceKey, label: force ? 'チャンネル名を再取得' : 'チャンネル名を補完',
         state: 'running', total, processed: msg.processed,
@@ -1459,7 +1580,7 @@ function loadData() {
       content.textContent = '';
       const empty = document.createElement('div');
       empty.className = 'empty';
-      empty.textContent = 'Could not load data. Reload the extension and try again.';
+      empty.textContent = 'データを読み込めませんでした。拡張機能を再読み込みしてから、開き直してください。';
       content.appendChild(empty);
     }
   }, 5000);

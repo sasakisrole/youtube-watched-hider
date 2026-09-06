@@ -197,10 +197,11 @@
     @media (prefers-color-scheme: dark) {
       .sort-btn.active { color: #0f1115; }
     }
+    /* pointer-events は落とさない。落とすと「なぜ押せないか」を説明する title が
+       押せない状態のときだけ読めなくなる。hover の見た目は下の :disabled:hover で殺す */
     .sort-btn:disabled {
       opacity: 0.45;
       cursor: not-allowed;
-      pointer-events: none;
     }
     .sort-btn:focus-visible,
     .wl-dialog input:focus-visible {
@@ -488,6 +489,9 @@
       margin-bottom: 4px;
       transition: background 0.15s, border-color 0.15s;
     }
+    /* display:flex は UA の [hidden]{display:none} に勝つので、明示的に打ち消す
+       （取り消しの猶予中は行を消さずに隠しておくため） */
+    .video-row[hidden] { display: none; }
     .video-row:hover {
       background: var(--accent-soft);
       border-color: var(--accent);
@@ -516,7 +520,15 @@
       transition: opacity 0.15s, color 0.15s;
     }
     .video-row:hover .delete-btn { opacity: 1; }
+    /* opacity:0 のままだと、Tab で乗ったフォーカスがどこにあるか見えない */
+    .video-row:focus-within .delete-btn { opacity: 1; }
     .delete-btn:hover { color: var(--danger); }
+    .delete-btn:focus-visible {
+      opacity: 1;
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+      border-radius: var(--radius-sm);
+    }
     /* M1 (v1.42.6): partial liked-sync warning on the account meta row. Overrides
        the element's inline text-muted color so the warning stands out on reload. */
     #azLikedAccount.liked-partial { color: var(--danger) !important; }
@@ -1086,6 +1098,71 @@
       overflow: auto;
     }
 
+    /* 絞り込み中に母数が消えないよう、件数の横へ全体件数を出す */
+    .stats-of { margin-left: 6px; font-size: 12px; color: var(--text-faint); }
+    .stats-of:empty { display: none; }
+
+    /* 100件ずつ読み込む一覧なので、下まで進むと先頭が遠い */
+    .back-to-top {
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      z-index: 40;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 44px;
+      padding: 8px 14px;
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      color: var(--text);
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: 999px;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.14);
+    }
+    .back-to-top[hidden] { display: none; }
+    .back-to-top:hover { background: var(--surface-2); }
+    .back-to-top:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .back-to-top .icon { width: 16px; height: 16px; }
+
+    /* 履歴の1件削除は取り消せる猶予を置く。猶予の残りはこのトーストにしか出ない */
+    .undo-toast {
+      position: fixed;
+      /* 右下の「先頭へ戻る」とぶつからないよう左端に置く */
+      left: 24px;
+      bottom: 24px;
+      z-index: 45;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      max-width: calc(100vw - 220px);
+      padding: 10px 12px 10px 16px;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius);
+      box-shadow: 0 2px 16px rgba(0, 0, 0, 0.18);
+    }
+    .undo-toast[hidden] { display: none; }
+    .undo-toast-btn {
+      flex-shrink: 0;
+      min-height: 36px;
+      padding: 6px 12px;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--accent);
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+    }
+    .undo-toast-btn:hover { background: var(--accent-soft); }
+    .undo-toast-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
     /* Reduce motion */
     @media (prefers-reduced-motion: reduce) {
       * { transition: none !important; }
@@ -1096,7 +1173,7 @@
   <div class="header">
     <h1>YT Watched History</h1>
     <div class="header-right">
-      <span class="stats-badge"><strong id="totalCount">-</strong> 件</span>
+      <span class="stats-badge"><strong id="totalCount">-</strong> 件<span class="stats-of" id="totalCountOf"></span></span>
     </div>
   </div>
 
@@ -1189,8 +1266,9 @@
       <ul class="wl-list" id="wlPanelList"></ul>
       <div class="wl-actions">
         <label for="wlPanelLimit">今回削除する件数</label>
-        <input type="number" id="wlPanelLimit" min="1" step="1" value="5">
+        <input type="number" id="wlPanelLimit" min="1" step="1" value="5" title="マウスホイールでも増減できます">
         <button class="sort-btn wl-danger" id="wlPanelRun" type="button">削除を実行</button>
+        <button class="sort-btn wl-danger" id="wlPanelRunAll" type="button" title="上の一覧に出ている視聴済みの動画をすべて削除する。取り消せません">全件を削除</button>
         <button class="sort-btn" id="wlPanelCancel" type="button">やめる</button>
         <span id="wlPanelStatus" role="status" aria-live="polite"></span>
       </div>
@@ -1418,6 +1496,16 @@
       </div>
       <pre id="azPromptText"></pre>
     </div>
+  </div>
+
+  <button class="back-to-top" id="backToTop" type="button" hidden>
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"></path></svg>
+    <span>先頭へ戻る</span>
+  </button>
+
+  <div class="undo-toast" id="undoToast" role="status" aria-live="polite" hidden>
+    <span id="undoToastText"></span>
+    <button class="undo-toast-btn" id="undoToastBtn" type="button">元に戻す</button>
   </div>
 
   <script src="chart.umd.min.js"></script>
