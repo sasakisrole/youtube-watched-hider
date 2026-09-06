@@ -137,7 +137,7 @@ async function waitFor(findValue) {
   throw new Error('confirmation dialog did not appear');
 }
 
-async function exerciseGeneration({ records, rules, cachedVideoIds = [], ruleLoadFails = false, ignoreCooldown = false }) {
+async function exerciseGeneration({ records, rules, cachedVideoIds = [], ruleLoadFails = false, ignoreCooldown = false, limit = null }) {
   const document = new FakeDocument();
   const calls = { config: 0, mb: 0, recordMbLookup: 0, localRuleFetch: 0 };
   const byTitle = new Map(records.map((record) => [record.title, record]));
@@ -192,19 +192,30 @@ async function exerciseGeneration({ records, rules, cachedVideoIds = [], ruleLoa
   const groups = controller.groupUnassigned(records);
   const minimumRequestCount = window.EnrichCreditsTestHooks
     .getMinimumEnrichmentRequestCount(
-      groups, rules, controller.fetchCache.mb, records, { ignoreCooldown });
+      window.EnrichCreditsTestHooks.limitEnrichmentGroups(groups, limit),
+      rules, controller.fetchCache.mb, records, { ignoreCooldown });
   const hooks = window.EnrichCreditsTestHooks;
   const expectedEstimate = hooks.buildEnrichmentConfirmText(
     hooks.getEnrichmentPreCount(records),
     60000,
-    null,
+    limit,
     minimumRequestCount,
+    hooks.collectSameSongDonorCandidates(records, hooks.createSameSongDonorIndex(records)).length,
   );
   const generation = controller.generateCandidates();
   const start = await waitFor(() => document.modal.find(
     (element) => element.dataset.enrichPrecountAction === 'start'));
   const panel = document.modal.find(
     (element) => element.className === 'enrich-message enrich-precount-confirm');
+
+  if (limit !== null) {
+    const mode = panel.find((element) => element.dataset.enrichPrecountLimitMode === 'true');
+    const input = panel.find((element) => element.dataset.enrichPrecountLimit === 'true');
+    mode.value = 'limited';
+    input.value = String(limit);
+    mode.dispatch('change');
+    input.dispatch('input');
+  }
 
   if (ignoreCooldown) {
     const checkbox = panel.find((element) => element.dataset.enrichIgnoreMbCooldown === 'true');
@@ -322,6 +333,32 @@ async function run() {
 
   check('all generation cases loaded local rules once and requested config once',
     [cache, ruleOnly, mixed].every((result) => result.calls.localRuleFetch === 1 && result.calls.config === 1));
+
+  console.log('\nunlimited local transfers with a MusicBrainz limit');
+  const networkRecords = Array.from({ length: 12 }, (_, i) => makeRecord(`limited-${i}`, 'Network Channel', `Network Song ${i}`));
+  const donor = {
+    ...makeRecord('local-donor', 'Local Channel', 'Local Song'),
+    creditsRaw: '', durationSec: 200, arranger: 'Donor Arranger',
+  };
+  const localRecords = Array.from({ length: 12 }, (_, i) => ({
+    ...donor, videoId: `local-${i}`, arranger: '',
+  }));
+  const limited = await exerciseGeneration({ records: [...networkRecords, donor, ...localRecords], rules: [], limit: 10 });
+  check('limit dialog keeps 12 local transfers separate from 10 network targets',
+    limited.displayedEstimate.includes('処理予定 10件')
+      && limited.displayedEstimate.includes('同一楽曲の別動画から 12件を通信なしで転記します。')
+      && limited.calls.mb === 10
+      && limited.controller.getAllCandidates().filter((candidate) => candidate.source === 'same-song').length === 12);
+  check('local transfer count does not increase minimum requests or duration bounds',
+    limited.minimumRequestCount === 10
+      && limited.displayedEstimate.includes('推定所要時間 約10〜60分')
+      && limited.displayedEstimate.includes('最大 約60 回の通信'));
+  const donorOnly = await exerciseGeneration({ records: [donor, ...localRecords], rules: [] });
+  check('donor-only dialog confirms local transfers with zero network work',
+    donorOnly.displayedEstimate.includes('処理予定 0件')
+      && donorOnly.displayedEstimate.includes('推定所要時間 約0〜0分')
+      && donorOnly.displayedEstimate.includes('同一楽曲の別動画から 12件を通信なしで転記します。')
+      && donorOnly.calls.mb === 0 && donorOnly.controller.getAllCandidates().length === 12);
 
   console.log('\npersistent MusicBrainz cooldown paths');
   const cooldownRecord = makeRecord('cooldown', 'Cooldown Artist', 'Cooldown Song');

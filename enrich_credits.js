@@ -100,7 +100,7 @@
     };
   }
 
-  function buildEnrichmentConfirmText(preCount, rateLimitMs, limit = null, minimumRequestCount = null) {
+  function buildEnrichmentConfirmText(preCount, rateLimitMs, limit = null, minimumRequestCount = null, sameSongCount = 0) {
     const videoCount = Number(preCount && preCount.videoCount) || 0;
     const channelCount = Number(preCount && preCount.channelCount) || 0;
     const processCount = getLimitedVideoCount(videoCount, limit);
@@ -108,7 +108,10 @@
     const maxRequests = processCount * ENRICH_REQUESTS_PER_VIDEO_MAX;
     return `${videoCount}動画 / ${channelCount}チャンネルを固定ルールとMusicBrainzで照合します。`
       + ` 処理予定 ${processCount}件、推定所要時間 約${minMinutes}〜${maxMinutes}分`
-      + `（最大 約${maxRequests} 回の通信）。`;
+      + `（最大 約${maxRequests} 回の通信）。`
+      + (sameSongCount
+        ? ` 同一楽曲の別動画から ${sameSongCount}件を通信なしで転記します。`
+        : '');
   }
 
   function limitEnrichmentGroups(groups, limit) {
@@ -443,6 +446,16 @@
       sim: null,
       selected: true,
     };
+  }
+
+  function collectSameSongDonorCandidates(records, donorIndex) {
+    const candidates = [];
+    for (const record of Array.isArray(records) ? records : []) {
+      if (!getMissingCreditRoles(record).length) continue;
+      const candidate = createSameSongDonorCandidate(record, donorIndex);
+      if (candidate) candidates.push({ record, candidate });
+    }
+    return candidates;
   }
 
   function candidateFromSong(record, song, sim, source, detail, matchPolicy) {
@@ -1104,7 +1117,7 @@
       if (!hasCandidates && !this.generating && this.commitBtn) this.commitBtn.disabled = true;
     }
 
-    confirmGeneration(preCount, rateLimitMs, groups, rules, loadRulesForEstimate = null, records = []) {
+    confirmGeneration(preCount, rateLimitMs, groups, rules, loadRulesForEstimate = null, records = [], sameSongCount = 0) {
       const host = this.autoView || this.modal;
       if (!host || typeof document.createElement !== 'function') return Promise.resolve(false);
       let estimateRules = Array.isArray(rules) ? rules : null;
@@ -1118,7 +1131,7 @@
           records,
           { ignoreCooldown },
         );
-        return buildEnrichmentConfirmText(preCount, rateLimitMs, limit, minimumRequestCount);
+        return buildEnrichmentConfirmText(preCount, rateLimitMs, limit, minimumRequestCount, sameSongCount);
       };
 
       const panel = document.createElement('div');
@@ -1347,9 +1360,11 @@
       if (this.generating || this.committing || this.confirmingGeneration) return;
       const records = this.getRecords();
       const allGroups = this.groupUnassigned(records);
-      if (!allGroups.size) {
+      const sameSongDonorIndex = createSameSongDonorIndex(records);
+      const sameSongCandidates = collectSameSongDonorCandidates(records, sameSongDonorIndex);
+      if (!allGroups.size && !sameSongCandidates.length) {
         this.resetSession();
-        this.setMessage('未割当 creditsRaw の対象行がありません。', 'success');
+        this.setMessage('補完できる対象がありません。動画を追加してから再度お試しください。', 'success');
         return;
       }
 
@@ -1383,6 +1398,7 @@
           rules,
           loadRulesForEstimate,
           records,
+          sameSongCandidates.length,
         );
       } catch (error) {
         this.setMessage(`候補生成の事前確認に失敗しました: ${error.message}`, 'error');
@@ -1413,7 +1429,42 @@
           rules = rulesLoadAttempt ? await rulesLoadAttempt : await this.loadRules();
         }
         const ruleByChannel = new Map(rules.map((rule) => [rule.channel, rule]));
-        const sameSongDonorIndex = createSameSongDonorIndex(records);
+        // Share accepted roles across the local passes and MusicBrainz so later
+        // sources cannot propose a second value for an already covered role.
+        const statesByVideoId = new Map();
+        const getState = (video) => {
+          if (!statesByVideoId.has(video.videoId)) {
+            statesByVideoId.set(video.videoId, { video, missing: new Set(getMissingCreditRoles(video)) });
+          }
+          return statesByVideoId.get(video.videoId);
+        };
+        const applyCandidate = (state, candidate) => {
+          if (this.abortRequested || !candidate) return;
+          const roles = coveredNeededRoles(candidate, state.missing)
+            .filter((role) => !isRejectedCandidateValue(state.video, role, candidate[role]));
+          if (!roles.length) return;
+          if (this.addCandidate(limitCandidateToRoles(candidate, roles))) {
+            roles.forEach((role) => state.missing.delete(role));
+          }
+        };
+
+        // Rules retain priority over donors, within the existing limited groups.
+        for (const [channel, videos] of groups) {
+          if (this.abortRequested) break;
+          const rule = ruleByChannel.get(channel);
+          for (const video of videos) {
+            if (this.abortRequested) break;
+            const state = getState(video);
+            if (rule) applyCandidate(state, createRuleCandidate(video, rule));
+          }
+        }
+
+        // Local transfers need neither a raw-credit hint nor a network-work limit.
+        for (const { record, candidate } of sameSongCandidates) {
+          if (this.abortRequested) break;
+          applyCandidate(getState(record), candidate);
+        }
+
         const entries = Array.from(groups.entries());
         for (let i = 0; i < entries.length; i++) {
           const [channel, videos] = entries[i];
@@ -1422,45 +1473,10 @@
           this.updateProgress(progressLabel, i / entries.length);
           if (this.env.updateMaintenance) this.env.updateMaintenance('生成中…（中止）', true);
 
-          // Per-video remaining-role tracking. Each source below fills only the
-          // roles still missing and hands the rest to the next source, so a
-          // channel rule that only knows the composer no longer blocks
-          // MusicBrainz for a missing lyricist/arranger (HANDOFF §3.2/§3.3).
-          const states = videos.map((video) => ({ video, missing: new Set(getMissingCreditRoles(video)) }));
-          const stillMissing = () => states.filter((s) => s.missing.size && !this.abortRequested);
-          const applyCandidate = (state, candidate) => {
-            if (this.abortRequested || !candidate) return;
-            // 一度却下した値は出し直さない。毎回同じ候補が並ぶと、却下という操作に
-            // 意味が無くなる。
-            const roles = coveredNeededRoles(candidate, state.missing)
-              .filter((role) => !isRejectedCandidateValue(state.video, role, candidate[role]));
-            if (!roles.length) return;
-            // Add a role-limited copy so a candidate accepted for one role does
-            // not carry (and later force-overwrite) another role's value.
-            if (this.addCandidate(limitCandidateToRoles(candidate, roles))) {
-              roles.forEach((role) => state.missing.delete(role));
-            }
-          };
-
-          // Source 1: channel rule (no early `continue` — remaining roles flow on).
-          const rule = ruleByChannel.get(channel);
-          if (rule) {
-            for (const state of states) {
-              if (!state.missing.size) continue;
-              applyCandidate(state, createRuleCandidate(state.video, rule));
-            }
-          }
-
-          // Source 2: transfer role-specific values from another video of the
-          // same normalized song. Conflicts and incompatible/unknown durations
-          // are rejected locally before MusicBrainz is consulted.
-          for (const state of stillMissing()) {
-            applyCandidate(state, createSameSongDonorCandidate(state.video, sameSongDonorIndex));
-          }
-
           // Source 3: MusicBrainz per still-missing video (no channel-level gate —
           // one success elsewhere no longer starves the other videos, HANDOFF §3.3).
-          const pending = stillMissing();
+          const pending = videos.map((video) => statesByVideoId.get(video.videoId))
+            .filter((state) => state.missing.size && !this.abortRequested);
           for (let j = 0; j < pending.length; j++) {
             const state = pending[j];
             if (this.abortRequested) break;
@@ -1976,6 +1992,7 @@
     isSameSongDuration,
     createSameSongDonorIndex,
     createSameSongDonorCandidate,
+    collectSameSongDonorCandidates,
     candidateFromSong,
     sourceToCreditsSource,
   };
