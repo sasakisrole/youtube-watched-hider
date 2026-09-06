@@ -46,6 +46,7 @@ window._ytWatchedHider = (() => {
   let contextReady = false;
   const contextTimers = new Set();
   const reloadNoticeId = '__yt_watched_hider_reload_notice';
+  const CONTEXT_HEARTBEAT_MS = 5000;
 
   // Own only this content script's timers so invalidation can cancel every retry.
   function setTimeout(callback, delay) {
@@ -127,6 +128,16 @@ window._ytWatchedHider = (() => {
     } catch (error) {
       finish(undefined, error);
     }
+  }
+
+  // Detection otherwise waits for the next runtime message, so an idle page
+  // (feed with nothing left to look up) never notices the reload.
+  function startContextHeartbeat() {
+    const tick = () => {
+      if (detectContextInvalidation()) return;
+      setTimeout(tick, CONTEXT_HEARTBEAT_MS);
+    };
+    setTimeout(tick, CONTEXT_HEARTBEAT_MS);
   }
   // End extension context lifecycle.
 
@@ -2926,6 +2937,7 @@ window._ytWatchedHider = (() => {
   }
   chrome.runtime.onMessage.addListener(onMessage);
   contextReady = true;
+  startContextHeartbeat();
 
   // Cleanup function for re-injection
   function cleanup(keepReloadNotice = false) {

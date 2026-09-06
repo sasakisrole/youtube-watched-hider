@@ -112,7 +112,7 @@ function makeHarness(mode = 'throw', failOp = null) {
     contextReady = true;
     globalThis.api = { detectContextInvalidation, sendRuntimeMessage, DBClient, scrapeHistoryPage,
       recordSeekbarWatched, recordCurrentVideo, backfillTitleChannel, HISTORY_STATE, harvest,
-      harvestTick, startHarvest, setTimeout, cleanup };
+      harvestTick, startHarvest, setTimeout, startContextHeartbeat, cleanup };
   `, context);
   return { ...context.api, calls, body, cards, runtime, timers, context };
 }
@@ -164,6 +164,25 @@ async function run() {
       assert.notEqual(h.cards[0].dataset.historyState, h.HISTORY_STATE.FAILED, op + ': card was marked FAILED');
       assert.equal(h.cards[0].dataset.historyRetries, undefined, op + ': retry budget changed');
     }
+  });
+
+  await test('REQ-5::idle page notices the reload without sending anything', async () => {
+    const h = makeHarness('success');
+    const fireTimers = () => {
+      for (const [id, fn] of [...h.timers]) { h.timers.delete(id); fn(); }
+    };
+    h.startContextHeartbeat();
+    fireTimers();
+    assert.equal(h.body.children.length, 0, 'notice appeared while the context was alive');
+    assert.notEqual(h.timers.size, 0, 'heartbeat stopped rescheduling itself');
+    delete h.runtime.id;
+    fireTimers();
+    assert.equal(h.body.children.length, 1, 'idle page never showed the notice');
+    assert.equal(h.calls.warns.length, 1, 'expected exactly one console.warn');
+    assert.equal(h.calls.errors.length, 0, 'console.error was called');
+    assert.equal(h.calls.sends.length, 0, 'heartbeat sent a runtime message');
+    fireTimers();
+    assert.equal(h.timers.size, 0, 'heartbeat kept running after invalidation');
   });
 
   if (!control) {
