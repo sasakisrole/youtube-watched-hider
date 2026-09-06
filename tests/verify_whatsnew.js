@@ -77,6 +77,28 @@ check('release notes carry no emoji (house rule: no emoji in UI)',
   !releases.some((entry) =>
     [entry.summary, ...entry.points].some((text) => /[⚠✅⭐❌]/.test(text))));
 
+// CHANGELOG は開発の記録も兼ねているが、この画面は利用者が読む面。テスト本数・感応性・
+// 実機スモークの確認観点は、読んでも利用者の行動が変わらない（しかも「未検証です」だけ
+// 伝えて対処のしようがない）ので、生成の時点で落としている。落とし過ぎ・落とし漏れの
+// どちらもここで見る。
+const allPoints = releases.flatMap((entry) => entry.points);
+const devLeaks = allPoints.filter((text) => /^Test\s*[(（:：]/.test(text));
+check('開発向けのテスト記録が更新情報の画面に出ていない', devLeaks.length === 0, devLeaks[0]);
+const smokeLeaks = allPoints.filter((text) => /^(注意[:：]|実機スモーク)/.test(text)
+  && /実機スモーク|確認観点/.test(text));
+check('実機スモークの確認観点が更新情報の画面に出ていない', smokeLeaks.length === 0, smokeLeaks[0]);
+
+// 落とすのは画面だけで、記録そのものは CHANGELOG に残っている必要がある
+// （生成側のフィルタが「そもそも書かなくてよい」に読み替えられるのを防ぐ）。
+const changelog = read('CHANGELOG.md');
+check('落とした記録は CHANGELOG.md 側に残っている',
+  /^- Test: /m.test(changelog) && /^- 注意: .*実機スモーク/m.test(changelog));
+
+// 注意書きは開発メモと利用者向け警告が混ざっている。後者まで落とすと、
+// 「登録し直しが必要」のような、読まないと困る警告が画面から消える。
+check('利用者向けの警告は落としていない',
+  allPoints.some((text) => text.includes('登録済みの公式プロファイル') && text.includes('登録し直しが必要')));
+
 console.log('the hand written guide points at UI that actually exists');
 const uiSources = [
   read('popup.html'),

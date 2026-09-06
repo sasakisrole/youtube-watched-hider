@@ -16,9 +16,7 @@ globalThis.YWH_WHATSNEW = [
       "絞り込み中も全体の件数が読めるようにしました。検索すると右上の件数が絞り込み後の数に置き換わり、母数が分からなくなっていました。「128 件（全33,412件）」の形にしました。",
       "英語のまま残っていた画面文言を日本語にしました（4か所）。× の説明、視聴を検出した経路のバッジ2種、そして読み込みに失敗したときのメッセージです。一番困っているときに出る文が英語でした。",
       "「先頭へ戻る」ボタンを足しました。600px 以上スクロールすると右下に出ます。100件ずつ読み込む一覧なので、下へ進むほど先頭が遠くなっていました。",
-      "保存しているデータの構造（DB_VERSION）は 5 のままで、既存のデータを作り替える処理も行いません。外部への送信も増えていません（permissions / host_permissions は v1.51.0 と同一です）。",
-      "Test: 回帰ハーネス45本 0 failed（今回 tests/verify_history_delete_undo.js を新設して36件を追加しました）。新設分は出荷版 history.js の削除ブロックをそのまま実行し、DELETE_VIDEO が実際に何件・どのIDで送られたかを見ています。感応性＝描画済み件数を詰めない・押した瞬間に実削除する・失敗しても戻さない・タブを閉じるときに送らない・隠した行の display 打ち消しを外す、の5変異でそれぞれ対応する検査だけが FAIL し、戻すと全通過しました。",
-      "注意: v1.52.0 という組み合わせでの実機スモークは未実施です。確認観点: ①ポップアップの版表示が v1.52.0 ②× を押すと左下にトーストが出て、5秒以内に「元に戻す」で同じ位置へ戻る ③5秒待ってから再読み込みすると、その動画が消えている ④検索すると右上が「N 件（全M件）」になる ⑤Tab で × に到達したときフォーカス枠が見える ⑥照合前に「まとめて削除」へマウスを乗せると説明が出る ⑦スクロールすると右下に「先頭へ戻る」が出る ⑧ライト・ダーク双方で読める。"
+      "保存しているデータの構造（DB_VERSION）は 5 のままで、既存のデータを作り替える処理も行いません。外部への送信も増えていません（permissions / host_permissions は v1.51.0 と同一です）。"
     ]
   },
   {
@@ -30,9 +28,7 @@ globalThis.YWH_WHATSNEW = [
       "「全件を削除」ボタンを足しました。ボタンの文言は開くたびに「全N件を削除」と実際の件数へ書き換わるので、押す前に何件消えるかが読めます。渡す件数は一覧の件数そのもので、件数欄の値は経由しません（欄を触ってから全件を押したときに食い違わないようにするためです）。",
       "全件で押したときは確認ダイアログの文面も変わります（「一覧の全N件を削除します」）。従来どおり取り消せない旨と先頭5件の題名も出ます。候補が200件を超えて一覧が切り詰められている場合、「全件」はその一覧に出ている200件までで、これは一覧の説明文にも従来から出ています。",
       "実行中は全件ボタンも押せなくしました。「削除を実行」と同じ扱いにして、二重に走らせられないようにしています。",
-      "保存しているデータの構造（DB_VERSION）は 5 のままで、既存のデータを作り替える処理も行いません。外部への送信も増えていません（permissions / host_permissions は v1.50.0 と同一です）。",
-      "Test: 回帰ハーネス44本 0 failed（今回 tests/verify_watch_later_panel_ui.js を新設して22件を追加しました）。新設分は出荷版のソースから attachWheelStepper と startWatchLaterBatch を切り出して実行し、実際に START へ乗る件数を読んでいます（ソース文字列の一致ではないので、渡す値が入れ替われば落ちます）。感応性＝passive: false を外す・max の頭打ちを外す・全件ボタンが件数欄の値を使うように変える、の3変異でそれぞれ対応する検査だけが FAIL し、戻すと全通過しました。",
-      "注意: v1.51.0 という組み合わせでの実機スモークは未実施です。確認観点: ①ポップアップの版表示が v1.51.0 ②「照合」→「まとめて削除」で一覧が出て、件数欄の上でホイールを回すと数字が増減する ③「全件を削除」の文言が一覧の件数と一致する ④全件を押すと確認ダイアログに「一覧の全N件」と出る ⑤Tab で全件ボタンへ到達しフォーカス枠が見える ⑥ライト・ダーク双方で読める。"
+      "保存しているデータの構造（DB_VERSION）は 5 のままで、既存のデータを作り替える処理も行いません。外部への送信も増えていません（permissions / host_permissions は v1.50.0 と同一です）。"
     ]
   },
   {
@@ -46,8 +42,7 @@ globalThis.YWH_WHATSNEW = [
       "どの画面でも「支援しても機能は増えない・支援しない人と使える範囲は同じ・広告は入れない」と明記しました。有料機能の存在を匂わせて誤解させないためです。",
       "YouTubeのページ側には一切表示しません。Chrome ウェブストアのポリシーはサードパーティサイト上への表示に開示・帰属などの条件を課しているので、拡張自身の画面と配布ページの中だけに閉じています。",
       "README・GitHub Pages・.github/FUNDING.yml にも同じ導線を足しました。",
-      "新しい権限は要求していません（permissions / host_permissions は v1.49.0 と同一です）。保存しているデータの構造（DB_VERSION）は 5 のままで、外部への送信も増えていません。リンクは通常の外部リンクで、拡張から通信は行いません。",
-      "注意: v1.50.0 という組み合わせでの実機スモークは未実施です。確認観点: ①ポップアップの版表示が v1.50.0 ②ポップアップ最下部の支援リンクが見え、押すと GitHub Sponsors が新しいタブで開く ③「使い方・更新情報」の末尾に同じ導線が出る ④ライト・ダーク双方で文字が読める ⑤Tab で支援リンクに到達しフォーカス枠が見える。"
+      "新しい権限は要求していません（permissions / host_permissions は v1.49.0 と同一です）。保存しているデータの構造（DB_VERSION）は 5 のままで、外部への送信も増えていません。リンクは通常の外部リンクで、拡張から通信は行いません。"
     ]
   },
   {
@@ -58,9 +53,7 @@ globalThis.YWH_WHATSNEW = [
       "「後で見る」の3つの操作（照合・1件だけ削除・まとめて削除）を折り畳みの外へ出しました。並び順・絞り込みと同じ「常に見えている行」に置いたので、データ管理を開かなくても使えます。",
       "削除する動画の一覧を画面中央に重ねて出すようにしました。これまでは画面の途中に差し込む形だったため、上にあるデータ管理を開いていると下へ押し出され、一覧も削除中の進捗も読めませんでした。重ねて出すので、上に何が開いていても全件と進捗が読めます。Escape キーか背景を押すと閉じます（削除の実行中は閉じません。進捗がこの中にしか出ないためです）。",
       "後で見るの処理中にデータ管理の折り畳みが固定されるのをやめました。折り畳みを開いたまま閉じられなくする仕組みは、走っている処理の中止ボタンが折り畳みの中にあるためのものですが、後で見るの処理は中止ボタンを持たないのに巻き込まれていました。補完系の処理では従来どおり固定します。",
-      "新しい権限は要求していません。保存しているデータの構造（DB_VERSION）は 5 のままで、既存のデータを作り替える処理も行いません。外部への送信も増えていません。",
-      "Test: 回帰ハーネス36本 0 failed。画面の受入は、既存の37件に加えて今回20件を追加して全通過しました（データ管理を開いたままでも一覧が画面内に収まること、キーボードでの到達とフォーカス枠、Escape・背景での開閉、削除中は閉じないこと、200%相当の幅で崩れないこと、ライト・ダーク双方）。",
-      "注意: v1.49.0 という組み合わせでの実機スモークは未実施です。確認観点: ①ポップアップの版表示が v1.49.0 ②「後で見る」の3ボタンがデータ管理を開かずに押せる ③「まとめて削除」を押すと一覧が画面中央に出て全件読める ④Escape で閉じられる。"
+      "新しい権限は要求していません。保存しているデータの構造（DB_VERSION）は 5 のままで、既存のデータを作り替える処理も行いません。外部への送信も増えていません。"
     ]
   },
   {
@@ -80,9 +73,7 @@ globalThis.YWH_WHATSNEW = [
       "外部データベースの照会中、進捗が数分間止まって見えるのを直しました。1曲あたり1秒の間隔で問い合わせるため、チャンネル単位の表示だと動いていないように見えていました。「N/M曲: 曲名」を出すようにしました。",
       "記録に失敗したのに「処理済み」に見える状態をなくしました。保存に失敗しても非表示だけが先に確定してしまい、その動画が二度と処理されないことがありました。保存が成功したときだけ処理済みとして扱い、失敗はコンソールへ残します。",
       "保存しているデータの構造（DB_VERSION）は 5 のままで、既存のデータを作り替える処理は行いません。新しい権限は要求していません（permissions / host_permissions は v1.47.0 と同一です）。外部への送信も増えていません。",
-      "Test: 回帰ハーネス34本 0 failed。修復機能は独立レビュー2回（1回目は NO-GO・指摘2件を実装で解消しました）、変異23件すべて検出しました。",
-      "実データでの適用実績: 自分の手元のデータで528件を空欄化し、修復前後のバックアップを全件突合して、正常な値の巻き込み0・消し残し0・記録528件すべてに元の値が残っていることを確認済みです（2026-08-25）。",
-      "注意: v1.48.0 という組み合わせでの実機スモークは未実施です。確認観点: ①ポップアップの版表示が v1.48.0 ②「データ修復」の下見→実行→元に戻すが通る ③クレジット補完の確認ダイアログに間隔待ちの件数が出る ④手動確認の一覧がすぐ開く ⑤バックアップの取り込みが通る。"
+      "実データでの適用実績: 自分の手元のデータで528件を空欄化し、修復前後のバックアップを全件突合して、正常な値の巻き込み0・消し残し0・記録528件すべてに元の値が残っていることを確認済みです（2026-08-25）。"
     ]
   },
   {
@@ -98,7 +89,6 @@ globalThis.YWH_WHATSNEW = [
       "アイコン付きボタンのアイコンが消える不具合を直しました。「クレジット補完（外部DB）」ボタンは、何かメンテナンス処理を1回走らせるとアイコンだけ消えていました。",
       "画面に残っていた英語のラベルを日本語へ揃え、実行後のメッセージもボタンと同じ動詞・対象名にしました（「バックアップを保存」→「バックアップを保存しました」）。",
       "新しい権限は要求していません（permissions / host_permissions は v1.46.0 と同一です）。処理の進み具合は端末の中にだけ保存され、外部へは送られません。保存するのは件数・処理名・状況メッセージだけで、動画IDやタイトルは含みません。",
-      "Test: 回帰ハーネス31本 0 failed。画面の受入確認は実ブラウザ（Chromium）で34項目すべて通過しました。感応性＝該当箇所を1行崩すと対応する検査だけが FAIL し、戻すと全通過しました。",
       "実機での動作確認は実施済みです。"
     ]
   },
@@ -109,9 +99,7 @@ globalThis.YWH_WHATSNEW = [
     "points": [
       "公式優先フィルターのクレジット候補が、紐付けていない検索語では1件も出なかったのを直しました（cnd7）。パネルで選んだプロフィールと、候補生成が実際に見ていたプロフィール（検索語から解決）が別物だったのが原因です。候補リストは選択中のプロフィールで作り、隠す・残すの分類は従来どおり検索語から解決したプロフィールで判定します（分類まで選択中に寄せると無関係な検索で絞り込みが緩むため、この非対称は意図的です）。",
       "クレジットのデータベース照会は1回のままで増えていません。二段階の明示採用も変更ありません。",
-      "権限は増えていません（permissions / host_permissions は v1.45.0 と同一です）。",
-      "Test: 回帰ハーネス29本 0 failed。cnd7 分は tests/verify_official_search_filter_credits.js に REQ-1〜5 を追加しました（19 passed）。感応性＝呼び出し側の分離を潰す変異で REQ-1/REQ-2 の2件が FAIL・復元後 SHA 一致を確認しました。",
-      "注意: v1.46.0 という組み合わせでの実機スモークは未実施です。確認観点: ①ポップアップの版表示が v1.46.0 ②Fix Credits 後に URL・曲名・別役割ラベルの混ざったクレジットが増えない ③公式優先フィルターで、紐付けていない検索語でもクレジット候補が出る ④後で見るの照合・削除が従来どおり動く ⑤バックアップの取り込みが通る。"
+      "権限は増えていません（permissions / host_permissions は v1.45.0 と同一です）。"
     ]
   },
   {
@@ -121,9 +109,7 @@ globalThis.YWH_WHATSNEW = [
     "points": [
       "後で見る（Watch Later）の整理を収載しました: 視聴済みDBとの照合スキャン・1件削除・一覧確認つきのまとめて削除です。削除は「後で見る」から1件外す操作だけに絞ってあり、content script 側の中継が playlistId と操作種別を毎回検査して、それ以外の編集要求を拒否します。",
       "権限は増えていません（permissions / host_permissions は v1.44.0 と同一です）。",
-      "統合で extractItemsAndContinuation が findFirstSetVideoId を呼ぶようになり、tests/verify_liked_sync_behavior.js が本番コードを切り出す際に依存を取りこぼして落ちました。切り出しは「次の関数宣言まで」を拾う作りなので、間に関数が挿入されると手前で切れます。依存する定数・関数を名指しで束ねるよう直しました（本番コードの変更はありません）。",
-      "Test: 回帰ハーネス29本 0 failed。感応性＝ページ間で開始時アカウントを固定するのをやめると verify_liked_sync_behavior の REQ-A2 が FAIL・復元後 9 passed（background.js の sha256 前後一致）。",
-      "注意: v1.45.0 という組み合わせでの実機スモークは未実施です。確認観点: ①ポップアップの版表示が v1.45.0 ②Fix Credits 後に URL・曲名・別役割ラベルの混ざったクレジットが増えない ③後で見るの照合・削除が従来どおり動く ④バックアップの取り込みが通る。"
+      "統合で extractItemsAndContinuation が findFirstSetVideoId を呼ぶようになり、tests/verify_liked_sync_behavior.js が本番コードを切り出す際に依存を取りこぼして落ちました。切り出しは「次の関数宣言まで」を拾う作りなので、間に関数が挿入されると手前で切れます。依存する定数・関数を名指しで束ねるよう直しました（本番コードの変更はありません）。"
     ]
   },
   {
@@ -136,9 +122,7 @@ globalThis.YWH_WHATSNEW = [
       "クレジット候補生成の推定所要時間の下限を実挙動へ合わせた（9ni6）。通信が0回になる2経路を反映し、短すぎる表示を解消。",
       "公式優先フィルターで、未知の動画のクレジットを明示操作のときだけ調べられるようにした（qdo5 PR6）。",
       "高評価同期の応答が遅れて届いたときに、画面とコピー用プロンプトへ反映されない穴を塞いだ（l1cm）。",
-      "外部通信の開示に MusicBrainz を追記し、公開文書と実装の食い違いを解消（ffkt・docs/privacy.html）。",
-      "Test: バックアップ復元のスモークを Playwright で自動化。高評価同期の3経路・公式プロファイル修復導線・所要時間の見積り・視聴3状態に、実コードを走らせる挙動試験を追加。回帰ハーネス28本 0 failed（2026-08-10 実走）。",
-      "注意: v1.44.0 という組み合わせでの実機スモークは未実施（v1.43.11 単体のスモークは 2026-08-05 に PASS 済み）。確認観点: ①ポップアップの版表示が v1.44.0 ②Fix Credits 後に URL・曲名・別役割ラベルの混ざったクレジットが増えない ③バックアップの取り込みが従来どおり通る。"
+      "外部通信の開示に MusicBrainz を追記し、公開文書と実装の食い違いを解消（ffkt・docs/privacy.html）。"
     ]
   },
   {
@@ -154,9 +138,7 @@ globalThis.YWH_WHATSNEW = [
       "成功は YouTube が明示的に成功を返したときだけとする。応答があっても成功と書かれていなければ「消えたか不明」として扱う。消えていないのに消したと報告するほうが回復不能なため。",
       "実測（実機）: 削除しても他の行のIDは振り直されない（578行中0件）。引き継ぎ資料の前提と異なったため、まとめて削除は1回の照合で複数件を消す設計にし、10件ごとの再照合で前提が崩れていないかを確認する。崩れていれば停止する。",
       "実測（実機）: 3件削除して「未視聴 537件」は不変。未視聴の行に一度も触れていないことを確認した。",
-      "Test: 新規 tests/verify_watch_later_core.js 112件。感応性＝画面から background への開始メッセージを削除すると2件 FAIL・メッセージ名を食い違わせると2件 FAIL・復元後 112 passed。全25ハーネス 0 failed。",
-      "既知の限界: 画面と background の受け渡しを検査するピンは、当初 background 側しか見ておらず素通りしていた（実機で「削除中…」のまま固まる不具合が出た）。範囲を絞って修正済みだが、同種の契約は他機能にも残っている。",
-      "注意: まとめて削除の実機実行は未実施。失敗経路（アカウント切替・時間切れ・通信失敗・IDの振り直し）もテストで固定しただけで実機では踏んでいない。確認観点: ①照合の件数が実際の本数と合う ②まとめて削除の後も「未視聴」の件数が変わらない ③進捗が動く。"
+      "既知の限界: 画面と background の受け渡しを検査するピンは、当初 background 側しか見ておらず素通りしていた（実機で「削除中…」のまま固まる不具合が出た）。範囲を絞って修正済みだが、同種の契約は他機能にも残っている。"
     ]
   },
   {
@@ -167,9 +149,7 @@ globalThis.YWH_WHATSNEW = [
       "未認識の単語ラベル（Xxx:）を値の境界として扱い、Composer: Song Title の曲名や Lyrics: Vocal: Alice のような別役割ラベル入りの値を人名として保存しないようにした。",
       "人名でない BGM を拒否（完全一致のみ・BGM Records などの名称は対象外）。",
       "動画タイトルと同一の値を NFKC・空白正規化で照合して拒否。取得時に watch ページのタイトルと照合し、保存時も再検査する。",
-      "あわせて収載: クレジット候補生成の推定所要時間を実際の通信モデルへ補正（9ni6）／複数名クレジット（編曲2名など）と creditsRaw の保持に対応（7kyr）。",
-      "Test: tests/verify_credit_validator.js 75→90。感応性＝非人物語リストを空にすると2件 FAIL・タイトル同一性判定を無効化すると5件 FAIL・復元後 90 passed。クレジット系4ハーネス 0 failed。",
-      "注意: 実機スモーク未実施（拡張の再読込が必要）。確認観点: ① Fix Credits 後に URL・権利表示・曲名・BGM・別役割ラベルの混ざった値が増えない ② 正常な人名の取得が退行しない。"
+      "あわせて収載: クレジット候補生成の推定所要時間を実際の通信モデルへ補正（9ni6）／複数名クレジット（編曲2名など）と creditsRaw の保持に対応（7kyr）。"
     ]
   },
   {
@@ -191,9 +171,7 @@ globalThis.YWH_WHATSNEW = [
       "更新履歴は CHANGELOG.md から tools/build_whatsnew.py で機械生成する（whatsnew_data.js）。二重管理にすると必ず片方が古くなるため、正本は CHANGELOG.md ただ1つ。最新8版は詳細つき、それ以前は折りたたみ。",
       "腐り検出を回帰テストに入れた: ①CHANGELOG を更新して再生成し忘れると落ちる（build_whatsnew.py --check）②使い方が引用するUI文字列が現物のHTML/JSから消えると落ちる ③manifest のバージョンと最新エントリの不一致 ④配布物への同梱漏れ ⑤更新履歴に絵文字が混ざっていないこと。",
       "生成時に CHANGELOG の強調記号（警告・完了マーク）を落とす。UIに絵文字を出さない方針のため、文頭のものは「注意:」へ置き換える。",
-      "Test: 新規 tests/verify_whatsnew.js 10件。感応性＝CHANGELOG に版を足して再生成しないと同期検査が FAIL、使い方が指すボタン名を改名すると照合が FAIL。全21ハーネス 0 failed。",
-      "既知の限界: UI文字列の照合は部分一致なので、同じ文字列が他の箇所にも残っている改名は検出できない（例: タブ名だけ変えてもセクション見出しに同じ語が残る）。完全な削除・改名は検出できる。",
-      "注意: 実機スモーク未実施（拡張の再読込が必要）。確認観点: ①ポップアップに Guide が出る ②押すと使い方と更新履歴が表示される ③最新が v1.43.9 と出る。"
+      "既知の限界: UI文字列の照合は部分一致なので、同じ文字列が他の箇所にも残っている改名は検出できない（例: タブ名だけ変えてもセクション見出しに同じ語が残る）。完全な削除・改名は検出できる。"
     ]
   },
   {
@@ -204,9 +182,7 @@ globalThis.YWH_WHATSNEW = [
       "二重登録の防止（実害）: mutateConfirmedRegistration が毎回 createProfile を呼んでいたため、同じ候補を2回登録するとプロフィールが2つできていた（id に -2 が付く）。既に同じチャンネルが登録されていれば already-registered を返して新しいプロフィールを作らないようにした。UI もその旨を出す。",
       "登録済みを一覧から外す: 登録時に候補の出どころ（Analyze の集計チャンネル名）を sourceChannelName として保存し、それを主キーに登録済み判定する。プロフィール名を編集して保存しても紐づく。v1.43.7 以前の登録データには無いので、チャンネル表示名・プロフィール表示名でフォールバック照合する。",
       "手動で候補から外せるようにした: 各行に「候補から外す」を追加（複数アーティストが混ざるチャンネルなど）。除外は設定に永続化し、一覧下部に「非表示: 登録済み N件 / 除外 M件（名前）」と「除外をすべて戻す」を出す＝誤操作を戻せる。",
-      "登録・除外の直後に一覧を描き直す（従来は再読込するまで反映されなかった）。空状態も「候補が無い」ではなく「登録済み N件・除外 M件は非表示」と理由を出す。",
-      "Test: tests/verify_analyze_official_profiles.js 21→34。二重登録の拒否・改名しての再登録も拒否・出どころ保存・旧データのフォールバック照合・除外の冪等性と復元・sanitizer 通過・仕分け・除外ボタンの結線・空状態の文言を固定。感応性＝二重登録ガードと sourceChannelName を潰すと2件 FAIL・復元後 sha256 一致。全20ハーネス 0 failed。",
-      "注意: 実機スモーク未実施（拡張の再読込が必要）。確認観点: ①登録した候補がその場で一覧から消える ②同じチャンネルをもう一度登録しようとすると「登録済みです」と出てプロフィールが増えない ③「候補から外す」で消え、「除外をすべて戻す」で戻る。"
+      "登録・除外の直後に一覧を描き直す（従来は再読込するまで反映されなかった）。空状態も「候補が無い」ではなく「登録済み N件・除外 M件は非表示」と理由を出す。"
     ]
   },
   {
@@ -215,9 +191,7 @@ globalThis.YWH_WHATSNEW = [
     "summary": "「公式プロファイル候補」を専用タブへ分離（実利用フィードバック＝アーティストタブに常駐していてノイズになる）。",
     "points": [
       "Analyze 画面のタブに「公式プロファイル」を追加し、候補一覧・確認・登録フォームを azOfficialPanel へ移設。アーティストタブは集計テーブルだけに戻した。",
-      "候補の生成ロジック・登録の確認ゲート・保存内容は一切変更なし（表示位置のみ）。",
-      "Test: tests/verify_analyze_official_profiles.js 17→21。タブ→パネルの配線ドリフト検出を追加（全 data-aztab がマップに存在する／全マップ値の id が history.html に実在する／セクションがアーティストタブ側に残っていない／確認UI一式が同じパネル内にある）。感応性＝マップから official を外すと2件 FAIL・復元後 sha256 一致。",
-      "注意: 実機スモーク未実施（拡張の再読込が必要）。確認観点: ①「公式プロファイル」タブをクリックすると候補一覧が出る ②アーティストタブに候補欄が出ない ③他タブの表示が従来どおり。"
+      "候補の生成ロジック・登録の確認ゲート・保存内容は一切変更なし（表示位置のみ）。"
     ]
   },
   {
@@ -227,8 +201,7 @@ globalThis.YWH_WHATSNEW = [
     "points": [
       "併発していた実害（同根・こちらの方が重い）: 保存する channelId も同じ小文字 path から切り出していたため、検索結果側が返す実ID（UC...・字面保持）と exact 比較で一致せず、Analyze から登録した公式チャンネルが公式優先フィルターで機能していなかった。",
       "Fix: official_search_filter_core.js に字面を保つ canonicalChannelPath() を追加し、normalizeChannelPath() はその小文字版として再定義（比較の意味論は不変）。analyze_official_profiles.channelFromInput() が遷移URL・保存IDの両方を字面保持側から作るようにした。",
-      "注意: v1.43.5 で登録済みの公式プロファイルは、チャンネルIDが小文字で保存されているため登録し直しが必要（自動移行は入れていない）。",
-      "Test: tests/verify_analyze_official_profiles.js 12→17。ID path・ハンドル・保存IDの字面保持、比較正規化が従来どおり畳むこと、字面保持IDで isSameChannel が一致することを固定。感応性＝修正を戻すと新規3件が FAIL・復元後 sha256 一致。全20ハーネス 0 failed。"
+      "注意: v1.43.5 で登録済みの公式プロファイルは、チャンネルIDが小文字で保存されているため登録し直しが必要（自動移行は入れていない）。"
     ]
   },
   {
@@ -238,9 +211,7 @@ globalThis.YWH_WHATSNEW = [
     "points": [
       "official_profile_store.js を新設し profile/channel の保存経路を共有化（content script へ追加・新規権限なし）。",
       "Analyze の集計から公式/Topic候補を提示し、ユーザー確認後に profile＋channel を保存する。",
-      "名前一致だけで公式確定はしない原則を維持（未確認時は storage の read/write ゼロ）。",
-      "Test: tests/verify_analyze_official_profiles.js 12件。感応性＝confirmed ゲート2箇所を潰すと 3 failed・復元後 12/12。",
-      "注意: 実機スモーク未実施。"
+      "名前一致だけで公式確定はしない原則を維持（未確認時は storage の read/write ゼロ）。"
     ]
   },
   {
@@ -249,9 +220,7 @@ globalThis.YWH_WHATSNEW = [
     "summary": "クレジット候補生成の事前確認に推定所要時間と件数上限を追加（PENDING id:9ni6）。v1.42.15 で件数の事前提示は入ったが、「何分かかるか」と「何件で止めるか」は選べなかった。",
     "points": [
       "確認ダイアログに、対象件数と background.js の実レート制御値から算出した推定所要時間を表示。",
-      "処理件数の上限（全件 / 上位N件）を選べるようにし、生成ループがN件で停止する。",
-      "Test: tests/verify_manual_credits_ui.js に3ケース追加（58→61 passed）。感応性＝上限適用行を差し替えると当該1件のみ FAIL・復元後 61/61。",
-      "注意: 実機スモーク未実施。"
+      "処理件数の上限（全件 / 上位N件）を選べるようにし、生成ループがN件で停止する。"
     ]
   },
   {
@@ -262,9 +231,7 @@ globalThis.YWH_WHATSNEW = [
       "検索結果の videoId 群からクレジットを DBへ一括取得（1件ずつ問い合わせない）。",
       "creditAliases を NFKC 正規化して突き合わせ、公式/関連チャンネル候補を生成。",
       "候補は提示のみ。userAccepted=true の明示採用時だけ登録する（名前一致・部分クエリ一致だけでは自動確定しない）。",
-      "CATEGORY.CREDIT_RELATED / hasRelatedCredit を実配線（従来は false 固定の scaffold）。",
-      "Test: 新規 tests/verify_official_search_filter_credits.js 13件・既存全19本 0 failed。感応性＝10変異＋独立変異1件（明示採用チェックを潰すと2件 FAIL・復元後 SHA 一致）。",
-      "注意: 実機スモーク（実YouTube検索DOM・実DB/offscreen lifecycle・SPA遷移）未実施。"
+      "CATEGORY.CREDIT_RELATED / hasRelatedCredit を実配線（従来は false 固定の scaffold）。"
     ]
   },
   {
@@ -273,8 +240,7 @@ globalThis.YWH_WHATSNEW = [
     "summary": "高評価同期を開始時のタブ・認証アカウントへ固定する（HANDOFF §8.1 / PENDING id:w2mp）。同期中に別タブ・別アカウントへ切り替えると、別アカウントの結果を取り込みうる穴があった。",
     "points": [
       "同期開始時に syncSessionId / tabId / authUser を固定し、終了時に一致を確認する。",
-      "途中の fetch 応答が別 authUser だった場合のガードを配線。",
-      "Test: tests/verify_liked_sync_robustness.js を 138→147 passed へ。中間HTMLの authUser 照合は既存テストで無試験だった（条件を false に潰しても 146 green のまま）ため、開始・終了は同一で fetch 応答だけ別 authUser のケースを追加し、browse未実行・終了時ガード未到達・DB書込み0 を検証。感応性＝正常147 / 変異146+1 failed / 復元147。"
+      "途中の fetch 応答が別 authUser だった場合のガードを配線。"
     ]
   },
   {
@@ -285,7 +251,6 @@ globalThis.YWH_WHATSNEW = [
       "db.js: parseImportData に likedMetaStructuralError（present かつ非plain-object限定＝空object・identity欠落の正当metaは誤警告しない）／diffImport.invalid へ伝播。",
       "offscreen.js: importPayload・replaceApply 両経路の dropped へ配線。",
       "popup.js: プレビュー / import結果 / sync結果 の3経路に警告表示（droppedNote 配列化で複数理由を併記）。",
-      "Test: tests/verify_import_modes.js 13→24。旧コードでは likedMetaStructuralError=undefined ＝新テスト FAIL（退行検出力あり）。",
       "安全: DB書込 / データ削除 / 外部通信 / manifest権限 / DBスキーマ 変更なし。"
     ]
   },
@@ -299,9 +264,7 @@ globalThis.YWH_WHATSNEW = [
       "PR3a/3b/3c: 設定保存基盤（chrome.storage.local・mode永続化）／プロフィール・投稿元管理／queryBinding・プロフィール別 mode。",
       "PR4: 発掘モード＋3つのUI契約（公式のみ / 発掘 / すべて表示）。",
       "追加: 登録不要のグローバル「その他を隠す」トグル（設定ゼロで使える）／パネルを既定折りたたみの非侵襲UIへ（実利用フィードバック＝常時パネルが YouTube の結果とUIを塞ぐ、への対応）。",
-      "安全条件: .ywh-osf-hidden 限定・style.display / watched dataset / 並び順 / 件数に触れない・manifest権限・外部通信の変更なし。",
-      "Test: 全18ハーネス 727 passed / 0 failed。",
-      "注意: 実機スモーク未実施。"
+      "安全条件: .ywh-osf-hidden 限定・style.display / watched dataset / 並び順 / 件数に触れない・manifest権限・外部通信の変更なし。"
     ]
   },
   {
@@ -312,7 +275,6 @@ globalThis.YWH_WHATSNEW = [
       "A: role別 provenance と manual credit 書込みのデータ層。",
       "B: 不足クレジットの手動確認UI（MusicBrainz を呼ばない独立view）。",
       "C: Enrich候補生成の fetch前ゲート。対象動画数と対象チャンネル数（distinct）を提示して開始/キャンセルを選べるようにした。キャンセルは fetch・enrichCreditsMb・DB書込みを一切出さず状態不変（副作用0）。書き戻し前の既存 confirm は別境界として維持。",
-      "Test: tests/verify_manual_credits_ui.js に7チェック追加（独立VERIFYで mutation survival 0/5）。全スイート 535 passed / 0 failed。",
       "外部通信先・host_permission の追加なし。"
     ]
   },
@@ -324,9 +286,7 @@ globalThis.YWH_WHATSNEW = [
       "Fix(§3.1・ロール単位判定): 対象選定を新モジュール credit_target.js の isFixCreditsTarget() に集約。composer/lyricist/arranger のどれかが空なら対象に含める（既存値は上書きしない＝background の UPDATE_CREDITS が !existing[k] で空欄のみ埋める挙動は不変）。判定を enrich_credits.js から独立させ Path A を自己完結に保つ（Path B は据え置き・単一ソース原則）。",
       "Fix(§3.4 軽量・再取得クールダウン): 概要欄は単一ソースなので、内容が変わらない動画を即再取得しても同じ結果しか返らず、無制限に再fetchすると YouTube の bot チャレンジを踏む。取得元別 attempts スキーマ（§3.4 フル・DB v6 マイグレーション）は別PRに据え置き、既存の creditsCheckedAt（この経路では＝YouTube取得時刻）を 30日リトライ窓として流用。「チェック済みスキップ」ON 時は直近30日以内にチェック済みの動画だけを除外し、それより前にチェックした動画（パーサ改善・概要欄編集で拾える可能性）は再取得の対象に戻す。取得失敗（creditsCheckedAt 未スタンプ）は従来どおり即再試行可。「スキップ」OFF は不足ロールのある動画を窓に関係なく強制再取得。",
       "UI: 「チェック済みスキップ」チェックボックスの説明を新挙動（最近チェック済み=30日以内を除外／それ以前は再取得対象）に更新。DB スキーマ・background の書き込み経路は不変。",
-      "Test: tests/verify_credit_target.js（node・24件）。§3.1 回帰（旧 whole-video ゲートが部分クレジット動画を EXCLUDE ／新ゲートが INCLUDE を両方 assert・退行検出力を実測）＋ role-unit（部分/全埋め/未取得 Topic）＋ クールダウン（直近スキップ/40日で復活/30日境界/skip OFF 強制/取得失敗は即対象/既定値 true）＋定数 sanity。Path B の verify_enrich_credits_roles.js（26件）も回帰 green。24 + 26 passed。",
-      "既知の割り切り（軽量版の範囲）: 単一 creditsCheckedAt を全取得元共通のクールダウンに流用するため、YouTube と MusicBrainz を独立に再試行日管理する用途では不足（＝§3.4 フルの per-source attempts は別PR）。概要欄が実際には変わっていない動画も30日窓の満了ごとに再fetch対象になりうる（パーサ改善時に拾える利点とのトレードオフ・件数は実行前の confirm ダイアログで可視）。初回実行時に「30日以上前にチェック済み＋不足ロールあり」の動画がまとまって対象化しうるが、レート制限・中止可能・confirm で件数提示のため暴走はしない。",
-      "注意: 実機スモーク未実施（拡張再読込が必要）。history.js / history.html 変更＋新規 credit_target.js のみ・DBスキーマ据え置き＝移行なし。確認観点: ①「クレジット補完（概要欄）」を開くと、作曲だけ埋まって編曲が空の Topic 動画が対象件数に含まれる（旧版では除外されていた）②「チェック済みスキップ」ON で直近チェック済みが除外され、30日以上前は含まれる ③通常の全埋め動画は対象にならない ④confirm ダイアログの件数が想定より極端に多くないか（多ければ中止できる）。"
+      "既知の割り切り（軽量版の範囲）: 単一 creditsCheckedAt を全取得元共通のクールダウンに流用するため、YouTube と MusicBrainz を独立に再試行日管理する用途では不足（＝§3.4 フルの per-source attempts は別PR）。概要欄が実際には変わっていない動画も30日窓の満了ごとに再fetch対象になりうる（パーサ改善時に拾える利点とのトレードオフ・件数は実行前の confirm ダイアログで可視）。初回実行時に「30日以上前にチェック済み＋不足ロールあり」の動画がまとまって対象化しうるが、レート制限・中止可能・confirm で件数提示のため暴走はしない。"
     ]
   },
   {
@@ -335,9 +295,7 @@ globalThis.YWH_WHATSNEW = [
     "summary": "高評価同期: unknown保存の確認が account-change 確認まで同時承認してしまう穴を塞ぐ（Codex 2026-07-11 wrapup-review_9 M1 / PENDING id:ivhb）。account-unknown の初回確認後、analyzer の同期ボタンハンドラが2回目の SYNC_LIKED に confirmUnknownAccount:true と confirmAccountChange:true を同時に渡していた。background は unknown ガード（L2466）→ account-change ガード（L2481）の二段構えだが、UI が両フラグを一度に渡すため、既存 likedSyncMeta が既知アカウントでも「未識別のまま保存しますか？」の1確認だけで known→unknown の account-change まで承認扱いになっていた。実害: owner 抽出が一時的に失敗しただけの同期で、既存の既知アカウントとは別の未識別アカウントの高評価が同じデータセットに混入し、推薦材料・集計・エクスポートが汚染される。",
     "points": [
       "Fix(M1・ガードごとに個別確認): 確認エスカレーションを純関数 resolveLikedSync({ doSync, confirm }) に切り出し（DOM 非依存＝ユニットテスト可）、フラグを個別に累積するよう変更。account-unknown 承認後の再実行は confirmUnknownAccount のみを運び、既存メタが既知なら background が account-changed を返す → 既存の account-changed ハンドラが「旧: 既知 / 新: unknown」を表示して第2確認に進む → 承認で両フラグを付けて保存。ボタンハンドラは confirm(kind, resp) コールバックでダイアログ文言を組むだけに縮退。first-sync unknown（メタなし）と unknown→unknown は従来どおり1確認で保存（誤った第2確認は出さない）。",
-      "Test: 純関数 resolveLikedSync を analyzer.js から brace 抽出し、フラグ依存の忠実な background モック（L2466/L2481 のガードを再現）で駆動する escalation テスト11件＋drift guard 3件。known→unknown で①両ガードが順に発火・確認される②再実行が3回（初回＋2再実行）③unknown 再実行は confirmUnknownAccount のみ（confirmAccountChange を含まない）④最終再実行で両フラグ⑤change を decline すれば保存されず cancel、を検証。旧ハンドラ（両フラグ同時）では account-changed が発火せず known→unknown が単一確認で保存される＝RED を実測確認（feedback_regression_test_must_fail_on_old）。123 passed → 137 passed。",
-      "別解は見送り（Codex disposition どおり）: 別解1（dry-run/commit 分離）・別解3（unknown を別 namespace に隔離）は現行の二段確認で実害を塞げるため過剰。identity 強度モデル（別解2）は v1.42.11/12 の name-only で既に部分導入済み。",
-      "注意: 実機スモーク未実施（拡張再読込が必要）。analyzer.js のみ変更・background/DBスキーマ据え置き＝移行なし。確認観点: ①既知アカウントで同期後、owner 抽出が失敗する状況（未ログイン等）で再同期 → 「未識別のまま保存しますか？」を承認 → 続けて「アカウントが変更されています 旧:既知 / 新:(unknown)」の第2確認が出ること ②その第2確認を拒否すると保存されないこと ③通常の識別済み同期では確認ダイアログが一切出ないこと。"
+      "別解は見送り（Codex disposition どおり）: 別解1（dry-run/commit 分離）・別解3（unknown を別 namespace に隔離）は現行の二段確認で実害を塞げるため過剰。identity 強度モデル（別解2）は v1.42.11/12 の name-only で既に部分導入済み。"
     ]
   },
   {
@@ -347,9 +305,7 @@ globalThis.YWH_WHATSNEW = [
     "points": [
       "Fix(M1・強度ランクで格上げ): syncLikedPlaylist の browse owner 復元条件が !ownerChannelId && !ownerHandle && !ownerName（＝HTML が完全に空のときだけ）だったため、HTML から表示名だけ取れた name-only 状態では、初回 VLLL browse 応答に channelId/handle があっても extractOwnerIdentity(initResp.data) を試さず、弱い表示名のまま accountId に保存していた（v1.42.11 の「表示名は弱い」という主旨と不整合・同名混入と account-change ノイズが残存）。識別を強度ランク（channelId/handle=2 > 表示名=1 > なし=0）で扱い、browse がより強ければ厳密増加で上書きするよう変更。VLLL browse は本人の高評価プレイリストに対して authoritative なので identity を丸ごと採用して安全（表示名が食い違えば既存の account-change ガードが発火）。identitySource を html/browse から html-strong/html-name-only/browse-upgraded に細分（診断可読性向上・強識別で browse 復元は従来どおり identityConfidence='browse-recovered'）。",
       "Fix(M2・コピー用プロンプトにも弱識別警告): analyzer のメタ行では name-only/unknown-confirmed を赤表示していたが、renderPrompt の高評価 Top30 セクションは partial だけ注記し identityConfidence を見ていなかった。Top30 はまさに外部の推薦AIへ持ち出すデータなので、コピー後に弱識別警告が落ちると混入リスクのある高評価データが完全なデータとして扱われる。純関数 likedPromptNotes(meta) を新設し、partial（部分同期）／unknown-confirmed（アカウント未識別）／name-only（表示名のみ弱識別）の注記をプロンプト本文に出力（DOM 非依存なのでユニットテスト可）。",
-      "Test: E2E Scenario K（HTML=表示名のみ・browse header に channelId/handle → accountId が channelId に格上げ・identityConfidence='browse-recovered'・identitySource='browse-upgraded'）＋ M1 drift guard（強度ランク上書きが body に残ること）＋ M2 likedPromptNotes ユニット7件（name-only/unknown-confirmed で警告・強識別で無警告・partial 独立・両立・meta なしで空）＋ renderPrompt drift（likedPromptNotes(likedMeta) を実際に消費すること）。Scenario K/M1 drift は旧コードで RED（4件）・M2 drift も RED＝退行検出力を実測確認。110 passed → 123 passed。",
-      "別解 L1/L2 は見送り（Codex disposition どおり）: L1（name-only を保存単位でも隔離 namespace に分離）は現状でも可視化されるため Low・次回 identity 改修で合わせて検討。L2（CHANGELOG 未検証事項をテスト側 pending fixture 化）も任意ドキュメント改善のため見送り。",
-      "注意: 実機スモーク未実施（拡張再読込が必要）。background.js / analyzer.js のみ変更・DBスキーマ据え置き＝移行なし。確認観点: ①通常時（channelId/handle 取得）はメタ行・プロンプトともに弱識別注記が出ないこと ②HTML が表示名だけ・browse に channelId/handle があるケースで accountId が channelId に格上げされ、メタ行が ℹ️ アカウントはブラウズ応答から復元 になること ③name-only のまま確定するケースでコピーしたプロンプト先頭の高評価セクションに 表示名のみ（弱識別） 注記が入ること。"
+      "別解 L1/L2 は見送り（Codex disposition どおり）: L1（name-only を保存単位でも隔離 namespace に分離）は現状でも可視化されるため Low・次回 identity 改修で合わせて検討。L2（CHANGELOG 未検証事項をテスト側 pending fixture 化）も任意ドキュメント改善のため見送り。"
     ]
   },
   {
@@ -359,9 +315,7 @@ globalThis.YWH_WHATSNEW = [
     "points": [
       "Fix(M2・弱識別マーカー): strongIdentity = !!(ownerChannelId || ownerHandle) を判定し、accountId が表示名のみ（強い識別が無い）のときは identityConfidence = 'name-only' を記録。強度優先順位は unknown-confirmed > name-only > browse-recovered / html（browse から復元しても強い識別が無ければ name-only）。",
       "Fix(M2・メタ行で可視化): analyzer のアカウント行に 表示名のみで識別（同名の別アカウント混入に注意・再同期で強い識別が付けば解消） を赤表示（liked-partial クラス付与）。次回開いても「通常の完全成功」と同じ見た目にならない。",
-      "ブロッキング確認は追加しない（設計判断）: name-only は unknown より強い識別で、v1.42.10 M1 は「browse 復元で不要なプロンプトを減らす」方向だった。name-only ごとに確認を挟むとその設計に逆行しノイズになる。文字列が変わる劣化（強識別 UCabc → 表示名 Ken）は既存の account-changed ガードが既に発火する。残る静かな穴は「同名の別アカウントで文字列一致」のみで、これは確認ダイアログでも判別不能なため、可視化が最も正直で過剰でない対処と判断（Codex 別解2「弱い方向への遷移は警告」を可視化で実装・保存保留は見送り）。",
-      "Test: 単体（extractOwnerIdentity が ownerText.text のみ・browseEndpoint 無しで name 取得・channelId/handle 空）＋ drift guard（body に 'name-only' 分岐と ownerChannelId || ownerHandle 強識別判定が残ること）＋ E2E Scenario J（HTML degraded・browse header が表示名のみ → confirmUnknownAccount なしで成功・accountId='Ken'・identityConfidence='name-only'（browse-recovered より優先）・meta 永続）。Scenario J は旧コードで RED（name-only を browse-recovered と記録＝退行検出力あり）。100 passed → 110 passed。",
-      "注意: 実機スモーク未実施（拡張再読込が必要）。background.js / analyzer.js のみ変更・DBスキーマ据え置き＝移行なし。確認観点: ①通常時（channelId/handle が取れる）はメタ行に name-only 注記が出ないこと ②実LL応答で ownerText に browseEndpoint が付かないケースが実在すると 表示名のみで識別 が出る（＝弱識別の可視化が意図どおり効く）。"
+      "ブロッキング確認は追加しない（設計判断）: name-only は unknown より強い識別で、v1.42.10 M1 は「browse 復元で不要なプロンプトを減らす」方向だった。name-only ごとに確認を挟むとその設計に逆行しノイズになる。文字列が変わる劣化（強識別 UCabc → 表示名 Ken）は既存の account-changed ガードが既に発火する。残る静かな穴は「同名の別アカウントで文字列一致」のみで、これは確認ダイアログでも判別不能なため、可視化が最も正直で過剰でない対処と判断（Codex 別解2「弱い方向への遷移は警告」を可視化で実装・保存保留は見送り）。"
     ]
   },
   {
@@ -371,9 +325,7 @@ globalThis.YWH_WHATSNEW = [
     "points": [
       "Fix(M1①・balanced 抽出): ytInitialData を extractInnertubeContext と同じ ブレースバランス抽出（新規共有ヘルパ matchBalancedJsonObject）で取得する extractYtInitialData を新設。window[\"ytInitialData\"]= / window.ytInitialData= / var ytInitialData= / 素の ytInitialData= / ;</script> アンカー無し・minify・後続 script 混在の各フォームで owner を失わない。全マーカー出現を試し最初に parse 成功したものを採用。返り値 {data, matched} で 「マーカーはあったが壊れている＝parse-failed」と「そもそも無い＝no-ytInitialData」を分離（degraded 診断の粒度を維持）。owner 抽出ロジックは extractOwnerIdentity(data) に切り出し（HTMLとbrowse応答の両方に適用可能に）。",
       "Fix(M1②・browse からの owner 復元): degraded で HTML から owner が取れなくても、権威ある browseId:'VLLL' 初回応答の header（playlistHeaderRenderer / pageHeaderRenderer）から owner/channel identity を extractOwnerIdentity で復元し accountId に反映。復元できれば account-unknown プロンプトに落ちない（＝別アカ混入を人手確認に頼る時間が消える）。復元は 追加的（取れなければ従来どおり unknown ガードに委譲・ガードは一切緩めない）。",
-      "Fix(M1③・identity confidence の可視化): likedSyncMeta に identityConfidence（html / browse-recovered / unknown-confirmed）＋ unknownConfirmedAt を記録。confirmUnknownAccount で unknown のまま保存した場合は 次回開いても「通常の完全成功」と同じ見た目にならないよう、analyzer のメタ行に アカウント未識別のまま保存（確認済・別アカウント混入に注意） を赤表示。browse 復元時は ℹ️ アカウントはブラウズ応答から復元 の情報注記。unknown-confirmed は unknown ガードが明示 opt-in を強制した後にしか保存されない。",
-      "Test: 単体（extractYtInitialData の4代入フォーム＋decoy＋corrupt/absent の matched 分岐・extractOwnerIdentity の playlistHeader/pageHeader/空応答）＋ E2E Scenario H（HTML degraded だが browse header で owner 復元 → confirmUnknownAccount なしで成功・identityConfidence=browse-recovered・meta 永続）・Scenario I（browse も header 無し → unknown ガード発火・confirm 後保存で unknown-confirmed＋unknownConfirmedAt 記録）。旧 end-anchored 正規表現は window-bracket/window-dot/no-anchor の3フォームを取りこぼすことを別途確認（退行検出力あり）。75 passed → 100 passed。",
-      "注意: 実機スモーク未実施（拡張再読込が必要）。background.js / analyzer.js のみ変更・DBスキーマ据え置き＝移行なし。確認観点: ①通常時は従来どおり「同期完了・警告0件」でメタ行に confidence 注記が出ないこと ②実LL応答の browseId:'VLLL' 初回応答が header.playlistHeaderRenderer / pageHeaderRenderer で owner を実際に carry するか（carry しなければ②は無害に空振りするだけで unknown ガードに委譲）。残る M1 の別解（unknown は dry-run confirmation で2回目に保存）は未採用（現行の確認ダイアログ＋confidence 可視化で心理的ハードルは担保できると判断）。"
+      "Fix(M1③・identity confidence の可視化): likedSyncMeta に identityConfidence（html / browse-recovered / unknown-confirmed）＋ unknownConfirmedAt を記録。confirmUnknownAccount で unknown のまま保存した場合は 次回開いても「通常の完全成功」と同じ見た目にならないよう、analyzer のメタ行に アカウント未識別のまま保存（確認済・別アカウント混入に注意） を赤表示。browse 復元時は ℹ️ アカウントはブラウズ応答から復元 の情報注記。unknown-confirmed は unknown ガードが明示 opt-in を強制した後にしか保存されない。"
     ]
   },
   {
@@ -383,9 +335,7 @@ globalThis.YWH_WHATSNEW = [
     "points": [
       "Fix(H1・構造アンカー化): LL_ITEM_CONTAINERS を2つに分割。LL_PRIMARY_RENDERERS（playlistVideoListRenderer / richGridRenderer＝プレイリスト固有レンダラ・LL由来の実証拠）だけが named を伝播し、primary 選定で 件数に関わらず勝つ（＝構造アンカー）。LL_CONTINUATION_ENVELOPES（汎用 envelope）は優先材料から外し、選定にバイアスを与えない（token は元々 primary 部分木からしか採らないので、envelope の名前照合は不要）。素の件数比較は最後の fallback に降格。",
       "Fix(H1・不確実なら partial): アンカーが無く件数 fallback が 同点（複数の無名配列が最多件数で並ぶ＝どれが本体か証明不能）のとき primaryUncertain を立て、token を信頼せず（continuationScoped=false）、caller が init-browse: primary-uncertain / page-N: primary-uncertain を積んで partial にする（コインフリップの当て推量を「完了」と偽らない）。本体が唯一の最多配列＝strict max のときは従来どおり確定（＝通常応答に誤発火しない）。",
-      "Fix(H1・named の深いネストへのフラッド遮断／Codex 2026-07-11 独立レビュー R 指摘): named を 固有レンダラの直下アイテム配列だけに限定し、ネストしたオブジェクトへは流さない。配列は named を継承する（renderer.contents は named 維持）が、ネストオブジェクトへ降りると継承 named を落とし、そのキー自身が固有レンダラのときだけ再付与する。これがないと richGridRenderer.header.shelfRenderer.contents のような固有レンダラ配下の深いネスト棚が named を継承し、本体より多い lockup を持つと primary を内側から奪う＝H1が子孫経由で再侵入する穴が残っていた（分割前は汎用 envelope、分割後も flood 伝播でこの子孫経路が残存）。",
-      "Test(M2・負け筋を固定): ①playlistVideoListRenderer 配下の本体2件 vs 汎用 envelope 配下の兄弟3件でアンカー勝ち ②無名2配列の同点で primaryUncertain＋token拒否 ③Scenario G で end-to-end に「大きい兄弟の token を fetch しない・DBに入れない」 ④richGridRenderer.header.shelfRenderer 配下の深いネスト棚3件が本体2件を奪わない（named フラッド遮断）。旧実装／flood版でこれら該当アサーションが RED（大きい兄弟/ネスト棚を primary に選び token 追従＝退行検出力あり・別スクリプトで確認）。既存の H1 mixed fixture も汎用 envelope → playlistVideoListRenderer に更新。61 passed → 75 passed。",
-      "注意: 実機スモーク未実施・H1完全クローズは未確定。今回は「新しいアンカーパスの当て推量を焼き込まない」安全な絞り込み（既知の固有レンダラ名への限定＋不確実時 partial）に留める。残る観点＝「初回 browseId:'VLLL' 応答で高評価本体が実際に playlistVideoListRenderer / richGridRenderer 配下に来るか」の現物確認（拡張再読込＋実LL応答の構造確認）。ここを確認するまで「本体も兄弟も汎用 envelope・兄弟の方が多い」最難負け筋は未カバー（当て推量アンカーは v1.42.6 の scope-fallback 偽陽性の轍のため意図的に見送り）。background.js のみ変更・DBスキーマ据え置き＝移行なし。"
+      "Fix(H1・named の深いネストへのフラッド遮断／Codex 2026-07-11 独立レビュー R 指摘): named を 固有レンダラの直下アイテム配列だけに限定し、ネストしたオブジェクトへは流さない。配列は named を継承する（renderer.contents は named 維持）が、ネストオブジェクトへ降りると継承 named を落とし、そのキー自身が固有レンダラのときだけ再付与する。これがないと richGridRenderer.header.shelfRenderer.contents のような固有レンダラ配下の深いネスト棚が named を継承し、本体より多い lockup を持つと primary を内側から奪う＝H1が子孫経由で再侵入する穴が残っていた（分割前は汎用 envelope、分割後も flood 伝播でこの子孫経路が残存）。"
     ]
   },
   {
@@ -397,9 +347,7 @@ globalThis.YWH_WHATSNEW = [
       "Fix(M3): parse 失敗時も owner unknown の skeleton のまま browse へ進む。parse error は errors に html: <reason> として積み、degraded フラグ（＋ diagnostics.degraded / likedSyncMeta.degraded）に残す。items が取れて account が unknown なら、従来どおり 既存の明示確認ガード（analyzer の confirm ダイアログ）に委ねる。",
       "partial にはしない: items は権威ある browse から取得しページングも完走しているので完全。parse 失敗を「部分同期」と表示すると v1.42.6 の scope-fallback と同じ偽陽性警告を再生産する。警告としては 警告1件 に出る。",
       "degraded の床（安全弁）: INNERTUBE_API_KEY も InnerTube context も取れないHTMLは、そもそも使えるYouTubeページではない（同意ウォール・エラーページ）。browse が撃てないので 従来どおり元の reason で hard fail し、無意味な「アカウント不明のまま保存しますか？」を出さない。",
-      "degraded 時もアカウントガードは一切緩めない（委譲するだけ）。",
-      "Test: Scenario E（M3 直接回帰テスト）— parse 失敗でも ①同期が成功し ②browse の items が保存され ③html: no-ytInitialData が 停止でなく警告として出て ④degraded が露出し ⑤partial にならず ⑥未確認時は account-unknown ガードが依然発火することを検証。Scenario F は degraded の床（apiKey/context 皆無 → hard fail・browse 未発射・DB未書込）。旧実装ではE系7件が全FAIL（＝退行検出力あり）。52 passed → 61 passed。",
-      "注意: 実機スモーク未実施（拡張再読込が必要）。background.js のみ変更・DBスキーマ据え置き＝移行なし。確認観点: 通常時は従来どおり「同期完了・警告0件」（degraded 経路に入らないこと）。"
+      "degraded 時もアカウントガードは一切緩めない（委譲するだけ）。"
     ]
   },
   {
@@ -411,9 +359,7 @@ globalThis.YWH_WHATSNEW = [
       "これが H1 を本当に塞ぐ理由: 旧コードは JSON.stringify(応答全体) の最初の continuationCommand を拾うフォールバックを持ち、これが唯一の逸れの入口だった。いったん別セクションの token を fetch すると、その応答は本物のLLページと構造的に区別できない（同じ汎用 envelope）ため、下流のどんな検査でも検出不能。アイテムを採った配列の外から token を絶対に採らないことで、権威ある browseId:'VLLL' 応答を起点に LL 由来が 帰納的に 保証される。",
       "parseLikedPlaylistHtml の「Fallback 1: stringify(data) 正規表現」「Fallback 2: 生HTML 正規表現」を 撤去（現代のLLページでは推薦シェルフの token を掴む常習犯）。静的HTMLに token が無くても、権威ある VLLL browse が本物を供給する。",
       "未証明 token は使わない＋partial で警告: continuationScoped が偽の token はページングに使わず、rejectedTokenCount（primary 外に token があった件数）を返す。拒否したら unproven-continuation を errors に積み partial にする（＝正当な token を拒否してしまった場合でも「同期完了」と偽らない）。",
-      "Fix(M1・Codex 2026-07-10): init-browse の loose フォールバックが loose を全件無条件採用する問題は、設計ごと消滅。allowFallback / scopeFallbacks の救済機構は「コンテナ名で scoped を決めていたから、名前が未知だと scoped が0件になる」ことへの対症療法だった。primary container は構造的に選ばれるので、アイテムがある応答は必ず scoped を1件以上持つ（zero-scoped-with-items は起こり得ない）。v1.42.6 の偽陽性 partial（init-browse: scope-fallback）も同時に消える。",
-      "Test: Scenario C を H1 の直接回帰テストに置換 — primary container の外（推薦シェルフ）にある token を 一度も fetch しないこと・そのページの動画がDBに入らないこと・拒否時に partial になり理由が unproven-continuation であることを検証。旧実装なら全体正規表現で当該 token を拾って fetch するため 必ず落ちる（退行検出力あり）。Scenario B は「名前未知のコンテナを構造的に受理し非partial」に更新。46 passed → 52 passed。",
-      "注意: 実機スモーク未実施（拡張再読込が必要）。background.js のみ変更・DBスキーマ据え置き＝移行なし。確認観点: 同期完了・件数が従来どおり（〜4,618件・47ページ）・警告0件。もし「部分同期 [init-browse: unproven-continuation]」が出たら、実LL応答で token がアイテム配列の外に置かれている＝primary container の判定を実応答に合わせて調整する必要がある（その場合もデータ汚染は起きず、警告として可視化される）。"
+      "Fix(M1・Codex 2026-07-10): init-browse の loose フォールバックが loose を全件無条件採用する問題は、設計ごと消滅。allowFallback / scopeFallbacks の救済機構は「コンテナ名で scoped を決めていたから、名前が未知だと scoped が0件になる」ことへの対症療法だった。primary container は構造的に選ばれるので、アイテムがある応答は必ず scoped を1件以上持つ（zero-scoped-with-items は起こり得ない）。v1.42.6 の偽陽性 partial（init-browse: scope-fallback）も同時に消える。"
     ]
   },
   {
@@ -426,14 +372,11 @@ globalThis.YWH_WHATSNEW = [
       "フェーズ別の扱い: ①init-browse（VLLL・権威）= フォールバック許可・zero-scoped は loose を採用するが scopeFallbacks 診断に記録するだけ（errorに積まない＝partialにしない） ②静的HTML = フォールバック禁止（browse が必ず backfill する前座なので loose は捨てる＝推薦のみの静的ページが混入を撒くのを防ぐ） ③継続ページ = フォールバック禁止・zero-scoped は token 逸れ（no-scoped-items＝真のerror→partial）とみなし停止し loose を保存しない。",
       "永続化前に一時タグ source を除去（DBの高評価レコードには残さない）。",
       "注意: 残存リスク（本版時点・→ v1.42.7 で解消済み）: appendContinuationItemsAction/reloadContinuationItemsCommand は LL固有のコンテナではなく continuation 応答の汎用 envelope。よって「逸れた token の応答が同じ標準 envelope で新規 lockup を返す」ケースでは、その item も scoped と判定され保存されうる（no-scoped-items に落ちない）。本版の scoping が証明しているのは「継続 envelope の内側にいる」ことであって「LLプレイリスト由来」ではない。→ v1.42.7 で primary container 方式＋token provenance に置換し解消。",
-      "実機スモーク（2026-07-09・2回）: (1回目) 前版コードで 取得4617件/47ページ/完了・droppedLoose:0・accountId実チャンネルID取得（H1が正当itemを誤除外していない／unknown-guardクリア）を確認。唯一 html: scope-fallback ノイズを検出→html を allowFallback=false 化。(2回目) 最新コードで init-browse: scope-fallback が「部分同期」として誤警告されるのを発見（データは4618件全取得できているのに「部分同期・再同期推奨」＝偽陽性。YouTube が init 応答のコンテナを間欠的に変えるため）。これは初回フェーズを partial 扱いした設計ミス→上記のとおり scope-fallback を非partialな scopeFallbacks 診断に格下げして修正。この2回目のスモークで M1 の部分同期メタ行赤字表示が実機動作することも確認できた（[init-browse: scope-fallback] が再読込後もメタ行に赤字表示された）。DBスキーマ据え置き＝移行なし。",
       "Fix(M1・partial永続表示): renderLikedPanel() のアカウントメタ行に partial/lastError を恒久表示（部分同期時は「 部分同期（全件取得できていません・再同期推奨）」＋危険色）。renderPrompt() の高評価セクションにも部分同期注記を追加。v1.42.5 は partial を likedSyncMeta に保存していたが同期直後の一時トーストにしか出しておらず、再読込で警告が消え、不完全な高評価データを完全同期済みと誤認して推薦プロンプトを使える silent partial だった。",
       "Fix(M2b・Codex 2026-07-10 指摘の実バグ): 推薦プロンプトへの部分同期注記が実際には出ていなかったのを修正。renderLikedPanel() が GET_LIKED_META を非同期に投げる一方 renderPrompt() は直後に同期実行されるため、renderPrompt() は更新前の likedMeta（初回は null）を読み、上記 M1 の「プロンプトへの partial 注記」が事実上デッドパスだった。meta 取得を loadLikedMeta() として Promise 化（loadLikedSeq と同型の世代ガード付き）し、renderLikedPanel() はキャッシュ済み likedMeta を同期読みするだけに変更。全呼出側（runAnalysis 初回・同期完了後）で await してから描画する。",
       "Fix(L1・Codex 2026-07-10): meta が無い（未同期）ときに liked-partial の危険色クラスが解除されず、「未同期」が赤字のまま残る問題を修正。",
       "Fix(L2・Codex 2026-07-10): テスト Scenario B のコメントが fallback + partial のままで実 assertion（partial === false）と矛盾していたのを訂正（将来 v1.42.6 の意図と逆に「直される」のを防ぐ）。",
-      "Fix(M2・読み込み世代管理): loadLiked() に単調増加 loadLikedSeq を導入し、最新以外の応答は likedRecords/UI を更新しない。従来は初回表示時の3秒タイムアウト後に遅れて戻った GET_LIKED が、同期完了後の await loadLiked() で取得した新しい likedRecords を古い/空データで上書きしうるレースがあった。",
-      "Test(L1): 合成検証を mirror predicate 依存から脱却。sendToYouTubeTab/sendToOffscreenDb/chrome/parse+ytcfg をモック注入し syncLikedPlaylist 本体を実行して検証（出所不明lockup混在の除外・init-browse フォールバックが非partialであること・静的HTML loose の drop+browse backfill・継続ページ逸れ時の停止=partial）。加えて H1 スコープタグ付けの単体検証と M2 世代ガードのシミュレーションを追加。22 passed → 46 passed（node tests/verify_liked_sync_robustness.js）。",
-      "実機スモーク（2026-07-09・2回）: H1・M1 は実機確認済み（上記 H1 bullet 参照＝正常同期・件数一致・droppedLoose:0・unknown-guardクリア／2回目で M1 部分同期メタ行の赤字表示が再読込後も残ることを確認・偽陽性partialは修正済）。M2（遅延応答の世代破棄）は未発火＝高評価件数が多く loadLiked が3秒超になったときに初めて観測できるため次の機会に持ち越し（合成検証で担保済み）。background.js/analyzer.js/history.html（.liked-partial CSS）/manifest.json のみ変更・DBスキーマ据え置き＝移行なし。"
+      "Fix(M2・読み込み世代管理): loadLiked() に単調増加 loadLikedSeq を導入し、最新以外の応答は likedRecords/UI を更新しない。従来は初回表示時の3秒タイムアウト後に遅れて戻った GET_LIKED が、同期完了後の await loadLiked() で取得した新しい likedRecords を古い/空データで上書きしうるレースがあった。"
     ]
   },
   {
@@ -446,8 +389,7 @@ globalThis.YWH_WHATSNEW = [
       "Fix(M2・完全性ガード): continuation token が逸れる／ループする事故を検知。各ページで新規 videoId が 0 件なら（mis-scoped な正規表現 fallback token 等でページングが別セクションへ逸れた兆候）all-duplicate として停止し partial 扱い。正規表現 fallback は lockupViewModel 応答で必要なため残置（token 出所は continuationSource で判別可能に）。",
       "Fix(L1): lockupViewModel の channel fallback が非チャンネル文字列（再生数・投稿日等）を拾う可能性を排除。browseEndpoint(UC) linked な metadata part が無いときは channel を空にする（Analyzer は「チャンネル不明」として扱う）。高評価アーティスト集計の汚染防止。",
       "Fix(L2): loadLiked() の3秒タイムアウト後に GET_LIKED 応答が遅延到着したら再描画（renderLikedPanel/renderPrompt）。高評価件数が多く読み込みが3秒を超えた場合に、古い/空の高評価データで推薦プロンプトが生成される問題を解消。",
-      "CHANGELOG 表現も M1 に合わせ「成功時は最大5000件・50ページ／途中失敗時は部分取得（警告表示）」の実態に整合。",
-      "注意: 実機スモーク（拡張リロード後の同期 UI・unknown 確認ダイアログ・部分同期表示・遅延再描画）は未実施。background.js/analyzer.js/manifest.json のみ変更・DB スキーマ据え置き＝移行なし。合成検証は下記。"
+      "CHANGELOG 表現も M1 に合わせ「成功時は最大5000件・50ページ／途中失敗時は部分取得（警告表示）」の実態に整合。"
     ]
   },
   {
@@ -457,8 +399,7 @@ globalThis.YWH_WHATSNEW = [
     "points": [
       "Fix(H1 sibling・実害級): getCurrentVideoDurationSec() に videoId 照合 を追加（PENDING id:8v48）。v1.42.1 で category 経路にのみ videoId 照合を入れ duration は「proven path 未変更」として残していたが、getInitialPlayerResponseDurationSec() も同じく document.scripts を走査するため 同一の盲点があった。SPA遷移後に前ページの ytInitialPlayerResponse script が残っていると現在動画に前動画の長さを保存しうる（長さ分布・長さ別嗜好が静かに汚染）。getInitialPlayerResponseDurationSec(expectedVideoId) へ拡張し、videoDetails.videoId が一致する player response のみ採用（不一致・videoId 欠落は stale 扱いでスキップ）。recordCurrentVideo の watch ページ経路（domAgrees 時）から現在 videoId を渡す。category の getCurrentVideoCategory と同じ accept 構造でミラー。",
       "meta[itemprop=\"duration\"] / <video>.duration / .ytp-time-duration の fallback は 未ガードのまま維持（これらは live DOM/player を読むうえ、呼び出しは watchMetadataMatches(videoId) が真＝現在動画で DOM が確定した後に限定されるため）。ライブ動画の -1 セマンティクスも保持。seekbar カード経路（getDurationFromCard）はカードスコープで staleness 無縁のため未変更。",
-      "退行検出付き合成検証: content.js から実関数を抽出し 8 ケース PASS（win/script の match・mismatch・videoId欠落・no-gate後方互換・live・win mismatch→script fallback）。旧実装は mismatch ケースで前動画長を返し FAIL する＝退行検出力あり。",
-      "注意: 実機スモーク（実 watch ページで SPA 遷移後に前動画の長さが混入しないか・正常動画で長さが従来どおり保存されるか）は拡張再読込が必要なため当初未実施だった。2026-07-03 追記: 自動スモークハーネス tests/smoke_duration_videoid_gate.py（Playwright で実拡張をロード→stale 罠を注入→ended dispatch→拡張DB照合）で検証済み・PASS（distinct 罠 id≠B→実長で罠を skip / match 罠 id=B→罠 9999 を観測、で teeth 両立）。content.js のみ変更・DB スキーマ据え置き＝移行なし。"
+      "退行検出付き合成検証: content.js から実関数を抽出し 8 ケース PASS（win/script の match・mismatch・videoId欠落・no-gate後方互換・live・win mismatch→script fallback）。旧実装は mismatch ケースで前動画長を返し FAIL する＝退行検出力あり。"
     ]
   },
   {
@@ -469,7 +410,6 @@ globalThis.YWH_WHATSNEW = [
       "Fix(M2・レース防止): clearAll() / clearLikedByAccount('') が request.onsuccess（transaction コミット前に発火）で resolve していたのを tx.oncomplete で resolve に統一（PENDING L299 / Codex wrapup-review_5）。await 直後に件数表示・エクスポート・キャッシュ無効化を行うと DB コミット前状態を観測しうる／request success 後に transaction abort しても成功扱いで返るレースを解消。両関数に tx.onabort の reject も追加。clearLikedByAccount の clear-all 分岐を早期 return から通常フローへ統一。",
       "Fix(M3・バックアップ復旧の実害軽減): import / merge を tolerant mode 化。従来は validateWatchedRecords() / validateLikedRecords() の事前検証で 1件でも型不一致があると全件拒否だった（後段の filter(isValidRecord) は到達不能な dead code だった）。parseImportData / importData / mergeImport / importLikedData を「配列でない＝構造破壊時のみ throw、個別の壊れレコードは落として残りを復元」に変更。除外件数は parseImportData が droppedWatched / droppedLiked として返し、offscreen → background → popup に伝播して import/merge 完了トーストに「N skipped」を表示。壊れた1件でバックアップ全体が復元不能になる事故を防止。",
       "Chore: 上記で参照されなくなった validateWatchedRecords / validateLikedRecords（内部・非export）を削除。",
-      "注意: 実機スモーク（拡張リロード後の clear/import/merge 動作・壊れレコード混入バックアップの部分復元・トーストの skipped 表示）は未実施。db.js / offscreen.js / popup.js / manifest.json のみ変更・DB スキーマ（DB_VERSION=5）据え置き＝移行なし。",
       "見送り（別PENDING）: M1（高評価の [accountId, videoId] 複合キー化）は単一アカウント運用では実益ゼロ・スキーマ移行のブリックリスクと実機検証必須のため今回は見送り。M1 の移行設計は複数アカウント運用が必要になった時に単独リリースする。Low3点（category 正規化の DB 層化 / host 権限分離 / CHANGELOG Unreleased 位置）も見送り。"
     ]
   },
@@ -492,8 +432,7 @@ globalThis.YWH_WHATSNEW = [
       "Fix(H1・実害級): getCurrentVideoCategory() に videoId 照合 を追加（PENDING L98 / Codex wrapup-review_4）。SPA遷移後に前ページの ytInitialPlayerResponse script が document.scripts に残っていると、現在動画に前動画の category を付けてしまい（音楽タイトル動画が誤って非音楽 veto される）盲点があった。recordCurrentVideo から現在 videoId を渡し、videoDetails.videoId が一致する player response のみ採用（不一致・videoId 欠落は stale 扱いでスキップ＝誤attach するくらいなら空で返す）。duration の proven path は未変更（category 経路のみに限定）。",
       "Fix(L1・locale堅牢化): category の veto を 既知の非音楽カテゴリ集合一致時のみに限定（analyze_video_taste.py）。従来は category != 'Music' の完全一致依存で、JP locale の localized 値（「音楽」等）・空白・大小文字差が来ると全動画が非Music扱いになり音楽タイトルを全 veto する恐れがあった。保存時 trim()＋分析時 strip().casefold()＋既知集合照合に変更。未知値（localized/将来/typo）は veto に使わず §0.6b 監査枠に surface（category_unknown_values metric）。",
       "Fix(M3): mergeImport() の既存レコード補完に category を追加（db.js）。category 入りバックアップを merge してもローカル既存レコードが欠損のままだった漏れを修正（durationSec backfill と同パターン・前進のみ補完）。",
-      "退行ゼロ: 実データ 28,039 件で music 17,080 / 非音楽 10,959・§0.5 残存 1 が v1.42.0 baseline と一致（category 空のため pre-fix と同一挙動）。H1（videoId 照合 6 ケース）・L1（locale/strip/casefold/L97保持/強ch優先 9 ケース）は合成データで検証済。",
-      "注意: 実機スモーク（実 watch ページで category が DB 保存され export に乗るか・保存値が en か localized か）は拡張再読込が必要なため未実施。"
+      "退行ゼロ: 実データ 28,039 件で music 17,080 / 非音楽 10,959・§0.5 残存 1 が v1.42.0 baseline と一致（category 空のため pre-fix と同一挙動）。H1（videoId 照合 6 ケース）・L1（locale/strip/casefold/L97保持/強ch優先 9 ケース）は合成データで検証済。"
     ]
   },
   {

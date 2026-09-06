@@ -10,6 +10,10 @@
   持ち込み・CSP の各リスクを runtime に持ち込むことになる。生成済み JS を
   同梱するほうが失敗する余地が小さい。
 
+画面へ出さない行:
+  `- Test:` と `- 注意:` で始まる項目は開発の記録なので、生成物には含めない
+  （CHANGELOG.md 側には残す）。詳細は DEV_ONLY_PREFIXES のコメント。
+
 使い方:
     python3 tools/build_whatsnew.py            # whatsnew_data.js を書き出す
     python3 tools/build_whatsnew.py --check    # 生成物が最新かだけ検査（書かない・非ゼロで不一致）
@@ -39,6 +43,27 @@ CODE_RE = re.compile(r"`([^`]+)`")
 LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]*\)")
 WARN_MARK = "⚠️"
 DONE_MARK = "✅"
+# CHANGELOG は開発の記録も兼ねているが、この生成物は拡張の「更新情報」画面＝利用者が
+# 読む面。テスト本数・感応性・実機スモークの確認観点は、読んでも利用者の行動が変わらず、
+# 「未検証です」と伝えるだけで対処のしようもないので画面へは出さない。CHANGELOG 側には
+# 残すので記録は失われない。
+# 「Test:」だけでなく「Test(M2・負け筋を固定):」のような添字付きも同じ扱い。
+TEST_RE = re.compile(r"^Test\s*[(（:：]")
+SMOKE_PREFIX = "実機スモーク"
+CAUTION_PREFIXES = ("注意:", "注意：", WARN_MARK, WARN_MARK[0])
+# 注意書きは開発メモと利用者向け警告が混ざっている（「登録し直しが必要」のような
+# 本物の警告もある）ので、頭だけでは切り分けられない。開発メモ側にだけ出る語で判定する。
+# 逆に「注記: v1.42.1 を含めて一括公開」のような、たまたま同じ語を含むだけの
+# 利用者向けの行は落とさない（頭が注意書きでなければ判定に入らない）。
+DEV_NOTE_RE = re.compile(r"実機スモーク|確認観点")
+
+
+def is_dev_only(body: str) -> bool:
+    """開発の記録であって、利用者向けの更新情報ではない行か。"""
+    text = body.replace("*", "").lstrip()
+    if TEST_RE.match(text) or text.startswith(SMOKE_PREFIX):
+        return True
+    return text.startswith(CAUTION_PREFIXES) and bool(DEV_NOTE_RE.search(text))
 
 
 def to_plain(text: str) -> str:
@@ -77,6 +102,8 @@ def parse_changelog(markdown: str) -> list[dict]:
         if not line or line.startswith(">"):
             continue
         if line.startswith("- "):
+            if is_dev_only(line[2:]):
+                continue
             current["points"].append(to_plain(line[2:]))
         elif not current["summary"]:
             current["summary"] = to_plain(line)
