@@ -1116,6 +1116,20 @@ async function enrichCreditsLookupMb(artist, title) {
   };
 }
 
+// 「今すぐバックアップ」は人が作業前のスナップショットとして押すので、同じ日の
+// 2回目が1回目を消さないよう秒まで入れる（自動バックアップは日次1本に
+// 保ちたいので getBackupFilename() の日付名・上書きのまま）。
+function getManualBackupFilename() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `yt-watched-backup-${yyyy}-${mm}-${dd}-${hh}${mi}${ss}.json`;
+}
+
 // Generate backup filename with date (e.g. yt-watched-backup-2026-04-03.json)
 function getBackupFilename() {
   const d = new Date();
@@ -1134,10 +1148,11 @@ async function performAutoBackup(options = {}) {
     return { success: false, reason: 'disabled' };
   }
 
+  const isManual = source === 'backup-now';
   const result = await downloadExportJson({
     source,
-    filename: getBackupFilename(),
-    conflictAction: 'overwrite',
+    filename: isManual ? getManualBackupFilename() : getBackupFilename(),
+    conflictAction: isManual ? 'uniquify' : 'overwrite',
     saveAs: false,
   });
 
