@@ -10,6 +10,20 @@
     'Cover','cover','カバー','Topic','topic'
   ]);
 
+  // ハンドルは canonicalBaseUrl（URLのパス）由来なので、日本語などASCII外の名前は
+  // パーセントエンコードされたまま届く（background.js の抽出箇所を参照）。表示のときだけ
+  // 戻す。保存値は触らない——保存済みの値と新しい値が別物に見えると、アカウント変更の
+  // 確認が誤って出るため。
+  function displayAccountName(value) {
+    const text = String(value || '');
+    if (!text.includes('%')) return text;
+    try {
+      return decodeURIComponent(text);
+    } catch (_) {
+      return text; // 壊れた % 列はそのまま出す（読めなくても欠落よりまし）
+    }
+  }
+
   function appendCell(row, value) {
     const td = document.createElement('td');
     td.textContent = String(value);
@@ -457,7 +471,7 @@
       // previously-partial state doesn't leave '未同期' rendered in red.
       if (!meta) { el.textContent = '未同期'; el.classList.remove('liked-partial'); } else {
         const when = new Date(meta.lastSyncedAt || 0).toLocaleString();
-        const acc = meta.ownerHandle || meta.ownerName || meta.accountId || '(unknown)';
+        const acc = displayAccountName(meta.ownerHandle || meta.ownerName || meta.accountId || '(unknown)');
         let line = `アカウント: ${acc} / 最終同期: ${when} / ${(meta.count || 0).toLocaleString()}件`;
         // M1: persist the partial-sync warning across reloads. v1.42.5 saved
         // partial/hasMore/lastError to likedSyncMeta but only surfaced it in the
@@ -1032,8 +1046,8 @@
             return window.confirm('アカウントを識別できませんでした（YouTubeに未ログイン、またはページ構造の変更の可能性）。\nこのまま高評価データを保存しますか？\n※別アカウントのデータと混ざる恐れがあります。');
           }
           // account-changed
-          const prev = (r.previous && (r.previous.ownerHandle || r.previous.ownerName)) || r.previous?.accountId || '(unknown)';
-          const cur = r.current?.ownerHandle || r.current?.ownerName || r.current?.accountId || '(unknown)';
+          const prev = displayAccountName((r.previous && (r.previous.ownerHandle || r.previous.ownerName)) || r.previous?.accountId || '(unknown)');
+          const cur = displayAccountName(r.current?.ownerHandle || r.current?.ownerName || r.current?.accountId || '(unknown)');
           return window.confirm(`アカウントが変更されています:\n旧: ${prev}\n新: ${cur}\nこのまま新アカウントの高評価を追加しますか？\n（旧アカウントのデータは保持されます。クリアしたい場合は別途「Clear」操作を追加予定）`);
         };
         const { cancelled, resp } = await resolveLikedSync({ doSync, confirm: confirmGuard });

@@ -560,7 +560,7 @@ function makeLateLikedViewHarness() {
     'buildChannelCount', 'splitCreditField', 'sourceOf', 'buildCreditCount',
     'buildChannelMusicScore', 'isCleanCreditName', 'topCredits', 'loadLikedMeta',
     'loadLiked', 'refreshLikedViews', 'setPromptCopyStale', 'reloadLikedAfterSync',
-    'buildLikedArtistCount', 'renderLikedPanel', 'topLikedArtists',
+    'buildLikedArtistCount', 'renderLikedPanel', 'topLikedArtists', 'displayAccountName',
     'likedPromptNotes', 'renderPrompt',
   ];
   const body = [

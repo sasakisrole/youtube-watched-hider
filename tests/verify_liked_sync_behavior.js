@@ -168,7 +168,7 @@ function buttonHarness(response) {
   const window = { confirm: text => { confirms.push(text); return false; } };
   const chrome = { runtime: { sendMessage: (m, cb) => { sent.push({ ...m }); cb(response); } } };
   new Function('document', 'window', 'chrome', 'reloadLikedAfterSync', 'console',
-    fn('resolveLikedSync', az) + '\n' + buttonBlock)(
+    fn('resolveLikedSync', az) + '\n' + fn('displayAccountName', az) + '\n' + buttonBlock)(
       document, window, chrome, async () => {}, { warn() {}, info() {} });
   return { button, msg, sent, confirms };
 }
