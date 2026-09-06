@@ -266,6 +266,9 @@ chrome.runtime.onInstalled.addListener((details) => {
   createContextMenus();
   if (details.reason === 'install') {
     chrome.storage.local.set({ migrationV135Done: true });
+    // 入れた直後は記録が0件で画面に何も起きないため、使い方を1回だけ開く。
+    // 更新時は開かない（既存利用者のタブを奪わない）。
+    chrome.tabs.create({ url: chrome.runtime.getURL('whatsnew.html') });
   } else if (details.reason === 'update') {
     chrome.storage.local.get('migrationV135Done', (result) => {
       if (typeof result.migrationV135Done !== 'boolean') {
