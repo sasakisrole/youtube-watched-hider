@@ -1904,17 +1904,16 @@ window._ytWatchedHider = (() => {
     return null;
   }
 
+  // aria-label はバッジ要素の中だけを見る。カード全体へ広げると、サムネイルのリンクが
+  // 持つ aria-label（動画タイトルそのもの）に当たり、「FINAL LIVE 想い出のパレード」の
+  // ような通常動画が丸ごとライブ扱いで一括操作から落ちる（2026-09-09 実測）。
   function hasLiveBadge(card) {
-    const liveBadge = card.querySelector(
-      '.badge-style-type-live-now, ' +
-      '[aria-label*="ライブ"], ' +
-      '[aria-label*="LIVE"]'
-    );
-    if (liveBadge) return true;
+    if (card.querySelector('.badge-style-type-live-now')) return true;
 
     const badges = card.querySelectorAll('badge-shape, .badge-shape-wiz__text, .yt-badge-shape__text');
     for (const badge of badges) {
-      const text = (badge.textContent || '').trim();
+      const label = badge.getAttribute ? (badge.getAttribute('aria-label') || '') : '';
+      const text = ((badge.textContent || '') + ' ' + label).trim();
       if (/ライブ|live/i.test(text)) return true;
     }
     return false;
@@ -2121,12 +2120,7 @@ window._ytWatchedHider = (() => {
       // Skip Shorts
       if (card.querySelector('a[href*="/shorts/"]')) continue;
       // Skip Live
-      const liveBadge = card.querySelector(
-        '.badge-style-type-live-now, ' +
-        '[aria-label*="ライブ"], ' +
-        '[aria-label*="LIVE"]'
-      );
-      if (liveBadge) continue;
+      if (hasLiveBadge(card)) continue;
       out.push(card);
     }
     return out;
@@ -2373,10 +2367,7 @@ window._ytWatchedHider = (() => {
       const link = card.querySelector('a[href*="/watch?v="]');
       if (!link) continue;
       if (card.querySelector('a[href*="/shorts/"]')) continue;
-      const liveBadge = card.querySelector(
-        '.badge-style-type-live-now, [aria-label*="ライブ"], [aria-label*="LIVE"]'
-      );
-      if (liveBadge) continue;
+      if (hasLiveBadge(card)) continue;
       const videoId = getVideoIdFromHref(link.href);
       if (videoId && videoId === currentVid) continue;
       out.push(card);
