@@ -259,9 +259,10 @@
     list.sort(currentCreditSort === 'duration' ? sortByDurationThenCount : sortByCountThenName);
 
     const totalPeople = cm.size;
-    const totalPlays = [...cm.values()].reduce((s, v) => s + v.count, 0);
+    // v.count は動画の本数（再生回数ではない）。変数名を Plays にすると読む側が取り違える。
+    const totalVideos = [...cm.values()].reduce((s, v) => s + v.count, 0);
     document.getElementById('azCreditStats').textContent =
-      `${totalPeople.toLocaleString()}人 / ${totalPlays.toLocaleString()}再生`;
+      `${totalPeople.toLocaleString()}人 / ${totalVideos.toLocaleString()}本`;
 
     const tbody = document.querySelector('#azCreditsTable tbody');
     tbody.textContent = '';
