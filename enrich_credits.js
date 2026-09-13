@@ -602,6 +602,17 @@
           this.switchView(this.activeView === 'auto' ? 'manual' : 'auto', true);
         });
       }
+      // チャンネルタブは横スクロールしかしないので、縦ホイールを横移動へ読み替える。
+      // 端まで動かせないときは既定動作に任せ、ホイールが死んだように見えないようにする。
+      this.tabsEl && this.tabsEl.addEventListener('wheel', (event) => {
+        if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+        const el = this.tabsEl;
+        if (el.scrollWidth <= el.clientWidth) return;
+        const unit = event.deltaMode === 1 ? 16 : (event.deltaMode === 2 ? el.clientWidth : 1);
+        const before = el.scrollLeft;
+        el.scrollLeft = before + event.deltaY * unit;
+        if (el.scrollLeft !== before) event.preventDefault();
+      }, { passive: false });
       this.manualSearchEl && this.manualSearchEl.addEventListener('input', () => {
         this.manualSearch = this.manualSearchEl.value || '';
         // 検索を変えると別の結果集合になるので、ここだけ表示件数を戻す。
