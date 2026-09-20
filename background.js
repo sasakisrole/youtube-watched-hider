@@ -533,12 +533,17 @@ async function exportDataEnvelope(source = 'manual') {
   });
 }
 
+// バックアップはダウンロードフォルダ直下へ散らさず、この1フォルダへまとめる。
+// chrome.downloads.download の filename はダウンロードフォルダからの相対パスなので、
+// "<folder>/<name>" と書けばフォルダごと作られる（存在しないときは自動で作られる）。
+const BACKUP_FOLDER = 'youtube-watched-hider-backup';
+
 function getManualExportFilename() {
   const d = new Date();
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
-  return `yt-watched-${yyyy}-${mm}-${dd}.json`;
+  return `${BACKUP_FOLDER}/yt-watched-${yyyy}-${mm}-${dd}.json`;
 }
 
 // u1ps §7.3/§7.4: distinct filename for the mandatory safety backup taken right
@@ -552,7 +557,7 @@ function getPreDestructiveBackupFilename(tag) {
   const hh = String(d.getHours()).padStart(2, '0');
   const mi = String(d.getMinutes()).padStart(2, '0');
   const ss = String(d.getSeconds()).padStart(2, '0');
-  return `yt-watched-backup-before-${tag}-${yyyy}${mm}${dd}-${hh}${mi}${ss}.json`;
+  return `${BACKUP_FOLDER}/yt-watched-backup-before-${tag}-${yyyy}${mm}${dd}-${hh}${mi}${ss}.json`;
 }
 
 async function createExportBlobUrl(source = 'manual') {
@@ -1130,16 +1135,17 @@ function getManualBackupFilename() {
   const hh = String(d.getHours()).padStart(2, '0');
   const mi = String(d.getMinutes()).padStart(2, '0');
   const ss = String(d.getSeconds()).padStart(2, '0');
-  return `yt-watched-backup-${yyyy}-${mm}-${dd}-${hh}${mi}${ss}.json`;
+  return `${BACKUP_FOLDER}/yt-watched-backup-${yyyy}-${mm}-${dd}-${hh}${mi}${ss}.json`;
 }
 
-// Generate backup filename with date (e.g. yt-watched-backup-2026-04-03.json)
+// Generate backup filename with date
+// (e.g. youtube-watched-hider-backup/yt-watched-backup-2026-04-03.json)
 function getBackupFilename() {
   const d = new Date();
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
-  return `yt-watched-backup-${yyyy}-${mm}-${dd}.json`;
+  return `${BACKUP_FOLDER}/yt-watched-backup-${yyyy}-${mm}-${dd}.json`;
 }
 
 // Returns a promise with the backup result for callers that need feedback.

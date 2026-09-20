@@ -2,8 +2,8 @@
 // same day, while the daily auto backup stays a single overwritten file.
 // Run: node tests/verify_backup_filename_collision.js
 // Sensitivity: node tests/verify_backup_filename_collision.js --control
-//   (--control reverts the source-level branch to the old always-overwrite form;
-//    REQ-1 / REQ-2 / REQ-4 must fail.)
+//   (--control reverts the source-level branch to the old always-overwrite form
+//    and strips the backup folder prefix; REQ-1 / REQ-2 / REQ-4 / REQ-6 must fail.)
 const fs = require('fs');
 const path = require('path');
 
@@ -14,7 +14,18 @@ let src = fs.readFileSync(path.join(ROOT, 'background.js'), 'utf8');
 if (CONTROL) {
   src = src
     .replace("filename: isManual ? getManualBackupFilename() : getBackupFilename(),", 'filename: getBackupFilename(),')
-    .replace("conflictAction: isManual ? 'uniquify' : 'overwrite',", "conflictAction: 'overwrite',");
+    .replace("conflictAction: isManual ? 'uniquify' : 'overwrite',", "conflictAction: 'overwrite',")
+    .replace(/\$\{BACKUP_FOLDER\}\//g, '');
+}
+
+// フォルダ名は background.js の定数を正本として読む（テスト側へ書き写すと片方だけ直る）。
+const folderMatch = src.match(/const BACKUP_FOLDER = '([^']+)';/);
+if (!folderMatch) throw new Error('BACKUP_FOLDER not found in background.js');
+const BACKUP_FOLDER = folderMatch[1];
+
+function basename(filename) {
+  const i = String(filename).lastIndexOf('/');
+  return i < 0 ? String(filename) : String(filename).slice(i + 1);
 }
 
 // background.js is a service worker with top-level chrome.* registrations, so
@@ -28,6 +39,7 @@ function slice(startMarker, endMarker) {
 }
 
 const unit = [
+  `const BACKUP_FOLDER = ${JSON.stringify(BACKUP_FOLDER)};`,
   slice('function getManualBackupFilename()', '// Generate backup filename with date'),
   slice('function getBackupFilename()', '// Returns a promise with the backup result'),
   slice('async function performAutoBackup(', '\n// Context menu click handler'),
@@ -78,13 +90,13 @@ async function run() {
   // REQ-2: its filename carries the time, so two runs on one day differ even
   // before the browser's own uniquify suffix is applied.
   check('REQ-2 手動バックアップ名は時刻まで含む',
-    /^yt-watched-backup-\d{4}-\d{2}-\d{2}-\d{6}\.json$/.test(manualCall.filename));
+    /^yt-watched-backup-\d{4}-\d{2}-\d{2}-\d{6}\.json$/.test(basename(manualCall.filename)));
 
   // REQ-3: the daily automatic backup keeps one file per day (23MB x 365 would
   // otherwise accumulate), so it stays date-named and overwriting.
   check('REQ-3 自動バックアップは日付名・上書きのまま',
     autoCall.conflictAction === 'overwrite'
-      && /^yt-watched-backup-\d{4}-\d{2}-\d{2}\.json$/.test(autoCall.filename));
+      && /^yt-watched-backup-\d{4}-\d{2}-\d{2}\.json$/.test(basename(autoCall.filename)));
 
   // REQ-4: the two paths must not collide with each other either.
   check('REQ-4 手動と自動でファイル名が衝突しない',
@@ -100,6 +112,12 @@ async function run() {
   const offManual = await disabled.performAutoBackup({ source: 'backup-now', respectEnabled: false });
   check('REQ-5 自動が無効でも「今すぐ」は実行される',
     off.reason === 'disabled' && offManual.success === true);
+
+  // REQ-6: every backup lands in one dedicated folder instead of scattering
+  // across the root of the download folder.
+  check('REQ-6 自動・手動とも専用フォルダ配下へ保存する',
+    autoCall.filename === `${BACKUP_FOLDER}/${basename(autoCall.filename)}`
+      && manualCall.filename === `${BACKUP_FOLDER}/${basename(manualCall.filename)}`);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exitCode = fail ? 1 : 0;
