@@ -4,7 +4,6 @@ const countEl = document.getElementById('count');
 const dbStatusEl = document.getElementById('dbStatus');
 const enableToggle = document.getElementById('enableToggle');
 const toggleLabel = document.getElementById('toggleLabel');
-const exportBtn = document.getElementById('exportBtn');
 const importBtn = document.getElementById('importBtn');
 const clearWatchedBtn = document.getElementById('clearWatchedBtn');
 const clearLikedBtn = document.getElementById('clearLikedBtn');
@@ -380,26 +379,6 @@ viewerBtn.addEventListener('click', () => {
 // Open the usage guide + release notes page
 whatsnewBtn.addEventListener('click', () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('whatsnew.html') });
-});
-
-// Export (versioned envelope format)
-exportBtn.addEventListener('click', () => {
-  showStatus('バックアップを保存中...');
-  chrome.runtime.sendMessage({ type: 'EXPORT_DOWNLOAD', source: 'manual' }, (result) => {
-    if (!result) {
-      showStatus('バックアップを保存できませんでした（応答なし）。YouTubeタブを開いて再試行してください', true);
-      return;
-    }
-    if (result.success) {
-      const watched = result.counts ? result.counts.watchedVideos : result.count;
-      const liked = result.counts ? result.counts.likedVideos : 0;
-      showStatus(`バックアップを保存しました（視聴 ${watched}件 / 高評価 ${liked}件）`);
-    } else if (result.reason === 'no_data') {
-      showStatus('保存するデータがありません', true);
-    } else {
-      showStatus('バックアップを保存できませんでした: ' + (result.error || result.reason), true);
-    }
-  });
 });
 
 // Import

@@ -538,14 +538,6 @@ async function exportDataEnvelope(source = 'manual') {
 // "<folder>/<name>" と書けばフォルダごと作られる（存在しないときは自動で作られる）。
 const BACKUP_FOLDER = 'youtube-watched-hider-backup';
 
-function getManualExportFilename() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${BACKUP_FOLDER}/yt-watched-${yyyy}-${mm}-${dd}.json`;
-}
-
 // u1ps §7.3/§7.4: distinct filename for the mandatory safety backup taken right
 // before a destructive replace/full-reset, so it never collides with (or is
 // mistaken for) a routine manual/daily backup.
@@ -1314,16 +1306,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     exportDataEnvelope(message.source || 'manual')
       .then((data) => sendResponse(data || { records: [] }))
       .catch((e) => sendResponse({ __error: true, message: e.message || String(e) }));
-    return true;
-  }
-
-  if (message.type === 'EXPORT_DOWNLOAD') {
-    downloadExportJson({
-      source: message.source || 'manual',
-      filename: message.filename || getManualExportFilename(),
-      conflictAction: message.conflictAction || 'uniquify',
-      saveAs: !!message.saveAs,
-    }).then(sendResponse);
     return true;
   }
 
