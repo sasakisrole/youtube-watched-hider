@@ -36,7 +36,34 @@ window._ytWatchedHider = (() => {
     SELECTORS.lockup,
   ].join(', ');
 
-  let enabled = true;
+  let enabled = false; // Wait for saved settings before processing cards.
+  // Watched display settings: missing/invalid values preserve the old behavior.
+  let WATCHED_THRESHOLD = 95;
+  const WATCHED_DISPLAY_DEFAULTS = {
+    watchedThreshold: 95,
+    hideOnHome: true,
+    hideOnSubscriptions: true,
+    hideOnSearch: true,
+    hideOnRelated: true,
+  };
+  let watchedDisplaySettings = { ...WATCHED_DISPLAY_DEFAULTS };
+
+  function applyWatchedDisplaySettings(settings) {
+    const value = settings.watchedThreshold;
+    WATCHED_THRESHOLD = typeof value === 'number' && Number.isFinite(value) && value >= 1 && value <= 100 ? value : 95;
+    watchedDisplaySettings = { ...WATCHED_DISPLAY_DEFAULTS, watchedThreshold: WATCHED_THRESHOLD };
+    for (const key of ['hideOnHome', 'hideOnSubscriptions', 'hideOnSearch', 'hideOnRelated']) {
+      watchedDisplaySettings[key] = settings[key] !== false;
+    }
+  }
+
+  function shouldHideOnCurrentPage() {
+    const path = location.pathname.replace(/\/+$/, '') || '/';
+    const key = { '/': 'hideOnHome', '/feed/subscriptions': 'hideOnSubscriptions',
+      '/results': 'hideOnSearch', '/watch': 'hideOnRelated' }[path];
+    return !key || watchedDisplaySettings[key];
+  }
+
   let recordWhileOff = false;
   let harvestMode = false;
   const harvest = { running: false, added: 0, scanned: 0, noNewStreak: 0, timer: null, ui: null, styleEl: null };
@@ -294,6 +321,7 @@ window._ytWatchedHider = (() => {
       return res;
     }).catch((e) => {
       forgetWatched(videoId);
+      if (card.dataset.watchedCheckedId === videoId) delete card.dataset.watchedCheckedId;
       if (card.dataset.watchedHidden === 'true' && card.dataset.watchedVideoId === videoId) {
         card.style.display = '';
         delete card.dataset.watchedHidden;
@@ -554,13 +582,19 @@ window._ytWatchedHider = (() => {
   maybeRunV135Migration();
 
   // Load settings — start seekbar-only processing immediately (no DB needed)
-  if (!contextInvalidated) chrome.storage.local.get({ enabled: true, recordWhileOff: false, hideShorts: false, hideMovies: false, harvestMode: false }, (result) => {
+  if (!contextInvalidated) chrome.storage.local.get({ enabled: true, recordWhileOff: false, hideShorts: false, hideMovies: false, harvestMode: false, ...WATCHED_DISPLAY_DEFAULTS }, (result) => {
     if (detectContextInvalidation()) return;
+    applyWatchedDisplaySettings(result);
     enabled = result.enabled;
     recordWhileOff = result.recordWhileOff;
     hideShorts = result.hideShorts;
     hideMovies = result.hideMovies;
     harvestMode = result.harvestMode;
+    showAllCards();
+    showAllShorts();
+    showAllMovies();
+    hideShortsCards();
+    hideMovieCards();
     if (enabled) processPage(); // phase 1: seekbar detection works even without cache
     if (harvestMode && isHistoryPage()) ensureHarvestUI();
   });
@@ -611,14 +645,10 @@ window._ytWatchedHider = (() => {
     return channelEl ? channelEl.textContent.trim() : '';
   }
 
-  // Minimum progress percentage to consider a video "watched"
-  const WATCHED_THRESHOLD = 95;
-
-  // Check if a card has YouTube's seekbar indicating >= 95% watched
+  // Check if a card has YouTube's seekbar indicating the configured watched percentage
   function hasYouTubeSeekbar(card) {
-    // Old UI: resume playback overlay (YouTube only shows this for completed videos)
+    // Old UI: retain overlay-only detection when no numeric progress is available
     const resume = card.querySelector(SELECTORS.resumeOverlay);
-    if (resume) return true;
 
     // Old UI: #progress element with width
     const progress = card.querySelector(SELECTORS.seekbar);
@@ -628,7 +658,9 @@ window._ytWatchedHider = (() => {
     const segment = card.querySelector(SELECTORS.progressBarNew);
     if (segment && segment.style && parseFloat(segment.style.width) >= WATCHED_THRESHOLD) return true;
 
-    return false;
+    const hasNumericProgress = [progress, segment].some(el =>
+      el && el.style && Number.isFinite(parseFloat(el.style.width)));
+    return !!resume && !hasNumericProgress;
   }
 
   // Get current video ID from URL (for the page being watched)
@@ -1143,6 +1175,10 @@ window._ytWatchedHider = (() => {
   }
 
   function hideCard(card, videoId) {
+    if (!shouldHideOnCurrentPage()) {
+      card.dataset.watchedCheckedId = videoId;
+      return;
+    }
     card.style.display = 'none';
     card.dataset.watchedHidden = 'true';
     card.dataset.watchedVideoId = videoId;
@@ -1197,7 +1233,7 @@ window._ytWatchedHider = (() => {
   }
 
   function hideShortsCards() {
-    if (!hideShorts) return;
+    if (!hideShorts || !shouldHideOnCurrentPage()) return;
 
     // Hide Shorts shelves (entire row)
     const reelShelves = document.querySelectorAll(SHORTS_SELECTORS.reelShelf);
@@ -1256,7 +1292,7 @@ window._ytWatchedHider = (() => {
   }
 
   function hideMovieCards() {
-    if (!hideMovies) return;
+    if (!hideMovies || !shouldHideOnCurrentPage()) return;
 
     const cards = document.querySelectorAll(ALL_CARD_SELECTORS);
     for (const card of cards) {
@@ -1389,10 +1425,10 @@ window._ytWatchedHider = (() => {
     return card.querySelector('a[href*="watch"], a[href*="/watch?v="]');
   }
 
-  // Check if a history card's video was watched to completion (>= 95%)
+  // Check if a history card's video was watched to the configured percentage
   function isHistoryCardCompleted(card) {
     // Old UI: resume playback overlay
-    if (card.querySelector(SELECTORS.resumeOverlay)) return true;
+    const resume = card.querySelector(SELECTORS.resumeOverlay);
 
     // Old UI: #progress element with width
     const progress = card.querySelector(SELECTORS.seekbar);
@@ -1402,7 +1438,9 @@ window._ytWatchedHider = (() => {
     const segment = card.querySelector(SELECTORS.progressBarNew);
     if (segment && segment.style && parseFloat(segment.style.width) >= WATCHED_THRESHOLD) return true;
 
-    return false;
+    const hasNumericProgress = [progress, segment].some(el =>
+      el && el.style && Number.isFinite(parseFloat(el.style.width)));
+    return !!resume && !hasNumericProgress;
   }
 
   async function scrapeHistoryPage(options = {}) {
@@ -1745,6 +1783,9 @@ window._ytWatchedHider = (() => {
     }
     ensureQueueAllButton();
     ensureWatchLaterButton();
+    // Page display preferences also apply to recycled Shorts/Movie cards.
+    showAllShorts();
+    showAllMovies();
     // Reset flags on navigation (sidebar content changes)
     for (const card of document.querySelectorAll('[data-watched-hidden="true"]')) {
       card.style.display = '';
@@ -1754,6 +1795,8 @@ window._ytWatchedHider = (() => {
     for (const card of document.querySelectorAll('[data-watched-checked-id]')) {
       delete card.dataset.watchedCheckedId;
     }
+    hideShortsCards();
+    hideMovieCards();
     setTimeout(ensureQueueAllButton, 600);
     setTimeout(ensureWatchLaterButton, 600);
     if (isHistoryPage()) {
@@ -2688,6 +2731,17 @@ window._ytWatchedHider = (() => {
         showAllCards();
         stopRecoPolling();
       }
+    }
+
+    if (message.type === 'WATCHED_DISPLAY_SETTINGS_CHANGED') {
+      applyWatchedDisplaySettings(message.settings || {});
+      showAllCards();
+      showAllShorts();
+      showAllMovies();
+      hideShortsCards();
+      hideMovieCards();
+      if (enabled) processPage();
+      return;
     }
 
     if (message.type === 'RECORD_WHILE_OFF_CHANGED') {

@@ -300,6 +300,47 @@ function loadHistory() {
   });
 }
 
+// Watched display settings use the same local storage and tab message pattern.
+const watchedThresholdInput = document.getElementById('watchedThreshold');
+const watchedDisplayDefaults = {
+  watchedThreshold: 95, hideOnHome: true, hideOnSubscriptions: true,
+  hideOnSearch: true, hideOnRelated: true,
+};
+const pageToggleKeys = ['hideOnHome', 'hideOnSubscriptions', 'hideOnSearch', 'hideOnRelated'];
+function normalizeWatchedThreshold(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 1 && value <= 100 ? value : 95;
+}
+chrome.storage.local.get(watchedDisplayDefaults, (settings) => {
+  watchedThresholdInput.value = normalizeWatchedThreshold(settings.watchedThreshold);
+  for (const key of pageToggleKeys) document.getElementById(key).checked = settings[key] !== false;
+});
+function saveWatchedDisplaySetting(key, value) {
+  chrome.storage.local.set({ [key]: value }, () => {
+    if (chrome.runtime.lastError) {
+      showStatus('設定を保存できませんでした', true);
+      return;
+    }
+    // Read the latest complete snapshot to avoid overwriting another popup's settings.
+    chrome.storage.local.get(watchedDisplayDefaults, (settings) => {
+      chrome.tabs.query({ url: '*://*.youtube.com/*' }, (tabs) => {
+        for (const tab of tabs) {
+          chrome.tabs.sendMessage(tab.id, { type: 'WATCHED_DISPLAY_SETTINGS_CHANGED', settings }).catch(() => {});
+        }
+      });
+    });
+  });
+}
+watchedThresholdInput.addEventListener('change', () => {
+  const value = normalizeWatchedThreshold(watchedThresholdInput.valueAsNumber);
+  watchedThresholdInput.value = value;
+  saveWatchedDisplaySetting('watchedThreshold', value);
+});
+for (const key of pageToggleKeys) {
+  document.getElementById(key).addEventListener('change', (event) => {
+    saveWatchedDisplaySetting(key, event.target.checked);
+  });
+}
+
 // Load settings
 chrome.runtime.sendMessage({ type: 'GET_ENABLED' }, (response) => {
   if (response) {

@@ -58,6 +58,42 @@
       <h2 class="settings-heading">表示</h2>
 
       <div class="setting-item">
+        <span class="setting-label" id="watchedThresholdLabel">視聴済みとみなす％</span>
+        <input type="number" id="watchedThreshold" min="1" max="100" step="any" value="95" aria-labelledby="watchedThresholdLabel" aria-describedby="watchedThresholdDesc" style="width:64px">
+      </div>
+      <div class="setting-desc" id="watchedThresholdDesc">1〜100％（既定95％）。範囲外や数値でない値は95％に戻ります。登録済みの視聴記録は変更しません。</div>
+      <h2 class="settings-heading">ページ別の非表示</h2>
+      <div class="setting-item">
+        <span class="setting-label" id="hideOnHomeLabel">ホームで隠す</span>
+        <label class="toggle toggle-small">
+          <input type="checkbox" id="hideOnHome" checked aria-labelledby="hideOnHomeLabel">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="setting-item">
+        <span class="setting-label" id="hideOnSubscriptionsLabel">登録チャンネルで隠す</span>
+        <label class="toggle toggle-small">
+          <input type="checkbox" id="hideOnSubscriptions" checked aria-labelledby="hideOnSubscriptionsLabel">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="setting-item">
+        <span class="setting-label" id="hideOnSearchLabel">検索結果で隠す</span>
+        <label class="toggle toggle-small">
+          <input type="checkbox" id="hideOnSearch" checked aria-labelledby="hideOnSearchLabel">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="setting-item">
+        <span class="setting-label" id="hideOnRelatedLabel">関連動画で隠す</span>
+        <label class="toggle toggle-small">
+          <input type="checkbox" id="hideOnRelated" checked aria-labelledby="hideOnRelatedLabel">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="setting-desc">オフのページでは動画を隠しません。視聴記録は継続します。関連動画は視聴ページが対象です。</div>
+
+      <div class="setting-item">
         <span class="setting-label" id="hideShortsLabel">ショート動画を隠す</span>
         <label class="toggle toggle-small">
           <input type="checkbox" id="hideShortsToggle" aria-labelledby="hideShortsLabel">
