@@ -487,5 +487,425 @@
   },
   "content_bulkFailures": {
     "message": " / $1件失敗"
+  },
+  "officialRegisteredOfficialSources": {
+    "message": "登録済み公式ソース"
+  },
+  "officialCreditRelated": {
+    "message": "クレジット関連"
+  },
+  "officialUnregisteredTopic": {
+    "message": "未登録Topic"
+  },
+  "officialOther": {
+    "message": "その他"
+  },
+  "officialPending": {
+    "message": "判定待ち"
+  },
+  "officialCheckingCredits": {
+    "message": "クレジットを確認しています。"
+  },
+  "officialAnotherCreditCheckIsRunning": {
+    "message": "別のクレジット確認が実行中です。"
+  },
+  "officialStoppedAfterDetectingAnUnusualYoutubeResponse": {
+    "message": "YouTubeの異常応答を検出したため停止しました。"
+  },
+  "officialCreditCheckCancelled": {
+    "message": "クレジット確認を中止しました。"
+  },
+  "officialCreditCheckComplete": {
+    "message": "クレジット確認が完了しました。"
+  },
+  "officialRequestingCancellation": {
+    "message": "中止を要求しています。"
+  },
+  "officialCouldNotSendTheCancellationRequest": {
+    "message": "中止要求を送信できませんでした。"
+  },
+  "officialUnregisteredQueryOtherChannelsHidden": {
+    "message": "未登録の検索語: その他チャンネルを非表示"
+  },
+  "officialUnregisteredQueryShowAll": {
+    "message": "未登録の検索語: すべて表示"
+  },
+  "officialEndTemporaryDisplay": {
+    "message": "一時表示を解除"
+  },
+  "officialTemporarilyShowAll": {
+    "message": "一時的にすべて表示"
+  },
+  "officialEndTemporarilyShowingAllVideos": {
+    "message": "一時的な全件表示を解除"
+  },
+  "officialTemporarilyShowAllVideosHiddenByTheFilter": {
+    "message": "フィルターで隠した動画を一時的にすべて表示"
+  },
+  "officialTemporaryDisplayOn": {
+    "message": "一時表示: 有効"
+  },
+  "officialOtherChannelsAreNowHidden": {
+    "message": "その他チャンネルを非表示にしました。"
+  },
+  "officialOtherChannelsAreNowShown": {
+    "message": "その他チャンネルを表示します。"
+  },
+  "officialCouldNotFindTheItemToChange": {
+    "message": "変更対象が見つかりません。"
+  },
+  "officialSaving": {
+    "message": "保存中です。"
+  },
+  "officialCouldNotSaveChangesHaveNotBeenApplied": {
+    "message": "保存できませんでした。変更は反映されていません。"
+  },
+  "officialActiveProfileChanged": {
+    "message": "使用するプロフィールを変更しました。"
+  },
+  "officialEnterAProfileName": {
+    "message": "プロフィール名を入力してください。"
+  },
+  "officialProfileCreated": {
+    "message": "プロフィールを作成しました。"
+  },
+  "officialEnterANewProfileName": {
+    "message": "新しいプロフィール名を入力してください。"
+  },
+  "officialProfileRenamed": {
+    "message": "プロフィール名を変更しました。"
+  },
+  "officialSelectAValidDisplayMode": {
+    "message": "有効な表示モードを選択してください。"
+  },
+  "officialProfileDisplayModeChanged": {
+    "message": "プロフィールの表示モードを変更しました。"
+  },
+  "officialCannotLinkAnEmptySearchQuery": {
+    "message": "検索語が空のため関連付けできません。"
+  },
+  "officialCurrentQueryLinkedToTheProfile": {
+    "message": "現在の検索語をプロフィールに関連付けました。"
+  },
+  "officialCurrentQueryUnlinked": {
+    "message": "現在の検索語の関連付けを解除しました。"
+  },
+  "officialProfileDeleted": {
+    "message": "プロフィールを削除しました。"
+  },
+  "officialReviewTheChannelToRegisterAgain": {
+    "message": "登録対象をもう一度確認してください。"
+  },
+  "officialChannelRegistered": {
+    "message": "チャンネルを登録しました。"
+  },
+  "officialChannelUnregistered": {
+    "message": "チャンネル登録を解除しました。"
+  },
+  "officialCloseSearchFilter": {
+    "message": "検索フィルターを閉じる"
+  },
+  "officialOpenSearchFilter": {
+    "message": "検索フィルターを開く"
+  },
+  "officialClose": {
+    "message": "閉じる"
+  },
+  "officialOpen": {
+    "message": "開く"
+  },
+  "officialNonePathOnly": {
+    "message": "なし（pathのみ）"
+  },
+  "officialThisCandidateIsOutdatedCheckTheSearchResultsAgain": {
+    "message": "候補が古いため、検索結果を再確認してください。"
+  },
+  "officialCouldNotVerifyTheCandidateChannelPath": {
+    "message": "候補のチャンネルpathを確認できません。"
+  },
+  "officialReviewTheEvidenceAndChannelThenPressRegister": {
+    "message": "根拠と登録対象を確認し、登録ボタンを押してください。"
+  },
+  "officialCreateAProfileFirst": {
+    "message": "先にプロフィールを作成してください。"
+  },
+  "officialEnterTheExactChannelPathOrHandle": {
+    "message": "正確なチャンネルpathまたはhandleを入力してください。"
+  },
+  "officialEnterAChannelDisplayName": {
+    "message": "チャンネル表示名を入力してください。"
+  },
+  "officialReviewTheDisplayedChannelThenPressRegister": {
+    "message": "表示された登録対象を確認し、登録ボタンを押してください。"
+  },
+  "officialNoProfile": {
+    "message": "プロフィールなし"
+  },
+  "officialTheCurrentSearchQueryIsEmpty": {
+    "message": "現在の検索語は空です。"
+  },
+  "officialNoUnregisteredCandidatesMatchTheCredits": {
+    "message": "クレジット一致による未登録候補はありません。"
+  },
+  "officialReviewThisCandidate": {
+    "message": "この候補を確認"
+  },
+  "officialNoRegisteredChannels": {
+    "message": "登録済みチャンネルはありません。"
+  },
+  "officialUnregister": {
+    "message": "解除"
+  },
+  "officialCheckCreditsForUnknownVideos": {
+    "message": "未知動画のクレジット確認"
+  },
+  "officialCheckUpTo20OtherTopicVideosOnlyWhenYouPressTheButtonTheyWillNotBeAddedToWatchHistory": {
+    "message": "ボタンを押したときだけ、他Topic動画を最大20件確認します。視聴履歴には登録しません。"
+  },
+  "officialStartCheckingCreditsForOtherTopicVideos": {
+    "message": "他Topic動画のクレジット確認を開始"
+  },
+  "officialCancel": {
+    "message": "中止"
+  },
+  "officialCancelTheCurrentCreditCheck": {
+    "message": "実行中のクレジット確認を中止"
+  },
+  "officialProfilesAndOfficialSources": {
+    "message": "プロフィールと公式ソース"
+  },
+  "officialActiveProfile": {
+    "message": "適用中: $1 / $2"
+  },
+  "officialSelectTheActiveProfile": {
+    "message": "使用するプロフィールを選択"
+  },
+  "officialShowAll": {
+    "message": "すべて表示"
+  },
+  "officialOfficialFirst": {
+    "message": "公式優先"
+  },
+  "officialDiscover": {
+    "message": "発掘"
+  },
+  "officialProfileDisplayMode": {
+    "message": "プロフィールの表示モード"
+  },
+  "officialSelectTheProfileDisplayMode": {
+    "message": "プロフィールの表示モードを選択"
+  },
+  "officialNewProfileName": {
+    "message": "新しいプロフィール名"
+  },
+  "officialCreate": {
+    "message": "作成"
+  },
+  "officialCreateAProfile": {
+    "message": "プロフィールを作成"
+  },
+  "officialProfileName": {
+    "message": "プロフィール名"
+  },
+  "officialNewNameForTheProfile": {
+    "message": "プロフィールの新しい名前"
+  },
+  "officialRename": {
+    "message": "名前を変更"
+  },
+  "officialRenameTheProfile": {
+    "message": "プロフィール名を変更"
+  },
+  "officialDelete": {
+    "message": "削除"
+  },
+  "officialDeleteTheCurrentProfile": {
+    "message": "現在のプロフィールを削除"
+  },
+  "officialLinkSearchQueriesToProfiles": {
+    "message": "検索語とプロフィールの関連付け"
+  },
+  "officialProfileToLink": {
+    "message": "関連付けるプロフィール"
+  },
+  "officialProfileToLinkToTheCurrentQuery": {
+    "message": "現在の検索語に関連付けるプロフィール"
+  },
+  "officialLink": {
+    "message": "関連付け"
+  },
+  "officialLinkTheCurrentQueryToTheSelectedProfile": {
+    "message": "現在の検索語を選択したプロフィールに関連付け"
+  },
+  "officialUnlink": {
+    "message": "関連付けを解除"
+  },
+  "officialUnlinkTheCurrentQueryFromItsProfile": {
+    "message": "現在の検索語のプロフィール関連付けを解除"
+  },
+  "officialOfficialSourceCandidatesFromTheCreditDatabase": {
+    "message": "クレジットDBからの公式ソース候補"
+  },
+  "officialCandidatesAreNotRegisteredAutomaticallyReviewTheEvidenceAndRegisterOnlyThoseYouAccept": {
+    "message": "候補は自動登録されません。根拠を確認し、採用する場合だけ登録してください。"
+  },
+  "officialOfficialSourceCandidatesInferredFromTheCreditDatabase": {
+    "message": "クレジットDBから推測した公式ソース候補"
+  },
+  "officialRegisterAnOfficialChannelManually": {
+    "message": "公式チャンネルを明示登録"
+  },
+  "officialChannelIdOptional": {
+    "message": "チャンネルID（任意）"
+  },
+  "officialChannelIdToRegister": {
+    "message": "登録するチャンネルID"
+  },
+  "officialExactPathOrHandle": {
+    "message": "正確なpathまたはhandle"
+  },
+  "officialExactChannelPathOrHandleToRegister": {
+    "message": "登録する正確なチャンネルpathまたはhandle"
+  },
+  "officialChannelDisplayName": {
+    "message": "チャンネル表示名"
+  },
+  "officialChannelDisplayNameToRegister": {
+    "message": "登録するチャンネル表示名"
+  },
+  "officialReviewRegistration": {
+    "message": "登録内容を確認"
+  },
+  "officialReviewTheChannelDetailsToRegister": {
+    "message": "登録するチャンネルの内容を確認"
+  },
+  "officialRegisterThisChannel": {
+    "message": "このチャンネルを登録"
+  },
+  "officialRegisterTheDisplayedChannelAsAnOfficialSource": {
+    "message": "表示されたチャンネルを公式ソースとして登録"
+  },
+  "officialRegisteredOfficialChannels": {
+    "message": "登録済み公式チャンネル"
+  },
+  "officialOfficialFirstSearchFilter": {
+    "message": "公式優先検索フィルター"
+  },
+  "officialHideOtherChannelsShowOfficialAndTopicChannels": {
+    "message": "その他チャンネルを隠す。公式とTopicは表示"
+  },
+  "officialHideOtherChannelsShowOfficialAndTopic": {
+    "message": "その他チャンネルを隠す（公式・Topicは表示）"
+  },
+  "officialVideosThatCannotBeClassifiedRemainVisible": {
+    "message": "判定できない動画は安全のため表示します"
+  },
+  "officialTheDisplayModeComesFromTheProfileMatchingTheSearchQuery": {
+    "message": "表示モードは検索語に対応するプロフィールから解決されます。"
+  },
+  "officialTopicChannelsAreDetectedAutomaticallyFromChannelNames": {
+    "message": "Topicはチャンネル名から自動判定します。"
+  },
+  "officialLinkThisQueryToAProfileToEnableThisOption": {
+    "message": "この検索語をプロフィールへ紐付けると利用できます"
+  },
+  "officialDisplayMode": {
+    "message": "表示モード"
+  },
+  "officialShowOfficialSourcesFirst": {
+    "message": "公式優先で表示"
+  },
+  "officialDiscoverVideosIncludingUnregisteredTopicChannels": {
+    "message": "未登録Topicを含めて発掘"
+  },
+  "officialTurnOffTheFilterAndShowAll": {
+    "message": "フィルターをオフにしてすべて表示"
+  },
+  "officialShowing": {
+    "message": "表示 "
+  },
+  "officialComposer": {
+    "message": "作曲"
+  },
+  "officialLyricist": {
+    "message": "作詞"
+  },
+  "officialArranger": {
+    "message": "編曲"
+  },
+  "officialUnassigned": {
+    "message": "未割当"
+  },
+  "officialCheckFailed": {
+    "message": "確認できませんでした: $1"
+  },
+  "officialLookupFailed": {
+    "message": "クレジットDBから公式ソース候補を照会できませんでした: $1"
+  },
+  "officialPreviewCount": {
+    "message": "他Topic $1件をクレジット確認"
+  },
+  "officialEvidence": {
+    "message": " / 根拠: $1"
+  },
+  "officialRegistrationTarget": {
+    "message": "登録対象: ID: $1 / path: $2 / 名前: $3$4"
+  },
+  "officialNormalizedQuery": {
+    "message": "現在の正規化検索語: $1"
+  },
+  "officialTargetProfile": {
+    "message": "登録先: $1"
+  },
+  "officialCandidateEvidence": {
+    "message": "候補の根拠: $1"
+  },
+  "officialReviewCandidate": {
+    "message": "公式ソース候補を確認: $1"
+  },
+  "officialUnregisterChannel": {
+    "message": "チャンネル登録を解除: $1"
+  },
+  "officialCreditMatch": {
+    "message": "$1クレジット「$2」が別名「$3」と正規化一致（動画 $4）"
+  },
+  "officialModeValueOfficial": {
+    "message": "official"
+  },
+  "officialModeValueDiscovery": {
+    "message": "discovery"
+  },
+  "officialModeValueAll": {
+    "message": "all"
+  },
+  "officialPreviewComposer": {
+    "message": "composer"
+  },
+  "officialPreviewLyricist": {
+    "message": "lyricist"
+  },
+  "officialPreviewArranger": {
+    "message": "arranger"
+  },
+  "officialPreviewComplete": {
+    "message": "complete"
+  },
+  "officialPreviewPartial": {
+    "message": "partial"
+  },
+  "officialPreviewNotFound": {
+    "message": "not-found"
+  },
+  "officialPreviewError": {
+    "message": "error"
+  },
+  "officialPreviewUnknown": {
+    "message": "unknown"
+  },
+  "officialPreviewErrorDetail": {
+    "message": " / error: $1"
+  },
+  "officialActiveProfileLabel": {
+    "message": "使用するプロフィール"
   }
 }

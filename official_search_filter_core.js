@@ -1,6 +1,15 @@
 (() => {
   'use strict';
 
+  function officialMessage(key, fallback, substitutions = []) {
+    try {
+      return globalThis.chrome?.i18n?.getMessage(key, substitutions.map(String)) || fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+
   const CATEGORY = Object.freeze({
     OFFICIAL: 'official',
     CREDIT_RELATED: 'credit-related',
@@ -473,10 +482,10 @@
     }
 
     const roleLabels = {
-      composer: '作曲',
-      lyricist: '作詞',
-      arranger: '編曲',
-      creditsRaw: '未割当',
+      composer: officialMessage('officialComposer', '作曲'),
+      lyricist: officialMessage('officialLyricist', '作詞'),
+      arranger: officialMessage('officialArranger', '編曲'),
+      creditsRaw: officialMessage('officialUnassigned', '未割当'),
     };
     const byChannel = new Map();
     const relatedVideoIds = new Set();
@@ -527,8 +536,8 @@
       }
       for (const match of matches) {
         const reason =
-          `${roleLabels[match.role]}クレジット「${match.creditValue}」が` +
-          `別名「${match.alias}」と正規化一致（動画 ${videoId}）`;
+          officialMessage('officialCreditMatch', `${roleLabels[match.role]}クレジット「${match.creditValue}」が` +
+          `別名「${match.alias}」と正規化一致（動画 ${videoId}）`, [roleLabels[match.role], match.creditValue, match.alias, videoId]);
         if (!candidate.reasons.includes(reason)) {
           candidate.reasons.push(reason);
         }

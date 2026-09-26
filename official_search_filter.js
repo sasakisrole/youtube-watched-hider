@@ -1,6 +1,15 @@
 (() => {
   'use strict';
 
+  function officialMessage(key, fallback, substitutions = []) {
+    try {
+      return globalThis.chrome?.i18n?.getMessage(key, substitutions.map(String)) || fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+
   const core = globalThis.YWHOfficialSearchFilterCore;
   const profileStore = globalThis.YWHOfficialProfileStore || null;
 
@@ -46,11 +55,11 @@
   ].join(', ');
 
   const countLabels = Object.freeze({
-    [CATEGORY.OFFICIAL]: '登録済み公式ソース',
-    [CATEGORY.CREDIT_RELATED]: 'クレジット関連',
-    [CATEGORY.OTHER_TOPIC]: '未登録Topic',
-    [CATEGORY.OTHER]: 'その他',
-    [CATEGORY.PENDING]: '判定待ち',
+    [CATEGORY.OFFICIAL]: officialMessage('officialRegisteredOfficialSources', '登録済み公式ソース'),
+    [CATEGORY.CREDIT_RELATED]: officialMessage('officialCreditRelated', 'クレジット関連'),
+    [CATEGORY.OTHER_TOPIC]: officialMessage('officialUnregisteredTopic', '未登録Topic'),
+    [CATEGORY.OTHER]: officialMessage('officialOther', 'その他'),
+    [CATEGORY.PENDING]: officialMessage('officialPending', '判定待ち'),
   });
 
   if (globalThis._ywhOfficialSearchFilter) {
@@ -312,6 +321,34 @@
     });
   }
 
+
+  function officialModeLabel(mode, legacyValue = false) {
+    if (legacyValue) {
+      if (mode === MODE.OFFICIAL) return officialMessage('officialModeValueOfficial', mode);
+      if (mode === MODE.DISCOVERY) return officialMessage('officialModeValueDiscovery', mode);
+      return officialMessage('officialModeValueAll', mode);
+    }
+    const fallback = null;
+    if (mode === MODE.OFFICIAL) return officialMessage('officialOfficialFirst', fallback ?? '公式優先');
+    if (mode === MODE.DISCOVERY) return officialMessage('officialDiscover', fallback ?? '発掘');
+    return officialMessage('officialShowAll', fallback ?? 'すべて表示');
+  }
+
+
+  function officialPreviewLabel(value) {
+    switch (value) {
+      case 'composer': return officialMessage('officialPreviewComposer', value);
+      case 'lyricist': return officialMessage('officialPreviewLyricist', value);
+      case 'arranger': return officialMessage('officialPreviewArranger', value);
+      case 'complete': return officialMessage('officialPreviewComplete', value);
+      case 'partial': return officialMessage('officialPreviewPartial', value);
+      case 'not-found': return officialMessage('officialPreviewNotFound', value);
+      case 'error': return officialMessage('officialPreviewError', value);
+      case 'unknown': return officialMessage('officialPreviewUnknown', value);
+      default: return value;
+    }
+  }
+
   function createEmptyCounts() {
     return {
       [CATEGORY.OFFICIAL]: 0,
@@ -459,7 +496,7 @@
     state.previewCancelling = false;
     state.previewProcessed = 0;
     state.previewTotal = videoIds.length;
-    state.previewMessage = 'クレジットを確認しています。';
+    state.previewMessage = officialMessage('officialCheckingCredits', 'クレジットを確認しています。');
     renderPanelState();
     try {
       const response = await runtimeMessage({
@@ -473,8 +510,8 @@
       });
       if (!response?.ok) {
         state.previewMessage = response?.reason === 'already-running'
-          ? '別のクレジット確認が実行中です。'
-          : `確認できませんでした: ${response?.reason || 'unknown'}`;
+          ? officialMessage('officialAnotherCreditCheckIsRunning', '別のクレジット確認が実行中です。')
+          : officialMessage('officialCheckFailed', `確認できませんでした: ${response?.reason || 'unknown'}`, [response?.reason || 'unknown']);
         return;
       }
       state.previewResults = response.results || {};
@@ -484,14 +521,14 @@
       state.previewProcessed = Number(response.processed) || 0;
       state.previewTotal = Number(response.total) || videoIds.length;
       state.previewMessage = response.autoStopped
-        ? 'YouTubeの異常応答を検出したため停止しました。'
+        ? officialMessage('officialStoppedAfterDetectingAnUnusualYoutubeResponse', 'YouTubeの異常応答を検出したため停止しました。')
         : response.aborted
-          ? 'クレジット確認を中止しました。'
-          : 'クレジット確認が完了しました。';
+          ? officialMessage('officialCreditCheckCancelled', 'クレジット確認を中止しました。')
+          : officialMessage('officialCreditCheckComplete', 'クレジット確認が完了しました。');
       state.creditLookupKey = '';
       scanSearchResults();
     } catch (error) {
-      state.previewMessage = `確認できませんでした: ${error.message}`;
+      state.previewMessage = officialMessage('officialCheckFailed', `確認できませんでした: ${error.message}`, [error.message]);
     } finally {
       state.previewRunning = false;
       state.previewCancelling = false;
@@ -502,12 +539,12 @@
   async function cancelPreviewCredits() {
     if (!state.previewRunning || state.previewCancelling) return;
     state.previewCancelling = true;
-    state.previewMessage = '中止を要求しています。';
+    state.previewMessage = officialMessage('officialRequestingCancellation', '中止を要求しています。');
     renderPanelState();
     try {
       await runtimeMessage({ type: 'CANCEL_PREVIEW_VIDEO_CREDITS' });
     } catch (_error) {
-      state.previewMessage = '中止要求を送信できませんでした。';
+      state.previewMessage = officialMessage('officialCouldNotSendTheCancellationRequest', '中止要求を送信できませんでした。');
       state.previewCancelling = false;
       renderPanelState();
     }
@@ -618,7 +655,7 @@
           state.creditLookupError = error?.message || 'DB RPC failed';
           renderManagementState();
           setManagementStatus(
-            `クレジットDBから公式ソース候補を照会できませんでした: ${state.creditLookupError}`,
+            officialMessage('officialLookupFailed', `クレジットDBから公式ソース候補を照会できませんでした: ${state.creditLookupError}`, [state.creditLookupError]),
             true
           );
         }
@@ -720,10 +757,10 @@
     if (effective) {
       const profile = getEffectiveProfile();
       effective.textContent = profile
-        ? `適用中: ${profile.displayName || profile.id} / ${state.mode}`
+        ? officialMessage('officialActiveProfile', `適用中: ${profile.displayName || profile.id} / ${state.mode}`, [profile.displayName || profile.id, officialModeLabel(state.mode, true)])
         : state.settings.hideOtherGlobal
-          ? '未登録の検索語: その他チャンネルを非表示'
-          : '未登録の検索語: すべて表示';
+          ? officialMessage('officialUnregisteredQueryOtherChannelsHidden', '未登録の検索語: その他チャンネルを非表示')
+          : officialMessage('officialUnregisteredQueryShowAll', '未登録の検索語: すべて表示');
     }
     if (unboundHint) {
       unboundHint.hidden = hasEffectiveProfile;
@@ -759,19 +796,19 @@
         String(state.temporaryRevealActive)
       );
       temporaryRevealButton.textContent = state.temporaryRevealActive
-        ? '一時表示を解除'
-        : '一時的にすべて表示';
+        ? officialMessage('officialEndTemporaryDisplay', '一時表示を解除')
+        : officialMessage('officialTemporarilyShowAll', '一時的にすべて表示');
       temporaryRevealButton.setAttribute(
         'aria-label',
         state.temporaryRevealActive
-          ? '一時的な全件表示を解除'
-          : 'フィルターで隠した動画を一時的にすべて表示'
+          ? officialMessage('officialEndTemporarilyShowingAllVideos', '一時的な全件表示を解除')
+          : officialMessage('officialTemporarilyShowAllVideosHiddenByTheFilter', 'フィルターで隠した動画を一時的にすべて表示')
       );
     }
     if (temporaryRevealStatus) {
       temporaryRevealStatus.hidden = !state.temporaryRevealActive;
       temporaryRevealStatus.textContent = state.temporaryRevealActive
-        ? '一時表示: 有効'
+        ? officialMessage('officialTemporaryDisplayOn', '一時表示: 有効')
         : '';
     }
     const previewStart = panel.querySelector?.('[data-preview-credits-start]');
@@ -783,7 +820,7 @@
       core.PREVIEW_CREDITS_MAX_VIDEOS || 20
     );
     if (previewStart) {
-      previewStart.textContent = `他Topic ${previewCount}件をクレジット確認`;
+      previewStart.textContent = officialMessage('officialPreviewCount', `他Topic ${previewCount}件をクレジット確認`, [previewCount]);
       previewStart.disabled = state.previewRunning || previewCount === 0;
       previewStart.setAttribute('aria-disabled', String(previewStart.disabled));
     }
@@ -801,13 +838,13 @@
       for (const [videoId, result] of Object.entries(state.previewResults)) {
         const values = ['composer', 'lyricist', 'arranger']
           .filter((role) => result?.credits?.[role])
-          .map((role) => `${role}: ${result.credits[role]}`);
-        const error = result?.error?.kind ? ` / error: ${result.error.kind}` : '';
+          .map((role) => `${officialPreviewLabel(role)}: ${result.credits[role]}`);
+        const error = result?.error?.kind ? officialMessage('officialPreviewErrorDetail', ` / error: ${result.error.kind}`, [result.error.kind]) : '';
         appendText(
           previewResults,
           'li',
           result?.status === 'error' ? 'ywh-osf-preview-result--error' : '',
-          `${videoId}: ${result?.status || 'unknown'}${values.length ? ` / ${values.join(' / ')}` : ''}${error}`
+          `${videoId}: ${officialPreviewLabel(result?.status || 'unknown')}${values.length ? ` / ${values.join(' / ')}` : ''}${error}`
         );
       }
     }
@@ -932,8 +969,8 @@
       settings.hideOtherGlobal = enabled;
       return true;
     }, enabled
-      ? 'その他チャンネルを非表示にしました。'
-      : 'その他チャンネルを表示します。');
+      ? officialMessage('officialOtherChannelsAreNowHidden', 'その他チャンネルを非表示にしました。')
+      : officialMessage('officialOtherChannelsAreNowShown', 'その他チャンネルを表示します。'));
   }
 
   function setManagementStatus(
@@ -994,11 +1031,11 @@
       const candidate = sanitizeSettings(state.settings);
       if (change(candidate) === false) {
         renderManagementState();
-        setManagementStatus('変更対象が見つかりません。', true);
+        setManagementStatus(officialMessage('officialCouldNotFindTheItemToChange', '変更対象が見つかりません。'), true);
         return;
       }
       const nextSettings = sanitizeSettings(candidate);
-      setManagementStatus('保存中です。', false, true);
+      setManagementStatus(officialMessage('officialSaving', '保存中です。'), false, true);
 
       if (!hasStorageLocal()) {
         applySettings(nextSettings);
@@ -1017,7 +1054,7 @@
         if (state.disposed) return;
         renderManagementState();
         setManagementStatus(
-          '保存できませんでした。変更は反映されていません。',
+          officialMessage('officialCouldNotSaveChangesHaveNotBeenApplied', '保存できませんでした。変更は反映されていません。'),
           true
         );
       }
@@ -1036,13 +1073,13 @@
       if (!settings.profiles[profileId]) return false;
       settings.activeProfileId = profileId;
       return true;
-    }, '使用するプロフィールを変更しました。');
+    }, officialMessage('officialActiveProfileChanged', '使用するプロフィールを変更しました。'));
   }
 
   function requestProfileCreate(displayName, input) {
     const name = String(displayName ?? '').trim();
     if (!name) {
-      setManagementStatus('プロフィール名を入力してください。', true);
+      setManagementStatus(officialMessage('officialEnterAProfileName', 'プロフィール名を入力してください。'), true);
       return;
     }
 
@@ -1063,7 +1100,7 @@
       };
       settings.activeProfileId = id;
       return true;
-    }, 'プロフィールを作成しました。', () => {
+    }, officialMessage('officialProfileCreated', 'プロフィールを作成しました。'), () => {
       input.value = '';
     });
   }
@@ -1071,7 +1108,7 @@
   function requestProfileRename(displayName, input) {
     const name = String(displayName ?? '').trim();
     if (!name) {
-      setManagementStatus('新しいプロフィール名を入力してください。', true);
+      setManagementStatus(officialMessage('officialEnterANewProfileName', '新しいプロフィール名を入力してください。'), true);
       return;
     }
     const profileId = state.settings.activeProfileId;
@@ -1081,14 +1118,14 @@
       if (!profile) return false;
       profile.displayName = name;
       return true;
-    }, 'プロフィール名を変更しました。', () => {
+    }, officialMessage('officialProfileRenamed', 'プロフィール名を変更しました。'), () => {
       input.value = name;
     });
   }
 
   function requestProfileModeChange(profileId, mode) {
     if (!isValidMode(mode)) {
-      setManagementStatus('有効な表示モードを選択してください。', true);
+      setManagementStatus(officialMessage('officialSelectAValidDisplayMode', '有効な表示モードを選択してください。'), true);
       return;
     }
     state.temporaryRevealActive = false;
@@ -1098,20 +1135,20 @@
       if (!profile) return false;
       profile.mode = mode;
       return true;
-    }, 'プロフィールの表示モードを変更しました。');
+    }, officialMessage('officialProfileDisplayModeChanged', 'プロフィールの表示モードを変更しました。'));
   }
 
   function requestQueryBinding(profileId) {
     const normalizedQuery = normalizeText(getCurrentSearchQuery());
     if (!normalizedQuery) {
-      setManagementStatus('検索語が空のため関連付けできません。', true);
+      setManagementStatus(officialMessage('officialCannotLinkAnEmptySearchQuery', '検索語が空のため関連付けできません。'), true);
       return;
     }
     requestSettingsChange((settings) => {
       if (!settings.profiles[profileId]) return false;
       settings.queryBindings[normalizedQuery] = profileId;
       return true;
-    }, '現在の検索語をプロフィールに関連付けました。');
+    }, officialMessage('officialCurrentQueryLinkedToTheProfile', '現在の検索語をプロフィールに関連付けました。'));
   }
 
   function requestQueryBindingRemove() {
@@ -1128,7 +1165,7 @@
       }
       delete settings.queryBindings[normalizedQuery];
       return true;
-    }, '現在の検索語の関連付けを解除しました。');
+    }, officialMessage('officialCurrentQueryUnlinked', '現在の検索語の関連付けを解除しました。'));
   }
 
   function requestProfileDelete() {
@@ -1146,7 +1183,7 @@
       settings.activeProfileId =
         Object.keys(settings.profiles)[0] || null;
       return true;
-    }, 'プロフィールを削除しました。', () => {
+    }, officialMessage('officialProfileDeleted', 'プロフィールを削除しました。'), () => {
       clearPendingChannel();
     });
   }
@@ -1154,7 +1191,7 @@
   function requestChannelAdd(profileId, target) {
     const channel = sanitizeChannel(target);
     if (!profileId || !channel || !channel.canonicalPath) {
-      setManagementStatus('登録対象をもう一度確認してください。', true);
+      setManagementStatus(officialMessage('officialReviewTheChannelToRegisterAgain', '登録対象をもう一度確認してください。'), true);
       return;
     }
 
@@ -1186,7 +1223,7 @@
         profile.channels.push({ ...channel, enabled: true });
       }
       return true;
-    }, 'チャンネルを登録しました。', () => {
+    }, officialMessage('officialChannelRegistered', 'チャンネルを登録しました。'), () => {
       clearPendingChannel(true);
     });
   }
@@ -1202,7 +1239,7 @@
       if (channelIndex < 0) return false;
       profile.channels.splice(channelIndex, 1);
       return true;
-    }, 'チャンネル登録を解除しました。');
+    }, officialMessage('officialChannelUnregistered', 'チャンネル登録を解除しました。'));
   }
 
   function onStorageChanged(changes, areaName) {
@@ -1325,12 +1362,12 @@
       button.setAttribute(
         'aria-label',
         state.panelExpanded
-          ? '検索フィルターを閉じる'
-          : '検索フィルターを開く'
+          ? officialMessage('officialCloseSearchFilter', '検索フィルターを閉じる')
+          : officialMessage('officialOpenSearchFilter', '検索フィルターを開く')
       );
     }
     if (label) {
-      label.textContent = state.panelExpanded ? '閉じる' : '開く';
+      label.textContent = state.panelExpanded ? officialMessage('officialClose', '閉じる') : officialMessage('officialOpen', '開く');
     }
   }
 
@@ -1429,13 +1466,13 @@
     const confirmButton = panel?.querySelector?.('[data-channel-confirm]');
     if (target) {
       const channel = pending.channel;
-      const idLabel = channel.channelId || 'なし（pathのみ）';
+      const idLabel = channel.channelId || officialMessage('officialNonePathOnly', 'なし（pathのみ）');
       const evidence = pending.candidate?.reasons?.length
-        ? ` / 根拠: ${pending.candidate.reasons.join(' / ')}`
+        ? officialMessage('officialEvidence', ` / 根拠: ${pending.candidate.reasons.join(' / ')}`, [pending.candidate.reasons.join(' / ')])
         : '';
       target.textContent =
-        `登録対象: ID: ${idLabel} / path: ${channel.canonicalPath} / ` +
-        `名前: ${channel.displayName}${evidence}`;
+        officialMessage('officialRegistrationTarget', `登録対象: ID: ${idLabel} / path: ${channel.canonicalPath} / ` +
+        `名前: ${channel.displayName}${evidence}`, [idLabel, channel.canonicalPath, channel.displayName, evidence]);
       target.hidden = false;
     }
     if (confirmButton) confirmButton.disabled = false;
@@ -1448,12 +1485,12 @@
       !state.creditCandidates.includes(candidate) ||
       !state.settings.profiles[candidate.profileId]
     ) {
-      setManagementStatus('候補が古いため、検索結果を再確認してください。', true);
+      setManagementStatus(officialMessage('officialThisCandidateIsOutdatedCheckTheSearchResultsAgain', '候補が古いため、検索結果を再確認してください。'), true);
       return;
     }
     const channel = sanitizeChannel(candidate.channel);
     if (!channel?.canonicalPath) {
-      setManagementStatus('候補のチャンネルpathを確認できません。', true);
+      setManagementStatus(officialMessage('officialCouldNotVerifyTheCandidateChannelPath', '候補のチャンネルpathを確認できません。'), true);
       return;
     }
     showPendingChannel({
@@ -1461,7 +1498,7 @@
       profileId: candidate.profileId,
       channel,
       candidate,
-    }, '根拠と登録対象を確認し、登録ボタンを押してください。');
+    }, officialMessage('officialReviewTheEvidenceAndChannelThenPressRegister', '根拠と登録対象を確認し、登録ボタンを押してください。'));
   }
 
   function isExplicitChannelPath(path) {
@@ -1472,7 +1509,7 @@
   function prepareChannelTarget(idInput, pathInput, nameInput) {
     const profile = getActiveProfile();
     if (!profile) {
-      setManagementStatus('先にプロフィールを作成してください。', true);
+      setManagementStatus(officialMessage('officialCreateAProfileFirst', '先にプロフィールを作成してください。'), true);
       return;
     }
 
@@ -1481,13 +1518,13 @@
     const displayName = String(nameInput.value ?? '').trim();
     if (!canonicalPath || !isExplicitChannelPath(canonicalPath)) {
       setManagementStatus(
-        '正確なチャンネルpathまたはhandleを入力してください。',
+        officialMessage('officialEnterTheExactChannelPathOrHandle', '正確なチャンネルpathまたはhandleを入力してください。'),
         true
       );
       return;
     }
     if (!displayName) {
-      setManagementStatus('チャンネル表示名を入力してください。', true);
+      setManagementStatus(officialMessage('officialEnterAChannelDisplayName', 'チャンネル表示名を入力してください。'), true);
       return;
     }
 
@@ -1501,7 +1538,7 @@
       source: 'manual',
       profileId: profile.id,
       channel,
-    }, '表示された登録対象を確認し、登録ボタンを押してください。');
+    }, officialMessage('officialReviewTheDisplayedChannelThenPressRegister', '表示された登録対象を確認し、登録ボタンを押してください。'));
   }
 
   function renderManagementState() {
@@ -1540,7 +1577,7 @@
       if (profiles.length === 0) {
         const option = document.createElement('option');
         option.value = '';
-        option.textContent = 'プロフィールなし';
+        option.textContent = officialMessage('officialNoProfile', 'プロフィールなし');
         profileSelect.appendChild(option);
       } else {
         for (const profile of profiles) {
@@ -1564,8 +1601,8 @@
     }
     if (bindingQuery) {
       bindingQuery.textContent = normalizedQuery
-        ? `現在の正規化検索語: ${normalizedQuery}`
-        : '現在の検索語は空です。';
+        ? officialMessage('officialNormalizedQuery', `現在の正規化検索語: ${normalizedQuery}`, [normalizedQuery])
+        : officialMessage('officialTheCurrentSearchQueryIsEmpty', '現在の検索語は空です。');
     }
     if (bindingProfileSelect) {
       bindingProfileSelect.textContent = '';
@@ -1623,7 +1660,7 @@
           creditCandidateList,
           'li',
           'ywh-osf-channel-empty',
-          'クレジット一致による未登録候補はありません。'
+          officialMessage('officialNoUnregisteredCandidatesMatchTheCredits', 'クレジット一致による未登録候補はありません。')
         );
       } else {
         for (const candidate of candidates) {
@@ -1637,7 +1674,7 @@
               ? `ID: ${candidate.channel.channelId}`
               : '',
             candidate.channel.canonicalPath,
-            `登録先: ${candidate.profileName}`,
+            officialMessage('officialTargetProfile', `登録先: ${candidate.profileName}`, [candidate.profileName]),
           ].filter(Boolean).join(' / ');
           appendText(
             detail,
@@ -1649,13 +1686,13 @@
             detail,
             'div',
             'ywh-osf-panel__note',
-            `候補の根拠: ${candidate.reasons.join(' / ')}`
+            officialMessage('officialCandidateEvidence', `候補の根拠: ${candidate.reasons.join(' / ')}`, [candidate.reasons.join(' / ')])
           );
           reason.dataset.creditCandidateReason = '';
           item.appendChild(detail);
           const prepareButton = createManagementButton(
-            'この候補を確認',
-            `公式ソース候補を確認: ${identity}`
+            officialMessage('officialReviewThisCandidate', 'この候補を確認'),
+            officialMessage('officialReviewCandidate', `公式ソース候補を確認: ${identity}`, [identity])
           );
           prepareButton.dataset.creditCandidatePrepare = '';
           prepareButton.addEventListener('click', () => {
@@ -1675,7 +1712,7 @@
           channelList,
           'li',
           'ywh-osf-channel-empty',
-          '登録済みチャンネルはありません。'
+          officialMessage('officialNoRegisteredChannels', '登録済みチャンネルはありません。')
         );
       } else {
         channels.forEach((channel, index) => {
@@ -1688,8 +1725,8 @@
           ].filter(Boolean).join(' / ');
           appendText(item, 'span', 'ywh-osf-channel-identity', identity);
           const removeButton = createManagementButton(
-            '解除',
-            `チャンネル登録を解除: ${identity}`,
+            officialMessage('officialUnregister', '解除'),
+            officialMessage('officialUnregisterChannel', `チャンネル登録を解除: ${identity}`, [identity]),
             'ywh-osf-action-button ywh-osf-action-button--danger'
           );
           removeButton.dataset.channelRemove = String(index);
@@ -1706,25 +1743,25 @@
   function createPreviewCreditsSection() {
     const section = document.createElement('section');
     section.className = 'ywh-osf-preview-credits';
-    appendText(section, 'h3', 'ywh-osf-management__title', '未知動画のクレジット確認');
+    appendText(section, 'h3', 'ywh-osf-management__title', officialMessage('officialCheckCreditsForUnknownVideos', '未知動画のクレジット確認'));
     appendText(
       section,
       'p',
       'ywh-osf-panel__note',
-      'ボタンを押したときだけ、他Topic動画を最大20件確認します。視聴履歴には登録しません。'
+      officialMessage('officialCheckUpTo20OtherTopicVideosOnlyWhenYouPressTheButtonTheyWillNotBeAddedToWatchHistory', 'ボタンを押したときだけ、他Topic動画を最大20件確認します。視聴履歴には登録しません。')
     );
     const actions = document.createElement('div');
     actions.className = 'ywh-osf-preview-actions';
     const start = createManagementButton(
-      '他Topic 0件をクレジット確認',
-      '他Topic動画のクレジット確認を開始'
+      officialMessage('officialPreviewCount', '他Topic 0件をクレジット確認', [0]),
+      officialMessage('officialStartCheckingCreditsForOtherTopicVideos', '他Topic動画のクレジット確認を開始')
     );
     start.dataset.previewCreditsStart = '';
     start.addEventListener('click', startPreviewCredits);
     actions.appendChild(start);
     const cancel = createManagementButton(
-      '中止',
-      '実行中のクレジット確認を中止',
+      officialMessage('officialCancel', '中止'),
+      officialMessage('officialCancelTheCurrentCreditCheck', '実行中のクレジット確認を中止'),
       'ywh-osf-action-button ywh-osf-action-button--danger'
     );
     cancel.dataset.previewCreditsCancel = '';
@@ -1751,7 +1788,7 @@
       section,
       'h3',
       'ywh-osf-management__title',
-      'プロフィールと公式ソース'
+      officialMessage('officialProfilesAndOfficialSources', 'プロフィールと公式ソース')
     );
     heading.id = 'ywh-osf-management-title';
 
@@ -1759,9 +1796,9 @@
     profileSelect.dataset.profileSelect = '';
     createLabeledControl(
       section,
-      '使用するプロフィール',
+      officialMessage('officialActiveProfileLabel', '使用するプロフィール'),
       profileSelect,
-      '使用するプロフィールを選択'
+      officialMessage('officialSelectTheActiveProfile', '使用するプロフィールを選択')
     );
     profileSelect.addEventListener('change', () => {
       clearPendingChannel();
@@ -1771,9 +1808,9 @@
     const profileModeSelect = document.createElement('select');
     profileModeSelect.dataset.profileMode = '';
     for (const [mode, label] of [
-      [MODE.ALL, 'すべて表示'],
-      [MODE.OFFICIAL, '公式優先'],
-      [MODE.DISCOVERY, '発掘'],
+      [MODE.ALL, officialMessage('officialShowAll', 'すべて表示')],
+      [MODE.OFFICIAL, officialMessage('officialOfficialFirst', '公式優先')],
+      [MODE.DISCOVERY, officialMessage('officialDiscover', '発掘')],
     ]) {
       const option = document.createElement('option');
       option.value = mode;
@@ -1782,9 +1819,9 @@
     }
     createLabeledControl(
       section,
-      'プロフィールの表示モード',
+      officialMessage('officialProfileDisplayMode', 'プロフィールの表示モード'),
       profileModeSelect,
-      'プロフィールの表示モードを選択'
+      officialMessage('officialSelectTheProfileDisplayMode', 'プロフィールの表示モードを選択')
     );
     profileModeSelect.addEventListener('change', () => {
       const profileId = state.settings.activeProfileId;
@@ -1801,13 +1838,13 @@
     createInput.setAttribute('autocomplete', 'off');
     createLabeledControl(
       createRow,
-      '新しいプロフィール名',
+      officialMessage('officialNewProfileName', '新しいプロフィール名'),
       createInput,
-      '新しいプロフィール名'
+      officialMessage('officialNewProfileName', '新しいプロフィール名')
     );
     const createButton = createManagementButton(
-      '作成',
-      'プロフィールを作成'
+      officialMessage('officialCreate', '作成'),
+      officialMessage('officialCreateAProfile', 'プロフィールを作成')
     );
     createButton.dataset.profileCreate = '';
     createButton.addEventListener('click', () => {
@@ -1823,13 +1860,13 @@
     renameInput.dataset.profileRenameInput = '';
     createLabeledControl(
       renameRow,
-      'プロフィール名',
+      officialMessage('officialProfileName', 'プロフィール名'),
       renameInput,
-      'プロフィールの新しい名前'
+      officialMessage('officialNewNameForTheProfile', 'プロフィールの新しい名前')
     );
     const renameButton = createManagementButton(
-      '名前を変更',
-      'プロフィール名を変更'
+      officialMessage('officialRename', '名前を変更'),
+      officialMessage('officialRenameTheProfile', 'プロフィール名を変更')
     );
     renameButton.dataset.profileRename = '';
     renameButton.addEventListener('click', () => {
@@ -1837,8 +1874,8 @@
     });
     renameRow.appendChild(renameButton);
     const deleteButton = createManagementButton(
-      '削除',
-      '現在のプロフィールを削除',
+      officialMessage('officialDelete', '削除'),
+      officialMessage('officialDeleteTheCurrentProfile', '現在のプロフィールを削除'),
       'ywh-osf-action-button ywh-osf-action-button--danger'
     );
     deleteButton.dataset.profileDelete = '';
@@ -1850,7 +1887,7 @@
       section,
       'h4',
       'ywh-osf-management__subtitle',
-      '検索語とプロフィールの関連付け'
+      officialMessage('officialLinkSearchQueriesToProfiles', '検索語とプロフィールの関連付け')
     );
     const bindingQuery = appendText(
       section,
@@ -1865,13 +1902,13 @@
     bindingProfileSelect.dataset.bindingProfileSelect = '';
     createLabeledControl(
       bindingRow,
-      '関連付けるプロフィール',
+      officialMessage('officialProfileToLink', '関連付けるプロフィール'),
       bindingProfileSelect,
-      '現在の検索語に関連付けるプロフィール'
+      officialMessage('officialProfileToLinkToTheCurrentQuery', '現在の検索語に関連付けるプロフィール')
     );
     const bindingSaveButton = createManagementButton(
-      '関連付け',
-      '現在の検索語を選択したプロフィールに関連付け'
+      officialMessage('officialLink', '関連付け'),
+      officialMessage('officialLinkTheCurrentQueryToTheSelectedProfile', '現在の検索語を選択したプロフィールに関連付け')
     );
     bindingSaveButton.dataset.bindingSave = '';
     bindingSaveButton.addEventListener('click', () => {
@@ -1879,8 +1916,8 @@
     });
     bindingRow.appendChild(bindingSaveButton);
     const bindingRemoveButton = createManagementButton(
-      '関連付けを解除',
-      '現在の検索語のプロフィール関連付けを解除',
+      officialMessage('officialUnlink', '関連付けを解除'),
+      officialMessage('officialUnlinkTheCurrentQueryFromItsProfile', '現在の検索語のプロフィール関連付けを解除'),
       'ywh-osf-action-button ywh-osf-action-button--danger'
     );
     bindingRemoveButton.dataset.bindingRemove = '';
@@ -1895,20 +1932,20 @@
       section,
       'h4',
       'ywh-osf-management__subtitle',
-      'クレジットDBからの公式ソース候補'
+      officialMessage('officialOfficialSourceCandidatesFromTheCreditDatabase', 'クレジットDBからの公式ソース候補')
     );
     appendText(
       section,
       'p',
       'ywh-osf-panel__note',
-      '候補は自動登録されません。根拠を確認し、採用する場合だけ登録してください。'
+      officialMessage('officialCandidatesAreNotRegisteredAutomaticallyReviewTheEvidenceAndRegisterOnlyThoseYouAccept', '候補は自動登録されません。根拠を確認し、採用する場合だけ登録してください。')
     );
     const creditCandidateList = document.createElement('ul');
     creditCandidateList.className = 'ywh-osf-channel-list';
     creditCandidateList.dataset.creditCandidateList = '';
     creditCandidateList.setAttribute(
       'aria-label',
-      'クレジットDBから推測した公式ソース候補'
+      officialMessage('officialOfficialSourceCandidatesInferredFromTheCreditDatabase', 'クレジットDBから推測した公式ソース候補')
     );
     section.appendChild(creditCandidateList);
 
@@ -1916,7 +1953,7 @@
       section,
       'h4',
       'ywh-osf-management__subtitle',
-      '公式チャンネルを明示登録'
+      officialMessage('officialRegisterAnOfficialChannelManually', '公式チャンネルを明示登録')
     );
     const channelFields = document.createElement('div');
     channelFields.className = 'ywh-osf-channel-fields';
@@ -1925,27 +1962,27 @@
     idInput.dataset.channelIdInput = '';
     createLabeledControl(
       channelFields,
-      'チャンネルID（任意）',
+      officialMessage('officialChannelIdOptional', 'チャンネルID（任意）'),
       idInput,
-      '登録するチャンネルID'
+      officialMessage('officialChannelIdToRegister', '登録するチャンネルID')
     );
     const pathInput = document.createElement('input');
     pathInput.type = 'text';
     pathInput.dataset.channelPathInput = '';
     createLabeledControl(
       channelFields,
-      '正確なpathまたはhandle',
+      officialMessage('officialExactPathOrHandle', '正確なpathまたはhandle'),
       pathInput,
-      '登録する正確なチャンネルpathまたはhandle'
+      officialMessage('officialExactChannelPathOrHandleToRegister', '登録する正確なチャンネルpathまたはhandle')
     );
     const nameInput = document.createElement('input');
     nameInput.type = 'text';
     nameInput.dataset.channelNameInput = '';
     createLabeledControl(
       channelFields,
-      'チャンネル表示名',
+      officialMessage('officialChannelDisplayName', 'チャンネル表示名'),
       nameInput,
-      '登録するチャンネル表示名'
+      officialMessage('officialChannelDisplayNameToRegister', '登録するチャンネル表示名')
     );
     section.appendChild(channelFields);
 
@@ -1953,8 +1990,8 @@
       input.addEventListener('input', () => clearPendingChannel());
     }
     const prepareButton = createManagementButton(
-      '登録内容を確認',
-      '登録するチャンネルの内容を確認'
+      officialMessage('officialReviewRegistration', '登録内容を確認'),
+      officialMessage('officialReviewTheChannelDetailsToRegister', '登録するチャンネルの内容を確認')
     );
     prepareButton.dataset.channelPrepare = '';
     prepareButton.addEventListener('click', () => {
@@ -1972,8 +2009,8 @@
     target.setAttribute('aria-live', 'polite');
     target.hidden = true;
     const confirmButton = createManagementButton(
-      'このチャンネルを登録',
-      '表示されたチャンネルを公式ソースとして登録'
+      officialMessage('officialRegisterThisChannel', 'このチャンネルを登録'),
+      officialMessage('officialRegisterTheDisplayedChannelAsAnOfficialSource', '表示されたチャンネルを公式ソースとして登録')
     );
     confirmButton.dataset.channelConfirm = '';
     confirmButton.disabled = true;
@@ -1997,7 +2034,7 @@
     const channelList = document.createElement('ul');
     channelList.className = 'ywh-osf-channel-list';
     channelList.dataset.channelList = '';
-    channelList.setAttribute('aria-label', '登録済み公式チャンネル');
+    channelList.setAttribute('aria-label', officialMessage('officialRegisteredOfficialChannels', '登録済み公式チャンネル'));
     section.appendChild(channelList);
 
     const status = appendText(
@@ -2022,7 +2059,7 @@
     panel = document.createElement('section');
     panel.id = PANEL_ID;
     panel.setAttribute('role', 'region');
-    panel.setAttribute('aria-label', '公式優先検索フィルター');
+    panel.setAttribute('aria-label', officialMessage('officialOfficialFirstSearchFilter', '公式優先検索フィルター'));
     panel.dataset.expanded = 'false';
 
     const handle = document.createElement('div');
@@ -2036,10 +2073,10 @@
     globalHideButton.setAttribute('aria-checked', 'false');
     globalHideButton.setAttribute(
       'aria-label',
-      'その他チャンネルを隠す。公式とTopicは表示'
+      officialMessage('officialHideOtherChannelsShowOfficialAndTopicChannels', 'その他チャンネルを隠す。公式とTopicは表示')
     );
     globalHideButton.textContent =
-      'その他チャンネルを隠す（公式・Topicは表示）';
+      officialMessage('officialHideOtherChannelsShowOfficialAndTopic', 'その他チャンネルを隠す（公式・Topicは表示）');
     globalHideButton.addEventListener('click', () => {
       requestGlobalHideChange(
         globalHideButton.getAttribute('aria-checked') !== 'true'
@@ -2053,13 +2090,13 @@
     panelToggle.dataset.panelToggle = '';
     panelToggle.setAttribute('aria-controls', 'ywh-osf-expanded-content');
     panelToggle.setAttribute('aria-expanded', 'false');
-    panelToggle.setAttribute('aria-label', '検索フィルターを開く');
+    panelToggle.setAttribute('aria-label', officialMessage('officialOpenSearchFilter', '検索フィルターを開く'));
     panelToggle.appendChild(createChevronIcon());
     const panelToggleLabel = appendText(
       panelToggle,
       'span',
       'ywh-osf-panel-toggle__label',
-      '開く'
+      officialMessage('officialOpen', '開く')
     );
     panelToggleLabel.dataset.panelToggleLabel = '';
     panelToggle.addEventListener('click', () => {
@@ -2085,7 +2122,7 @@
       header,
       'h2',
       'ywh-osf-panel__title',
-      '公式優先検索フィルター'
+      officialMessage('officialOfficialFirstSearchFilter', '公式優先検索フィルター')
     );
     heading.id = 'ywh-osf-title';
     expandedContent.appendChild(header);
@@ -2094,25 +2131,25 @@
       expandedContent,
       'p',
       'ywh-osf-panel__note',
-      '判定できない動画は安全のため表示します'
+      officialMessage('officialVideosThatCannotBeClassifiedRemainVisible', '判定できない動画は安全のため表示します')
     );
     appendText(
       expandedContent,
       'p',
       'ywh-osf-panel__note',
-      '表示モードは検索語に対応するプロフィールから解決されます。'
+      officialMessage('officialTheDisplayModeComesFromTheProfileMatchingTheSearchQuery', '表示モードは検索語に対応するプロフィールから解決されます。')
     );
     appendText(
       expandedContent,
       'p',
       'ywh-osf-global-hide__note',
-      'Topicはチャンネル名から自動判定します。'
+      officialMessage('officialTopicChannelsAreDetectedAutomaticallyFromChannelNames', 'Topicはチャンネル名から自動判定します。')
     );
     const effective = appendText(
       expandedContent,
       'p',
       'ywh-osf-panel__effective',
-      '未登録の検索語: すべて表示'
+      officialMessage('officialUnregisteredQueryShowAll', '未登録の検索語: すべて表示')
     );
     effective.dataset.effectiveProfile = '';
     effective.setAttribute('aria-live', 'polite');
@@ -2120,7 +2157,7 @@
       expandedContent,
       'p',
       'ywh-osf-panel__hint',
-      'この検索語をプロフィールへ紐付けると利用できます'
+      officialMessage('officialLinkThisQueryToAProfileToEnableThisOption', 'この検索語をプロフィールへ紐付けると利用できます')
     );
     unboundHint.dataset.unboundHint = '';
     unboundHint.setAttribute('role', 'status');
@@ -2128,33 +2165,33 @@
     const modes = document.createElement('div');
     modes.className = 'ywh-osf-panel__modes';
     modes.setAttribute('role', 'group');
-    modes.setAttribute('aria-label', '表示モード');
+    modes.setAttribute('aria-label', officialMessage('officialDisplayMode', '表示モード'));
     modes.appendChild(
       createModeButton(
         MODE.OFFICIAL,
-        '公式優先',
-        '公式優先で表示'
+        officialMessage('officialOfficialFirst', '公式優先'),
+        officialMessage('officialShowOfficialSourcesFirst', '公式優先で表示')
       )
     );
     modes.appendChild(
       createModeButton(
         MODE.DISCOVERY,
-        '発掘',
-        '未登録Topicを含めて発掘'
+        officialMessage('officialDiscover', '発掘'),
+        officialMessage('officialDiscoverVideosIncludingUnregisteredTopicChannels', '未登録Topicを含めて発掘')
       )
     );
     modes.appendChild(
       createModeButton(
         MODE.ALL,
-        'すべて表示',
-        'フィルターをオフにしてすべて表示'
+        officialMessage('officialShowAll', 'すべて表示'),
+        officialMessage('officialTurnOffTheFilterAndShowAll', 'フィルターをオフにしてすべて表示')
       )
     );
     expandedContent.appendChild(modes);
 
     const temporaryRevealButton = createManagementButton(
-      '一時的にすべて表示',
-      'フィルターで隠した動画を一時的にすべて表示',
+      officialMessage('officialTemporarilyShowAll', '一時的にすべて表示'),
+      officialMessage('officialTemporarilyShowAllVideosHiddenByTheFilter', 'フィルターで隠した動画を一時的にすべて表示'),
       'ywh-osf-action-button ywh-osf-temporary-reveal'
     );
     temporaryRevealButton.dataset.temporaryReveal = '';
@@ -2177,7 +2214,7 @@
     const summary = document.createElement('p');
     summary.className = 'ywh-osf-panel__summary';
     summary.setAttribute('aria-live', 'polite');
-    appendText(summary, 'span', '', '表示 ');
+    appendText(summary, 'span', '', officialMessage('officialShowing', '表示 '));
     const visible = appendText(summary, 'strong', '', '0');
     visible.dataset.countVisible = '';
     appendText(summary, 'span', '', ' / ');

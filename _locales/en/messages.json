@@ -487,5 +487,425 @@
   },
   "content_bulkFailures": {
     "message": " / $1 failed"
+  },
+  "officialRegisteredOfficialSources": {
+    "message": "Registered official sources"
+  },
+  "officialCreditRelated": {
+    "message": "Credit related"
+  },
+  "officialUnregisteredTopic": {
+    "message": "Unregistered Topic"
+  },
+  "officialOther": {
+    "message": "Other"
+  },
+  "officialPending": {
+    "message": "Pending"
+  },
+  "officialCheckingCredits": {
+    "message": "Checking credits."
+  },
+  "officialAnotherCreditCheckIsRunning": {
+    "message": "Another credit check is running."
+  },
+  "officialStoppedAfterDetectingAnUnusualYoutubeResponse": {
+    "message": "Stopped after detecting an unusual YouTube response."
+  },
+  "officialCreditCheckCancelled": {
+    "message": "Credit check cancelled."
+  },
+  "officialCreditCheckComplete": {
+    "message": "Credit check complete."
+  },
+  "officialRequestingCancellation": {
+    "message": "Requesting cancellation."
+  },
+  "officialCouldNotSendTheCancellationRequest": {
+    "message": "Could not send the cancellation request."
+  },
+  "officialUnregisteredQueryOtherChannelsHidden": {
+    "message": "Unregistered query: other channels hidden"
+  },
+  "officialUnregisteredQueryShowAll": {
+    "message": "Unregistered query: show all"
+  },
+  "officialEndTemporaryDisplay": {
+    "message": "End temporary display"
+  },
+  "officialTemporarilyShowAll": {
+    "message": "Temporarily show all"
+  },
+  "officialEndTemporarilyShowingAllVideos": {
+    "message": "End temporarily showing all videos"
+  },
+  "officialTemporarilyShowAllVideosHiddenByTheFilter": {
+    "message": "Temporarily show all videos hidden by the filter"
+  },
+  "officialTemporaryDisplayOn": {
+    "message": "Temporary display: on"
+  },
+  "officialOtherChannelsAreNowHidden": {
+    "message": "Other channels are now hidden."
+  },
+  "officialOtherChannelsAreNowShown": {
+    "message": "Other channels are now shown."
+  },
+  "officialCouldNotFindTheItemToChange": {
+    "message": "Could not find the item to change."
+  },
+  "officialSaving": {
+    "message": "Saving."
+  },
+  "officialCouldNotSaveChangesHaveNotBeenApplied": {
+    "message": "Could not save. Changes have not been applied."
+  },
+  "officialActiveProfileChanged": {
+    "message": "Active profile changed."
+  },
+  "officialEnterAProfileName": {
+    "message": "Enter a profile name."
+  },
+  "officialProfileCreated": {
+    "message": "Profile created."
+  },
+  "officialEnterANewProfileName": {
+    "message": "Enter a new profile name."
+  },
+  "officialProfileRenamed": {
+    "message": "Profile renamed."
+  },
+  "officialSelectAValidDisplayMode": {
+    "message": "Select a valid display mode."
+  },
+  "officialProfileDisplayModeChanged": {
+    "message": "Profile display mode changed."
+  },
+  "officialCannotLinkAnEmptySearchQuery": {
+    "message": "Cannot link an empty search query."
+  },
+  "officialCurrentQueryLinkedToTheProfile": {
+    "message": "Current query linked to the profile."
+  },
+  "officialCurrentQueryUnlinked": {
+    "message": "Current query unlinked."
+  },
+  "officialProfileDeleted": {
+    "message": "Profile deleted."
+  },
+  "officialReviewTheChannelToRegisterAgain": {
+    "message": "Review the channel to register again."
+  },
+  "officialChannelRegistered": {
+    "message": "Channel registered."
+  },
+  "officialChannelUnregistered": {
+    "message": "Channel unregistered."
+  },
+  "officialCloseSearchFilter": {
+    "message": "Close search filter"
+  },
+  "officialOpenSearchFilter": {
+    "message": "Open search filter"
+  },
+  "officialClose": {
+    "message": "Close"
+  },
+  "officialOpen": {
+    "message": "Open"
+  },
+  "officialNonePathOnly": {
+    "message": "None (path only)"
+  },
+  "officialThisCandidateIsOutdatedCheckTheSearchResultsAgain": {
+    "message": "This candidate is outdated. Check the search results again."
+  },
+  "officialCouldNotVerifyTheCandidateChannelPath": {
+    "message": "Could not verify the candidate channel path."
+  },
+  "officialReviewTheEvidenceAndChannelThenPressRegister": {
+    "message": "Review the evidence and channel, then press Register."
+  },
+  "officialCreateAProfileFirst": {
+    "message": "Create a profile first."
+  },
+  "officialEnterTheExactChannelPathOrHandle": {
+    "message": "Enter the exact channel path or handle."
+  },
+  "officialEnterAChannelDisplayName": {
+    "message": "Enter a channel display name."
+  },
+  "officialReviewTheDisplayedChannelThenPressRegister": {
+    "message": "Review the displayed channel, then press Register."
+  },
+  "officialNoProfile": {
+    "message": "No profile"
+  },
+  "officialTheCurrentSearchQueryIsEmpty": {
+    "message": "The current search query is empty."
+  },
+  "officialNoUnregisteredCandidatesMatchTheCredits": {
+    "message": "No unregistered candidates match the credits."
+  },
+  "officialReviewThisCandidate": {
+    "message": "Review this candidate"
+  },
+  "officialNoRegisteredChannels": {
+    "message": "No registered channels."
+  },
+  "officialUnregister": {
+    "message": "Unregister"
+  },
+  "officialCheckCreditsForUnknownVideos": {
+    "message": "Check credits for unknown videos"
+  },
+  "officialCheckUpTo20OtherTopicVideosOnlyWhenYouPressTheButtonTheyWillNotBeAddedToWatchHistory": {
+    "message": "Check up to 20 other Topic videos only when you press the button. They will not be added to watch history."
+  },
+  "officialStartCheckingCreditsForOtherTopicVideos": {
+    "message": "Start checking credits for other Topic videos"
+  },
+  "officialCancel": {
+    "message": "Cancel"
+  },
+  "officialCancelTheCurrentCreditCheck": {
+    "message": "Cancel the current credit check"
+  },
+  "officialProfilesAndOfficialSources": {
+    "message": "Profiles and official sources"
+  },
+  "officialActiveProfile": {
+    "message": "Active: $1 / $2"
+  },
+  "officialSelectTheActiveProfile": {
+    "message": "Select the active profile"
+  },
+  "officialShowAll": {
+    "message": "Show all"
+  },
+  "officialOfficialFirst": {
+    "message": "Official first"
+  },
+  "officialDiscover": {
+    "message": "Discover"
+  },
+  "officialProfileDisplayMode": {
+    "message": "Profile display mode"
+  },
+  "officialSelectTheProfileDisplayMode": {
+    "message": "Select the profile display mode"
+  },
+  "officialNewProfileName": {
+    "message": "New profile name"
+  },
+  "officialCreate": {
+    "message": "Create"
+  },
+  "officialCreateAProfile": {
+    "message": "Create a profile"
+  },
+  "officialProfileName": {
+    "message": "Profile name"
+  },
+  "officialNewNameForTheProfile": {
+    "message": "New name for the profile"
+  },
+  "officialRename": {
+    "message": "Rename"
+  },
+  "officialRenameTheProfile": {
+    "message": "Rename the profile"
+  },
+  "officialDelete": {
+    "message": "Delete"
+  },
+  "officialDeleteTheCurrentProfile": {
+    "message": "Delete the current profile"
+  },
+  "officialLinkSearchQueriesToProfiles": {
+    "message": "Link search queries to profiles"
+  },
+  "officialProfileToLink": {
+    "message": "Profile to link"
+  },
+  "officialProfileToLinkToTheCurrentQuery": {
+    "message": "Profile to link to the current query"
+  },
+  "officialLink": {
+    "message": "Link"
+  },
+  "officialLinkTheCurrentQueryToTheSelectedProfile": {
+    "message": "Link the current query to the selected profile"
+  },
+  "officialUnlink": {
+    "message": "Unlink"
+  },
+  "officialUnlinkTheCurrentQueryFromItsProfile": {
+    "message": "Unlink the current query from its profile"
+  },
+  "officialOfficialSourceCandidatesFromTheCreditDatabase": {
+    "message": "Official source candidates from the credit database"
+  },
+  "officialCandidatesAreNotRegisteredAutomaticallyReviewTheEvidenceAndRegisterOnlyThoseYouAccept": {
+    "message": "Candidates are not registered automatically. Review the evidence and register only those you accept."
+  },
+  "officialOfficialSourceCandidatesInferredFromTheCreditDatabase": {
+    "message": "Official source candidates inferred from the credit database"
+  },
+  "officialRegisterAnOfficialChannelManually": {
+    "message": "Register an official channel manually"
+  },
+  "officialChannelIdOptional": {
+    "message": "Channel ID (optional)"
+  },
+  "officialChannelIdToRegister": {
+    "message": "Channel ID to register"
+  },
+  "officialExactPathOrHandle": {
+    "message": "Exact path or handle"
+  },
+  "officialExactChannelPathOrHandleToRegister": {
+    "message": "Exact channel path or handle to register"
+  },
+  "officialChannelDisplayName": {
+    "message": "Channel display name"
+  },
+  "officialChannelDisplayNameToRegister": {
+    "message": "Channel display name to register"
+  },
+  "officialReviewRegistration": {
+    "message": "Review registration"
+  },
+  "officialReviewTheChannelDetailsToRegister": {
+    "message": "Review the channel details to register"
+  },
+  "officialRegisterThisChannel": {
+    "message": "Register this channel"
+  },
+  "officialRegisterTheDisplayedChannelAsAnOfficialSource": {
+    "message": "Register the displayed channel as an official source"
+  },
+  "officialRegisteredOfficialChannels": {
+    "message": "Registered official channels"
+  },
+  "officialOfficialFirstSearchFilter": {
+    "message": "Official first search filter"
+  },
+  "officialHideOtherChannelsShowOfficialAndTopicChannels": {
+    "message": "Hide other channels. Show official and Topic channels"
+  },
+  "officialHideOtherChannelsShowOfficialAndTopic": {
+    "message": "Hide other channels (show official and Topic)"
+  },
+  "officialVideosThatCannotBeClassifiedRemainVisible": {
+    "message": "Videos that cannot be classified remain visible"
+  },
+  "officialTheDisplayModeComesFromTheProfileMatchingTheSearchQuery": {
+    "message": "The display mode comes from the profile matching the search query."
+  },
+  "officialTopicChannelsAreDetectedAutomaticallyFromChannelNames": {
+    "message": "Topic channels are detected automatically from channel names."
+  },
+  "officialLinkThisQueryToAProfileToEnableThisOption": {
+    "message": "Link this query to a profile to enable this option"
+  },
+  "officialDisplayMode": {
+    "message": "Display mode"
+  },
+  "officialShowOfficialSourcesFirst": {
+    "message": "Show official sources first"
+  },
+  "officialDiscoverVideosIncludingUnregisteredTopicChannels": {
+    "message": "Discover videos including unregistered Topic channels"
+  },
+  "officialTurnOffTheFilterAndShowAll": {
+    "message": "Turn off the filter and show all"
+  },
+  "officialShowing": {
+    "message": "Showing "
+  },
+  "officialComposer": {
+    "message": "Composer"
+  },
+  "officialLyricist": {
+    "message": "Lyricist"
+  },
+  "officialArranger": {
+    "message": "Arranger"
+  },
+  "officialUnassigned": {
+    "message": "Unassigned"
+  },
+  "officialCheckFailed": {
+    "message": "Could not check: $1"
+  },
+  "officialLookupFailed": {
+    "message": "Could not query official source candidates from the credit database: $1"
+  },
+  "officialPreviewCount": {
+    "message": "Check credits for other Topic videos: $1"
+  },
+  "officialEvidence": {
+    "message": " / Evidence: $1"
+  },
+  "officialRegistrationTarget": {
+    "message": "Register: ID: $1 / path: $2 / Name: $3$4"
+  },
+  "officialNormalizedQuery": {
+    "message": "Current normalized query: $1"
+  },
+  "officialTargetProfile": {
+    "message": "Profile: $1"
+  },
+  "officialCandidateEvidence": {
+    "message": "Candidate evidence: $1"
+  },
+  "officialReviewCandidate": {
+    "message": "Review official source candidate: $1"
+  },
+  "officialUnregisterChannel": {
+    "message": "Unregister channel: $1"
+  },
+  "officialCreditMatch": {
+    "message": "$1 credit \"$2\" matches alias \"$3\" after normalization (video $4)"
+  },
+  "officialModeValueOfficial": {
+    "message": "Official first"
+  },
+  "officialModeValueDiscovery": {
+    "message": "Discover"
+  },
+  "officialModeValueAll": {
+    "message": "Show all"
+  },
+  "officialPreviewComposer": {
+    "message": "Composer"
+  },
+  "officialPreviewLyricist": {
+    "message": "Lyricist"
+  },
+  "officialPreviewArranger": {
+    "message": "Arranger"
+  },
+  "officialPreviewComplete": {
+    "message": "Complete"
+  },
+  "officialPreviewPartial": {
+    "message": "Partial"
+  },
+  "officialPreviewNotFound": {
+    "message": "Not found"
+  },
+  "officialPreviewError": {
+    "message": "Error"
+  },
+  "officialPreviewUnknown": {
+    "message": "Unknown"
+  },
+  "officialPreviewErrorDetail": {
+    "message": " / Error: $1"
+  },
+  "officialActiveProfileLabel": {
+    "message": "Active profile"
   }
 }
