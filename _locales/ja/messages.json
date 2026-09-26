@@ -175,5 +175,236 @@
   },
   "popup_appTitle": {
     "message": "YT Watched Hider"
+  },
+  "popupDynamicCacheUnavailable": {
+    "message": "YouTubeタブ未接続。DB件数は表示中、content cacheは次回YouTube表示時に取得します。"
+  },
+  "popupDynamicWorkerUnavailable": {
+    "message": "サービスワーカーに接続できません"
+  },
+  "popupDynamicDbReadyOffscreen": {
+    "message": "DB 正常（offscreen・キャッシュ $1件・$2）"
+  },
+  "popupDynamicDbReady": {
+    "message": "DB 正常（キャッシュ $1件・$2ms）"
+  },
+  "popupDynamicDbLoading": {
+    "message": "DB 読み込み中..."
+  },
+  "popupDynamicDbError": {
+    "message": "DB エラー"
+  },
+  "popupDynamicTabUnavailable": {
+    "message": "YouTubeタブから応答がありません"
+  },
+  "popupDynamicReloadTab": {
+    "message": "YouTubeタブを開いてリロードしてください"
+  },
+  "popupDynamicSourceSeekbar": {
+    "message": "YouTubeのシークバーから検出"
+  },
+  "popupDynamicSourceHistory": {
+    "message": "YouTubeの履歴ページから取り込み"
+  },
+  "popupDynamicPlayCount": {
+    "message": "$1回再生"
+  },
+  "popupDynamicDeleteVideo": {
+    "message": "この動画を履歴から削除"
+  },
+  "popupDynamicNoMatches": {
+    "message": "該当する動画はありません。検索語を短くしてみてください。"
+  },
+  "popupDynamicNoHistory": {
+    "message": "まだ記録がありません。YouTubeで動画を再生すると記録されます。"
+  },
+  "popupDynamicSettingsFailed": {
+    "message": "設定を保存できませんでした"
+  },
+  "popupDynamicLastBackup": {
+    "message": "（最終 $1・$2件）"
+  },
+  "popupDynamicLastBackupError": {
+    "message": "$1前回のエラー: $2"
+  },
+  "popupDynamicJsonRetry": {
+    "message": "JSONを読み取れませんでした。バックアップファイルを選び直してください"
+  },
+  "popupDynamicInvalidBackup": {
+    "message": "このファイルはバックアップの形式ではありません"
+  },
+  "popupDynamicDiffLoading": {
+    "message": "差分を計算中..."
+  },
+  "popupDynamicDiffWatched": {
+    "message": "視聴履歴: 追加 $1 / 更新 $2（置換すると $3 件削除）"
+  },
+  "popupDynamicDiffLiked": {
+    "message": "高評価: 追加 $1 / 更新 $2（置換すると $3 件削除）"
+  },
+  "popupDynamicInvalidSkipped": {
+    "message": "無効データ: $1 件スキップ"
+  },
+  "popupDynamicLikedStructureWarning": {
+    "message": "※ 高評価データの形式が不正なためスキップされます"
+  },
+  "popupDynamicLikedMetaWarning": {
+    "message": "※ 高評価の同期アカウント情報の形式が不正なためスキップされます（再同期で復元できます）"
+  },
+  "popupDynamicLikedRestoreFailed": {
+    "message": " / 高評価の復元に失敗"
+  },
+  "popupDynamicRemoved": {
+    "message": ", $1件削除"
+  },
+  "popupDynamicSkipped": {
+    "message": "$1件スキップ"
+  },
+  "popupDynamicLikedInvalid": {
+    "message": "高評価データ形式不正"
+  },
+  "popupDynamicLikedAccountInvalid": {
+    "message": "高評価アカウント情報の形式不正"
+  },
+  "popupDynamicNotes": {
+    "message": "（$1）"
+  },
+  "popupDynamicPartial": {
+    "message": "$1（一部成功）"
+  },
+  "popupDynamicImportResult": {
+    "message": "$1: $2件$3$4$5"
+  },
+  "popupDynamicMergeLikedFailed": {
+    "message": ", 高評価の復元に失敗"
+  },
+  "popupDynamicMergeLikedInvalid": {
+    "message": "高評価データの形式が不正"
+  },
+  "popupDynamicMergeLikedAccountInvalid": {
+    "message": "高評価アカウント情報の形式が不正"
+  },
+  "popupDynamicMergeResult": {
+    "message": "$1 新規 $2件 / 既存 $3件$4$5"
+  },
+  "popupDynamicBackupAbortImport": {
+    "message": "バックアップに失敗したため中止しました（データは変更していません）"
+  },
+  "popupDynamicMerging": {
+    "message": "統合中..."
+  },
+  "popupDynamicSafeMerge": {
+    "message": "安全に統合"
+  },
+  "popupDynamicBackupMerge": {
+    "message": "バックアップ優先で統合"
+  },
+  "popupDynamicConfirmReplace": {
+    "message": "置換します。現在のデータを自動バックアップ（1件ダウンロード）してから、このファイルの内容に置き換えます。\n\nこのファイルに無い 視聴履歴 $1 件・高評価 $2 件が削除されます。続けますか？"
+  },
+  "popupDynamicBackingUp": {
+    "message": "バックアップ中..."
+  },
+  "popupDynamicReplace": {
+    "message": "置換"
+  },
+  "popupDynamicRestoreCancelled": {
+    "message": "復元をキャンセルしました"
+  },
+  "popupDynamicExtensionUnavailable": {
+    "message": "拡張から応答がありません。YouTubeタブを開いて再試行してください"
+  },
+  "popupDynamicBackupDone": {
+    "message": "バックアップしました（視聴 $1件 / 高評価 $2件）"
+  },
+  "popupDynamicBackupEmpty": {
+    "message": "バックアップするデータがありません（0件）"
+  },
+  "popupDynamicConfirmClearWatched": {
+    "message": "視聴履歴（watched）を全て削除します。\n\n元に戻せません。続けますか？"
+  },
+  "popupDynamicWatchedCleared": {
+    "message": "視聴履歴を削除しました"
+  },
+  "popupDynamicConfirmClearLiked": {
+    "message": "高評価データ（liked）を全て削除します。\n\n高評価はYouTubeから再同期できます。続けますか？"
+  },
+  "popupDynamicLikedCleared": {
+    "message": "高評価データを削除しました"
+  },
+  "popupDynamicConfirmClearAll": {
+    "message": "全データ（視聴履歴＋高評価）を初期化します。\n\n実行前に自動でバックアップを1件ダウンロードし、その後すべて削除します。続けますか？"
+  },
+  "popupDynamicConfirmResetAgain": {
+    "message": "本当に初期化しますか？（この操作は元に戻せません）"
+  },
+  "popupDynamicBackupSaved": {
+    "message": "（バックアップ $1 件保存済）"
+  },
+  "popupDynamicNoData": {
+    "message": "（データなし）"
+  },
+  "popupDynamicResetDone": {
+    "message": "全データを初期化しました $1"
+  },
+  "popupDynamicBackupAbortReset": {
+    "message": "バックアップに失敗したため中止しました（データは削除していません）"
+  },
+  "popupDynamicReadingFile": {
+    "message": "ファイルを読み込み中..."
+  },
+  "popupDynamicMergingCount": {
+    "message": "$1件を統合中..."
+  },
+  "popupDynamicMergeFailed": {
+    "message": "統合に失敗しました"
+  },
+  "popupDynamicJsonFailed": {
+    "message": "JSONを読み取れませんでした"
+  },
+  "popupDynamicUnknownError": {
+    "message": "原因不明"
+  },
+  "popupDynamicMergePartial": {
+    "message": "一部成功: 視聴履歴"
+  },
+  "popupDynamicMergeDone": {
+    "message": "統合しました:"
+  },
+  "popupDynamicDbReadFailed": {
+    "message": "DBの読み取りに失敗しました: $1"
+  },
+  "popupDynamicInternalError": {
+    "message": "拡張の内部エラー: $1"
+  },
+  "popupDynamicConnecting": {
+    "message": "接続中... ($1)"
+  },
+  "popupDynamicDiffFailed": {
+    "message": "差分の計算に失敗しました: $1"
+  },
+  "popupDynamicImportFailed": {
+    "message": "$1に失敗しました: $2"
+  },
+  "popupDynamicBackupFailed": {
+    "message": "バックアップに失敗しました: $1"
+  },
+  "popupDynamicDeleteFailed": {
+    "message": "削除に失敗しました: $1"
+  },
+  "popupDynamicResetFailed": {
+    "message": "初期化に失敗しました: $1"
+  },
+  "popupDynamicNextBackup": {
+    "message": "次回 $1"
+  },
+  "popupDynamicLikedImported": {
+    "message": " / $1 liked"
+  },
+  "popupDynamicMergeLikedImported": {
+    "message": ", $1 liked"
+  },
+  "popupDynamicCacheDetail": {
+    "message": "positive $1 / recent $2 / pages $3 / load $4ms"
   }
 }

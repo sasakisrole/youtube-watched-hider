@@ -175,5 +175,236 @@
   },
   "popup_appTitle": {
     "message": "YT Watched Hider"
+  },
+  "popupDynamicCacheUnavailable": {
+    "message": "No YouTube tab connected. DB count is shown; the content cache will be fetched when YouTube is next opened."
+  },
+  "popupDynamicWorkerUnavailable": {
+    "message": "Cannot connect to the service worker"
+  },
+  "popupDynamicDbReadyOffscreen": {
+    "message": "DB ready (offscreen; cached: $1; $2)"
+  },
+  "popupDynamicDbReady": {
+    "message": "DB ready (cached: $1; $2 ms)"
+  },
+  "popupDynamicDbLoading": {
+    "message": "DB loading..."
+  },
+  "popupDynamicDbError": {
+    "message": "DB error"
+  },
+  "popupDynamicTabUnavailable": {
+    "message": "No response from a YouTube tab"
+  },
+  "popupDynamicReloadTab": {
+    "message": "Open a YouTube tab and reload it"
+  },
+  "popupDynamicSourceSeekbar": {
+    "message": "Detected from the YouTube seek bar"
+  },
+  "popupDynamicSourceHistory": {
+    "message": "Imported from YouTube watch history"
+  },
+  "popupDynamicPlayCount": {
+    "message": "Times played: $1"
+  },
+  "popupDynamicDeleteVideo": {
+    "message": "Delete this video from history"
+  },
+  "popupDynamicNoMatches": {
+    "message": "No matching videos. Try a shorter search."
+  },
+  "popupDynamicNoHistory": {
+    "message": "No records yet. Play a video on YouTube to start recording."
+  },
+  "popupDynamicSettingsFailed": {
+    "message": "Could not save settings"
+  },
+  "popupDynamicLastBackup": {
+    "message": "(Last backup: $1; records: $2)"
+  },
+  "popupDynamicLastBackupError": {
+    "message": "$1Previous error: $2"
+  },
+  "popupDynamicJsonRetry": {
+    "message": "Could not read JSON. Select the backup file again"
+  },
+  "popupDynamicInvalidBackup": {
+    "message": "This file is not in backup format"
+  },
+  "popupDynamicDiffLoading": {
+    "message": "Calculating differences..."
+  },
+  "popupDynamicDiffWatched": {
+    "message": "Watch history: add $1 / update $2 (delete on replace: $3)"
+  },
+  "popupDynamicDiffLiked": {
+    "message": "Likes: add $1 / update $2 (delete on replace: $3)"
+  },
+  "popupDynamicInvalidSkipped": {
+    "message": "Invalid records skipped: $1"
+  },
+  "popupDynamicLikedStructureWarning": {
+    "message": "Invalid likes data will be skipped"
+  },
+  "popupDynamicLikedMetaWarning": {
+    "message": "Invalid likes sync account information will be skipped (sync again to restore it)"
+  },
+  "popupDynamicLikedRestoreFailed": {
+    "message": " / Failed to restore likes"
+  },
+  "popupDynamicRemoved": {
+    "message": ", deleted: $1"
+  },
+  "popupDynamicSkipped": {
+    "message": "Skipped: $1"
+  },
+  "popupDynamicLikedInvalid": {
+    "message": "Invalid likes data format"
+  },
+  "popupDynamicLikedAccountInvalid": {
+    "message": "Invalid likes account information format"
+  },
+  "popupDynamicNotes": {
+    "message": " ($1)"
+  },
+  "popupDynamicPartial": {
+    "message": "$1 (partial success)"
+  },
+  "popupDynamicImportResult": {
+    "message": "$1: records: $2$3$4$5"
+  },
+  "popupDynamicMergeLikedFailed": {
+    "message": ", failed to restore likes"
+  },
+  "popupDynamicMergeLikedInvalid": {
+    "message": "Invalid likes data format"
+  },
+  "popupDynamicMergeLikedAccountInvalid": {
+    "message": "Invalid likes account information format"
+  },
+  "popupDynamicMergeResult": {
+    "message": "$1 Added: $2 / existing: $3$4$5"
+  },
+  "popupDynamicBackupAbortImport": {
+    "message": "Stopped because the backup failed (data has not been changed)"
+  },
+  "popupDynamicMerging": {
+    "message": "Merging..."
+  },
+  "popupDynamicSafeMerge": {
+    "message": "Safe merge"
+  },
+  "popupDynamicBackupMerge": {
+    "message": "Merge with backup priority"
+  },
+  "popupDynamicConfirmReplace": {
+    "message": "Replace current data? An automatic backup (one download) will be saved first, then the contents of this file will replace current data.\n\nRecords absent from this file will be deleted: watch history: $1; likes: $2. Continue?"
+  },
+  "popupDynamicBackingUp": {
+    "message": "Backing up..."
+  },
+  "popupDynamicReplace": {
+    "message": "Replace"
+  },
+  "popupDynamicRestoreCancelled": {
+    "message": "Restore cancelled"
+  },
+  "popupDynamicExtensionUnavailable": {
+    "message": "No response from the extension. Open a YouTube tab and try again"
+  },
+  "popupDynamicBackupDone": {
+    "message": "Backup saved (watched: $1 / likes: $2)"
+  },
+  "popupDynamicBackupEmpty": {
+    "message": "No data to back up (0 records)"
+  },
+  "popupDynamicConfirmClearWatched": {
+    "message": "Delete all watch history (watched)?\n\nThis cannot be undone. Continue?"
+  },
+  "popupDynamicWatchedCleared": {
+    "message": "Watch history deleted"
+  },
+  "popupDynamicConfirmClearLiked": {
+    "message": "Delete all likes data (liked)?\n\nLikes can be synced again from YouTube. Continue?"
+  },
+  "popupDynamicLikedCleared": {
+    "message": "Likes data deleted"
+  },
+  "popupDynamicConfirmClearAll": {
+    "message": "Reset all data (watch history and likes)?\n\nOne backup will be downloaded automatically before all data is deleted. Continue?"
+  },
+  "popupDynamicConfirmResetAgain": {
+    "message": "Really reset all data? (This cannot be undone)"
+  },
+  "popupDynamicBackupSaved": {
+    "message": "(Backup saved; records: $1)"
+  },
+  "popupDynamicNoData": {
+    "message": "(No data)"
+  },
+  "popupDynamicResetDone": {
+    "message": "All data reset $1"
+  },
+  "popupDynamicBackupAbortReset": {
+    "message": "Stopped because the backup failed (data has not been deleted)"
+  },
+  "popupDynamicReadingFile": {
+    "message": "Reading file..."
+  },
+  "popupDynamicMergingCount": {
+    "message": "Merging records: $1..."
+  },
+  "popupDynamicMergeFailed": {
+    "message": "Merge failed"
+  },
+  "popupDynamicJsonFailed": {
+    "message": "Could not read JSON"
+  },
+  "popupDynamicUnknownError": {
+    "message": "Unknown cause"
+  },
+  "popupDynamicMergePartial": {
+    "message": "Partial success: watch history"
+  },
+  "popupDynamicMergeDone": {
+    "message": "Merged:"
+  },
+  "popupDynamicDbReadFailed": {
+    "message": "Could not read the DB: $1"
+  },
+  "popupDynamicInternalError": {
+    "message": "Extension internal error: $1"
+  },
+  "popupDynamicConnecting": {
+    "message": "Connecting... ($1)"
+  },
+  "popupDynamicDiffFailed": {
+    "message": "Could not calculate differences: $1"
+  },
+  "popupDynamicImportFailed": {
+    "message": "$1 failed: $2"
+  },
+  "popupDynamicBackupFailed": {
+    "message": "Backup failed: $1"
+  },
+  "popupDynamicDeleteFailed": {
+    "message": "Delete failed: $1"
+  },
+  "popupDynamicResetFailed": {
+    "message": "Reset failed: $1"
+  },
+  "popupDynamicNextBackup": {
+    "message": "Next backup: $1"
+  },
+  "popupDynamicLikedImported": {
+    "message": " / likes: $1"
+  },
+  "popupDynamicMergeLikedImported": {
+    "message": ", likes: $1"
+  },
+  "popupDynamicCacheDetail": {
+    "message": "positive $1 / recent $2 / pages $3 / load $4ms"
   }
 }

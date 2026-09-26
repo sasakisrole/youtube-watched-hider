@@ -14,6 +14,27 @@ function applyStaticPopupI18n() {
 applyStaticPopupI18n();
 // End static popup localization
 
+// Dynamic popup localization: values stay separate from translated grammar.
+function popupMessage(key, fallback, substitutions = []) {
+  if (typeof chrome === 'undefined' || !chrome.i18n?.getMessage) return fallback;
+  return chrome.i18n.getMessage(key, substitutions.map(String)) || fallback;
+}
+
+function popupUILanguage() {
+  return typeof chrome !== 'undefined' && chrome.i18n?.getUILanguage
+    ? chrome.i18n.getUILanguage() : 'ja';
+}
+
+function popupBackupDate(timestamp, padHour = false) {
+  const locale = popupUILanguage();
+  const options = { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+  const formatter = new Intl.DateTimeFormat(locale, options);
+  if (!/^ja(?:-|$)/i.test(locale)) return formatter.format(new Date(timestamp));
+  // Preserve the existing Japanese compact layout, including next-backup padding.
+  const parts = Object.fromEntries(formatter.formatToParts(new Date(timestamp)).map(p => [p.type, p.value]));
+  return `${parts.month}/${parts.day} ${padHour ? parts.hour.padStart(2, '0') : parts.hour}:${parts.minute}`;
+}
+
 // Popup script for YouTube Watched Hider
 
 const countEl = document.getElementById('count');
@@ -87,8 +108,8 @@ function renderCacheStats(response) {
   }
   if (cacheDetail) {
     cacheDetail.textContent = response && response.cacheUnavailable
-      ? 'YouTubeタブ未接続。DB件数は表示中、content cacheは次回YouTube表示時に取得します。'
-      : `positive ${positive.toLocaleString()} / recent ${recent.toLocaleString()} / pages ${pages.toLocaleString()} / load ${loadMs.toLocaleString()}ms`;
+      ? popupMessage('popupDynamicCacheUnavailable', 'YouTubeタブ未接続。DB件数は表示中、content cacheは次回YouTube表示時に取得します。')
+      : popupMessage('popupDynamicCacheDetail', `positive ${positive.toLocaleString(popupUILanguage())} / recent ${recent.toLocaleString(popupUILanguage())} / pages ${pages.toLocaleString(popupUILanguage())} / load ${loadMs.toLocaleString(popupUILanguage())}ms`, [positive.toLocaleString(popupUILanguage()), recent.toLocaleString(popupUILanguage()), pages.toLocaleString(popupUILanguage()), loadMs.toLocaleString(popupUILanguage())]);
   }
   return { mode, positive, recent, pages, loadMs };
 }
@@ -102,7 +123,7 @@ function unwrapWatchedRecords(data) {
 
 function getExportRecords(data) {
   if (data && data.__error) {
-    showStatus('DBの読み取りに失敗しました: ' + (data.message || '原因不明'), true);
+    showStatus(popupMessage('popupDynamicDbReadFailed', `DBの読み取りに失敗しました: ${(data.message || popupMessage('popupDynamicUnknownError', '原因不明'))}`, [(data.message || popupMessage('popupDynamicUnknownError', '原因不明'))]), true);
     return null;
   }
   return unwrapWatchedRecords(data) || [];
@@ -111,6 +132,9 @@ function getExportRecords(data) {
 // Format date
 function formatDate(timestamp) {
   const d = new Date(timestamp);
+  if (!/^ja(?:-|$)/i.test(popupUILanguage())) {
+    return new Intl.DateTimeFormat(popupUILanguage(), { month: '2-digit', day: '2-digit' }).format(d);
+  }
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
   return `${mm}/${dd}`;
@@ -123,32 +147,32 @@ function loadStats(retries = 3) {
   chrome.runtime.sendMessage({ type: 'GET_STATS' }, (response) => {
     if (chrome.runtime.lastError) {
       countEl.textContent = '--';
-      countEl.title = 'サービスワーカーに接続できません';
-      showStatus('拡張の内部エラー: ' + chrome.runtime.lastError.message, true);
+      countEl.title = popupMessage('popupDynamicWorkerUnavailable', 'サービスワーカーに接続できません');
+      showStatus(popupMessage('popupDynamicInternalError', `拡張の内部エラー: ${chrome.runtime.lastError.message}`, [chrome.runtime.lastError.message]), true);
       return;
     }
     if (response && typeof response.count === 'number') {
-      countEl.textContent = response.count.toLocaleString();
+      countEl.textContent = response.count.toLocaleString(popupUILanguage());
       countEl.title = '';
       const cache = renderCacheStats(response);
       if (response.dbStatus) {
         const statusMap = {
           ready: response.dbOwner === 'offscreen'
-            ? `DB 正常（offscreen・キャッシュ ${cache.positive.toLocaleString()}件・${cache.mode}）`
-            : `DB 正常（キャッシュ ${cache.positive.toLocaleString()}件・${cache.loadMs}ms）`,
-          loading: 'DB 読み込み中...',
-          error: 'DB エラー',
+            ? popupMessage('popupDynamicDbReadyOffscreen', `DB 正常（offscreen・キャッシュ ${cache.positive.toLocaleString(popupUILanguage())}件・${cache.mode}）`, [cache.positive.toLocaleString(popupUILanguage()), cache.mode])
+            : popupMessage('popupDynamicDbReady', `DB 正常（キャッシュ ${cache.positive.toLocaleString(popupUILanguage())}件・${cache.loadMs}ms）`, [cache.positive.toLocaleString(popupUILanguage()), cache.loadMs]),
+          loading: popupMessage('popupDynamicDbLoading', 'DB 読み込み中...'),
+          error: popupMessage('popupDynamicDbError', 'DB エラー'),
         };
         dbStatusEl.textContent = statusMap[response.dbStatus] || response.dbStatus;
         dbStatusEl.className = 'db-status ' + response.dbStatus;
       }
     } else if (retries > 0) {
-      countEl.title = '接続中... (' + retries + ')';
+      countEl.title = popupMessage('popupDynamicConnecting', `接続中... (${retries})`, [retries]);
       setTimeout(() => loadStats(retries - 1), 1000);
     } else {
       countEl.textContent = '--';
-      countEl.title = 'YouTubeタブから応答がありません';
-      showStatus('YouTubeタブを開いてリロードしてください', true);
+      countEl.title = popupMessage('popupDynamicTabUnavailable', 'YouTubeタブから応答がありません');
+      showStatus(popupMessage('popupDynamicReloadTab', 'YouTubeタブを開いてリロードしてください'), true);
     }
   });
 }
@@ -156,6 +180,9 @@ function loadStats(retries = 3) {
 // Format date for group headers (YYYY/MM/DD with day of week)
 function formatDateGroup(timestamp) {
   const d = new Date(timestamp);
+  if (!/^ja(?:-|$)/i.test(popupUILanguage())) {
+    return new Intl.DateTimeFormat(popupUILanguage(), { year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' }).format(d);
+  }
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -166,6 +193,9 @@ function formatDateGroup(timestamp) {
 // Format time (HH:MM)
 function formatTime(timestamp) {
   const d = new Date(timestamp);
+  if (!/^ja(?:-|$)/i.test(popupUILanguage())) {
+    return new Intl.DateTimeFormat(popupUILanguage(), { hour: '2-digit', minute: '2-digit' }).format(d);
+  }
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
@@ -199,8 +229,8 @@ function buildHistoryItem(video) {
     badge.className = 'source-badge';
     badge.textContent = 'YT';
     badge.title = video.source === 'seekbar'
-      ? 'YouTubeのシークバーから検出'
-      : 'YouTubeの履歴ページから取り込み';
+      ? popupMessage('popupDynamicSourceSeekbar', 'YouTubeのシークバーから検出')
+      : popupMessage('popupDynamicSourceHistory', 'YouTubeの履歴ページから取り込み');
     a.appendChild(badge);
   }
 
@@ -209,7 +239,7 @@ function buildHistoryItem(video) {
     const countBadge = document.createElement('span');
     countBadge.className = 'play-count-badge';
     countBadge.textContent = `${count}x`;
-    countBadge.title = `${count}回再生`;
+    countBadge.title = popupMessage('popupDynamicPlayCount', `${count}回再生`, [count]);
     a.appendChild(countBadge);
   }
 
@@ -240,7 +270,7 @@ function buildHistoryItem(video) {
   const delBtn = document.createElement('button');
   delBtn.className = 'history-delete-btn';
   delBtn.textContent = '\u00d7';
-  delBtn.title = 'この動画を履歴から削除';
+  delBtn.title = popupMessage('popupDynamicDeleteVideo', 'この動画を履歴から削除');
   delBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     deleteHistoryVideo(video.videoId, row);
@@ -291,8 +321,8 @@ function renderHistory(filter = '') {
     const empty = document.createElement('div');
     empty.className = 'history-empty';
     empty.textContent = filter
-      ? '該当する動画はありません。検索語を短くしてみてください。'
-      : 'まだ記録がありません。YouTubeで動画を再生すると記録されます。';
+      ? popupMessage('popupDynamicNoMatches', '該当する動画はありません。検索語を短くしてみてください。')
+      : popupMessage('popupDynamicNoHistory', 'まだ記録がありません。YouTubeで動画を再生すると記録されます。');
     historyList.appendChild(empty);
     return;
   }
@@ -333,7 +363,7 @@ chrome.storage.local.get(watchedDisplayDefaults, (settings) => {
 function saveWatchedDisplaySetting(key, value) {
   chrome.storage.local.set({ [key]: value }, () => {
     if (chrome.runtime.lastError) {
-      showStatus('設定を保存できませんでした', true);
+      showStatus(popupMessage('popupDynamicSettingsFailed', '設定を保存できませんでした'), true);
       return;
     }
     // Read the latest complete snapshot to avoid overwriting another popup's settings.
@@ -369,24 +399,18 @@ chrome.runtime.sendMessage({ type: 'GET_ENABLED' }, (response) => {
     autoBackupToggle.checked = response.autoBackup !== false;
     lastBackupInfo.className = 'backup-status';
     if (response.lastBackup) {
-      const d = new Date(response.lastBackup);
-      const dateStr = `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
-      lastBackupInfo.textContent = `（最終 ${dateStr}・${response.lastBackupCount}件）`;
+      const dateStr = popupBackupDate(response.lastBackup);
+      lastBackupInfo.textContent = popupMessage('popupDynamicLastBackup', `（最終 ${dateStr}・${response.lastBackupCount}件）`, [dateStr, response.lastBackupCount]);
     } else {
       lastBackupInfo.textContent = '';
     }
     if (response.lastBackupError) {
       const prefix = lastBackupInfo.textContent ? `${lastBackupInfo.textContent} ` : ' ';
       lastBackupInfo.className = 'backup-status backup-error';
-      lastBackupInfo.textContent = `${prefix}前回のエラー: ${response.lastBackupError}`;
+      lastBackupInfo.textContent = popupMessage('popupDynamicLastBackupError', `${prefix}前回のエラー: ${response.lastBackupError}`, [prefix, response.lastBackupError]);
     }
     if (response.nextBackup) {
-      const nd = new Date(response.nextBackup);
-      const h = String(nd.getHours()).padStart(2, '0');
-      const m = String(nd.getMinutes()).padStart(2, '0');
-      const mm = nd.getMonth() + 1;
-      const dd = nd.getDate();
-      nextBackupInfo.textContent = `次回 ${mm}/${dd} ${h}:${m}`;
+      nextBackupInfo.textContent = popupMessage('popupDynamicNextBackup', `次回 ${popupBackupDate(response.nextBackup, true)}`, [popupBackupDate(response.nextBackup, true)]);
     }
     if (migrationBanner) {
       migrationBanner.style.display = response.migrationV135Done === false ? 'block' : 'none';
@@ -464,16 +488,16 @@ fileInput.addEventListener('change', (e) => {
     try {
       parsed = JSON.parse(event.target.result);
     } catch {
-      showStatus('JSONを読み取れませんでした。バックアップファイルを選び直してください', true);
+      showStatus(popupMessage('popupDynamicJsonRetry', 'JSONを読み取れませんでした。バックアップファイルを選び直してください'), true);
       return;
     }
     if (!unwrapImportData(parsed)) {
-      showStatus('このファイルはバックアップの形式ではありません', true);
+      showStatus(popupMessage('popupDynamicInvalidBackup', 'このファイルはバックアップの形式ではありません'), true);
       return;
     }
     pendingImportData = parsed;
     pendingImportDiff = null;
-    showStatus('差分を計算中...');
+    showStatus(popupMessage('popupDynamicDiffLoading', '差分を計算中...'));
     chrome.runtime.sendMessage({ type: 'IMPORT_DIFF', data: parsed }, (response) => {
       if (myGen !== importGeneration) return; // a newer file was picked; ignore stale reply
       if (response && response.success && response.diff) {
@@ -483,7 +507,7 @@ fileInput.addEventListener('change', (e) => {
         statusEl.textContent = '';
       } else {
         pendingImportData = null;
-        showStatus('差分の計算に失敗しました: ' + ((response && response.error) || 'unknown'), true);
+        showStatus(popupMessage('popupDynamicDiffFailed', `差分の計算に失敗しました: ${((response && response.error) || 'unknown')}`, [((response && response.error) || 'unknown')]), true);
       }
     });
   };
@@ -492,57 +516,63 @@ fileInput.addEventListener('change', (e) => {
 });
 
 function renderImportDiff(diff) {
+  // These pure formatters also support standalone use without the popup runtime.
+  const message = typeof popupMessage === 'function' ? popupMessage : (_key, fallback) => fallback;
   const w = diff.watched || {};
   const l = diff.liked || {};
   const inv = diff.invalid || {};
   const invN = (inv.watched || 0) + (inv.liked || 0);
   const lines = [
-    `視聴履歴: 追加 ${w.add || 0} / 更新 ${w.overlap || 0}（置換すると ${w.currentOnly || 0} 件削除）`,
-    `高評価: 追加 ${l.add || 0} / 更新 ${l.overlap || 0}（置換すると ${l.currentOnly || 0} 件削除）`,
+    message('popupDynamicDiffWatched', `視聴履歴: 追加 ${w.add || 0} / 更新 ${w.overlap || 0}（置換すると ${w.currentOnly || 0} 件削除）`, [w.add || 0, w.overlap || 0, w.currentOnly || 0]),
+    message('popupDynamicDiffLiked', `高評価: 追加 ${l.add || 0} / 更新 ${l.overlap || 0}（置換すると ${l.currentOnly || 0} 件削除）`, [l.add || 0, l.overlap || 0, l.currentOnly || 0]),
   ];
-  if (invN) lines.push(`無効データ: ${invN} 件スキップ`);
-  if (inv.likedStructural) lines.push('※ 高評価データの形式が不正なためスキップされます');
-  if (inv.likedMetaStructural) lines.push('※ 高評価の同期アカウント情報の形式が不正なためスキップされます（再同期で復元できます）');
+  if (invN) lines.push(message('popupDynamicInvalidSkipped', `無効データ: ${invN} 件スキップ`, [invN]));
+  if (inv.likedStructural) lines.push(message('popupDynamicLikedStructureWarning', '※ 高評価データの形式が不正なためスキップされます'));
+  if (inv.likedMetaStructural) lines.push(message('popupDynamicLikedMetaWarning', '※ 高評価の同期アカウント情報の形式が不正なためスキップされます（再同期で復元できます）'));
   return lines.join('\n');
 }
 
 function formatImportResult(response, label) {
+  // These pure formatters also support standalone use without the popup runtime.
+  const message = typeof popupMessage === 'function' ? popupMessage : (_key, fallback) => fallback;
   const likedFailed = !!(response.liked && response.liked.failed);
   const liked = likedFailed
-    ? ' / 高評価の復元に失敗'
-    : (response.liked && typeof response.liked.imported === 'number' ? ` / ${response.liked.imported} liked` : '');
+    ? message('popupDynamicLikedRestoreFailed', ' / 高評価の復元に失敗')
+    : (response.liked && typeof response.liked.imported === 'number' ? message('popupDynamicLikedImported', ` / ${response.liked.imported} liked`, [response.liked.imported]) : '');
   const droppedN = response.dropped ? ((response.dropped.watched || 0) + (response.dropped.liked || 0)) : 0;
   const structural = !!(response.dropped && response.dropped.likedStructural);
   const metaStructural = !!(response.dropped && response.dropped.likedMetaStructural);
-  const removed = response.removed ? `, ${(response.removed.watched || 0) + (response.removed.liked || 0)}件削除` : '';
+  const removed = response.removed ? message('popupDynamicRemoved', `, ${(response.removed.watched || 0) + (response.removed.liked || 0)}件削除`, [(response.removed.watched || 0) + (response.removed.liked || 0)]) : '';
   const notes = [];
-  if (droppedN) notes.push(`${droppedN}件スキップ`);
-  if (structural) notes.push('高評価データ形式不正');
-  if (metaStructural) notes.push('高評価アカウント情報の形式不正');
-  const note = notes.length ? `（${notes.join(' / ')}）` : '';
-  const resultLabel = likedFailed ? `${label}（一部成功）` : label;
+  if (droppedN) notes.push(message('popupDynamicSkipped', `${droppedN}件スキップ`, [droppedN]));
+  if (structural) notes.push(message('popupDynamicLikedInvalid', '高評価データ形式不正'));
+  if (metaStructural) notes.push(message('popupDynamicLikedAccountInvalid', '高評価アカウント情報の形式不正'));
+  const note = notes.length ? message('popupDynamicNotes', `（${notes.join(' / ')}）`, [notes.join(' / ')]) : '';
+  const resultLabel = likedFailed ? message('popupDynamicPartial', `${label}（一部成功）`, [label]) : label;
   return {
-    text: `${resultLabel}: ${response.count}件${liked}${removed}${note}`,
+    text: message('popupDynamicImportResult', `${resultLabel}: ${response.count}件${liked}${removed}${note}`, [resultLabel, response.count, liked, removed, note]),
     warning: likedFailed || droppedN > 0 || structural || metaStructural,
   };
 }
 
 function formatMergeImportStatus(response) {
+  // These pure formatters also support standalone use without the popup runtime.
+  const message = typeof popupMessage === 'function' ? popupMessage : (_key, fallback) => fallback;
   const likedFailed = !!(response.liked && response.liked.failed);
   const liked = likedFailed
-    ? ', 高評価の復元に失敗'
-    : (response.liked && typeof response.liked.imported === 'number' ? `, ${response.liked.imported} liked` : '');
+    ? message('popupDynamicMergeLikedFailed', ', 高評価の復元に失敗')
+    : (response.liked && typeof response.liked.imported === 'number' ? message('popupDynamicMergeLikedImported', `, ${response.liked.imported} liked`, [response.liked.imported]) : '');
   const droppedN = response.dropped ? ((response.dropped.watched || 0) + (response.dropped.liked || 0)) : 0;
   const structural = !!(response.dropped && response.dropped.likedStructural);
   const metaStructural = !!(response.dropped && response.dropped.likedMetaStructural);
   const droppedNotes = [];
-  if (droppedN) droppedNotes.push(`${droppedN}件スキップ`);
-  if (structural) droppedNotes.push('高評価データの形式が不正');
-  if (metaStructural) droppedNotes.push('高評価アカウント情報の形式が不正');
-  const droppedNote = droppedNotes.length ? `（${droppedNotes.join(' / ')}）` : '';
-  const prefix = likedFailed ? '一部成功: 視聴履歴' : '統合しました:';
+  if (droppedN) droppedNotes.push(message('popupDynamicSkipped', `${droppedN}件スキップ`, [droppedN]));
+  if (structural) droppedNotes.push(message('popupDynamicMergeLikedInvalid', '高評価データの形式が不正'));
+  if (metaStructural) droppedNotes.push(message('popupDynamicMergeLikedAccountInvalid', '高評価アカウント情報の形式が不正'));
+  const droppedNote = droppedNotes.length ? message('popupDynamicNotes', `（${droppedNotes.join(' / ')}）`, [droppedNotes.join(' / ')]) : '';
+  const prefix = likedFailed ? message('popupDynamicMergePartial', '一部成功: 視聴履歴') : message('popupDynamicMergeDone', '統合しました:');
   return {
-    text: `${prefix} 新規 ${response.added}件 / 既存 ${response.skipped}件${liked}${droppedNote}`,
+    text: message('popupDynamicMergeResult', `${prefix} 新規 ${response.added}件 / 既存 ${response.skipped}件${liked}${droppedNote}`, [prefix, response.added, response.skipped, liked, droppedNote]),
     warning: likedFailed || droppedN > 0 || structural || metaStructural,
   };
 }
@@ -555,9 +585,9 @@ function handleImportResponse(response, label) {
     if (historyPanel.style.display !== 'none') loadHistory();
   } else if (response && response.reason === 'backup_failed') {
     // Data-safety gate: nothing was changed because the pre-replace backup failed.
-    showStatus('バックアップに失敗したため中止しました（データは変更していません）', true);
+    showStatus(popupMessage('popupDynamicBackupAbortImport', 'バックアップに失敗したため中止しました（データは変更していません）'), true);
   } else {
-    showStatus(`${label}に失敗しました: ` + ((response && response.error) || '原因不明'), true);
+    showStatus(popupMessage('popupDynamicImportFailed', `${label}に失敗しました: ${((response && response.error) || popupMessage('popupDynamicUnknownError', '原因不明'))}`, [label, ((response && response.error) || popupMessage('popupDynamicUnknownError', '原因不明'))]), true);
   }
 }
 
@@ -573,36 +603,36 @@ function closeImportPanel() {
 importSafeMergeBtn.addEventListener('click', () => {
   const data = closeImportPanel();
   if (!data) return;
-  showStatus('統合中...');
-  chrome.runtime.sendMessage({ type: 'MERGE_IMPORT', data }, (r) => handleImportResponse(r, '安全に統合'));
+  showStatus(popupMessage('popupDynamicMerging', '統合中...'));
+  chrome.runtime.sendMessage({ type: 'MERGE_IMPORT', data }, (r) => handleImportResponse(r, popupMessage('popupDynamicSafeMerge', '安全に統合')));
 });
 
 importBackupMergeBtn.addEventListener('click', () => {
   const data = closeImportPanel();
   if (!data) return;
-  showStatus('統合中...');
-  chrome.runtime.sendMessage({ type: 'IMPORT_DATA', data }, (r) => handleImportResponse(r, 'バックアップ優先で統合'));
+  showStatus(popupMessage('popupDynamicMerging', '統合中...'));
+  chrome.runtime.sendMessage({ type: 'IMPORT_DATA', data }, (r) => handleImportResponse(r, popupMessage('popupDynamicBackupMerge', 'バックアップ優先で統合')));
 });
 
 importReplaceBtn.addEventListener('click', () => {
   const diff = pendingImportDiff;
   const delW = diff && diff.watched ? diff.watched.currentOnly : 0;
   const delL = diff && diff.liked ? diff.liked.currentOnly : 0;
-  if (!confirm(`置換します。現在のデータを自動バックアップ（1件ダウンロード）してから、このファイルの内容に置き換えます。\n\nこのファイルに無い 視聴履歴 ${delW} 件・高評価 ${delL} 件が削除されます。続けますか？`)) return;
+  if (!confirm(popupMessage('popupDynamicConfirmReplace', `置換します。現在のデータを自動バックアップ（1件ダウンロード）してから、このファイルの内容に置き換えます。\n\nこのファイルに無い 視聴履歴 ${delW} 件・高評価 ${delL} 件が削除されます。続けますか？`, [delW, delL]))) return;
   const data = closeImportPanel();
   if (!data) return;
   const btns = [importReplaceBtn, importSafeMergeBtn, importBackupMergeBtn, importBtn];
   btns.forEach((b) => { b.disabled = true; });
-  showStatus('バックアップ中...');
+  showStatus(popupMessage('popupDynamicBackingUp', 'バックアップ中...'));
   chrome.runtime.sendMessage({ type: 'REPLACE_IMPORT', data }, (r) => {
     btns.forEach((b) => { b.disabled = false; });
-    handleImportResponse(r, '置換');
+    handleImportResponse(r, popupMessage('popupDynamicReplace', '置換'));
   });
 });
 
 importCancelBtn.addEventListener('click', () => {
   closeImportPanel();
-  showStatus('復元をキャンセルしました');
+  showStatus(popupMessage('popupDynamicRestoreCancelled', '復元をキャンセルしました'));
 });
 
 // Settings toggle
@@ -654,18 +684,18 @@ autoBackupToggle.addEventListener('change', () => {
 
 // Backup now
 backupNowBtn.addEventListener('click', () => {
-  showStatus('バックアップ中...');
+  showStatus(popupMessage('popupDynamicBackingUp', 'バックアップ中...'));
   chrome.runtime.sendMessage({ type: 'BACKUP_NOW' }, (result) => {
     if (!result) {
-      showStatus('拡張から応答がありません。YouTubeタブを開いて再試行してください', true);
+      showStatus(popupMessage('popupDynamicExtensionUnavailable', '拡張から応答がありません。YouTubeタブを開いて再試行してください'), true);
     } else if (result.success) {
       const watched = result.counts ? result.counts.watchedVideos : result.count;
       const liked = result.counts ? result.counts.likedVideos : 0;
-      showStatus(`バックアップしました（視聴 ${watched}件 / 高評価 ${liked}件）`);
+      showStatus(popupMessage('popupDynamicBackupDone', `バックアップしました（視聴 ${watched}件 / 高評価 ${liked}件）`, [watched, liked]));
     } else if (result.reason === 'no_data') {
-      showStatus('バックアップするデータがありません（0件）', true);
+      showStatus(popupMessage('popupDynamicBackupEmpty', 'バックアップするデータがありません（0件）'), true);
     } else {
-      showStatus('バックアップに失敗しました: ' + (result.error || result.reason), true);
+      showStatus(popupMessage('popupDynamicBackupFailed', `バックアップに失敗しました: ${(result.error || result.reason)}`, [(result.error || result.reason)]), true);
     }
   });
 });
@@ -682,49 +712,49 @@ document.getElementById('aboutVersion').textContent = 'v' + chrome.runtime.getMa
 
 // Clear: 視聴履歴だけ削除 (watched store only) — u1ps §7.4
 clearWatchedBtn.addEventListener('click', () => {
-  if (!confirm('視聴履歴（watched）を全て削除します。\n\n元に戻せません。続けますか？')) return;
+  if (!confirm(popupMessage('popupDynamicConfirmClearWatched', '視聴履歴（watched）を全て削除します。\n\n元に戻せません。続けますか？'))) return;
   chrome.runtime.sendMessage({ type: 'CLEAR_DATA' }, (response) => {
     if (response && response.success) {
-      showStatus('視聴履歴を削除しました');
+      showStatus(popupMessage('popupDynamicWatchedCleared', '視聴履歴を削除しました'));
       loadStats();
       allHistoryData = [];
       renderHistory();
     } else {
-      showStatus('削除に失敗しました: ' + ((response && response.error) || 'unknown'), true);
+      showStatus(popupMessage('popupDynamicDeleteFailed', `削除に失敗しました: ${((response && response.error) || 'unknown')}`, [((response && response.error) || 'unknown')]), true);
     }
   });
 });
 
 // Clear: 高評価データだけ削除 (liked store + sync meta) — u1ps §7.4
 clearLikedBtn.addEventListener('click', () => {
-  if (!confirm('高評価データ（liked）を全て削除します。\n\n高評価はYouTubeから再同期できます。続けますか？')) return;
+  if (!confirm(popupMessage('popupDynamicConfirmClearLiked', '高評価データ（liked）を全て削除します。\n\n高評価はYouTubeから再同期できます。続けますか？'))) return;
   chrome.runtime.sendMessage({ type: 'CLEAR_LIKED_ALL' }, (response) => {
     if (response && response.success) {
-      showStatus('高評価データを削除しました');
+      showStatus(popupMessage('popupDynamicLikedCleared', '高評価データを削除しました'));
       loadStats();
     } else {
-      showStatus('削除に失敗しました: ' + ((response && response.error) || 'unknown'), true);
+      showStatus(popupMessage('popupDynamicDeleteFailed', `削除に失敗しました: ${((response && response.error) || 'unknown')}`, [((response && response.error) || 'unknown')]), true);
     }
   });
 });
 
 // Clear: 全データを初期化 (both stores + meta, auto-backup first) — u1ps §7.4
 clearAllBtn.addEventListener('click', () => {
-  if (!confirm('全データ（視聴履歴＋高評価）を初期化します。\n\n実行前に自動でバックアップを1件ダウンロードし、その後すべて削除します。続けますか？')) return;
-  if (!confirm('本当に初期化しますか？（この操作は元に戻せません）')) return;
+  if (!confirm(popupMessage('popupDynamicConfirmClearAll', '全データ（視聴履歴＋高評価）を初期化します。\n\n実行前に自動でバックアップを1件ダウンロードし、その後すべて削除します。続けますか？'))) return;
+  if (!confirm(popupMessage('popupDynamicConfirmResetAgain', '本当に初期化しますか？（この操作は元に戻せません）'))) return;
   // Disable all destructive buttons during the backup->delete window so a second
   // click can't launch a concurrent reset — u1ps (Codex B1 VERIFY).
   const clearBtns = [clearWatchedBtn, clearLikedBtn, clearAllBtn];
   clearBtns.forEach((b) => { b.disabled = true; });
-  showStatus('バックアップ中...');
+  showStatus(popupMessage('popupDynamicBackingUp', 'バックアップ中...'));
   chrome.runtime.sendMessage({ type: 'CLEAR_ALL' }, (response) => {
     clearBtns.forEach((b) => { b.disabled = false; });
     if (response && response.success) {
       const b = response.backup;
       const backedUp = b && b.success
-        ? `（バックアップ ${b.counts ? b.counts.watchedVideos : b.count} 件保存済）`
-        : (b && b.reason === 'no_data' ? '（データなし）' : '');
-      showStatus(`全データを初期化しました ${backedUp}`);
+        ? popupMessage('popupDynamicBackupSaved', `（バックアップ ${b.counts ? b.counts.watchedVideos : b.count} 件保存済）`, [b.counts ? b.counts.watchedVideos : b.count])
+        : (b && b.reason === 'no_data' ? popupMessage('popupDynamicNoData', '（データなし）') : '');
+      showStatus(popupMessage('popupDynamicResetDone', `全データを初期化しました ${backedUp}`, [backedUp]));
       loadStats();
       allHistoryData = [];
       renderHistory();
@@ -732,9 +762,9 @@ clearAllBtn.addEventListener('click', () => {
       settingsBtn.setAttribute('aria-expanded', 'false');
     } else if (response && response.reason === 'backup_failed') {
       // Data-safety gate: nothing was deleted because the backup failed.
-      showStatus('バックアップに失敗したため中止しました（データは削除していません）', true);
+      showStatus(popupMessage('popupDynamicBackupAbortReset', 'バックアップに失敗したため中止しました（データは削除していません）'), true);
     } else {
-      showStatus('初期化に失敗しました: ' + ((response && response.error) || 'unknown'), true);
+      showStatus(popupMessage('popupDynamicResetFailed', `初期化に失敗しました: ${((response && response.error) || 'unknown')}`, [((response && response.error) || 'unknown')]), true);
     }
   });
 });
@@ -748,7 +778,7 @@ syncFileInput.addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
 
-  syncStatus.textContent = 'ファイルを読み込み中...';
+  syncStatus.textContent = popupMessage('popupDynamicReadingFile', 'ファイルを読み込み中...');
   syncStatus.style.color = 'var(--warning)';
 
   const reader = new FileReader();
@@ -757,11 +787,11 @@ syncFileInput.addEventListener('change', (e) => {
       const parsed = JSON.parse(event.target.result);
       const data = unwrapImportData(parsed);
       if (!data) {
-        syncStatus.textContent = 'このファイルはバックアップの形式ではありません';
+        syncStatus.textContent = popupMessage('popupDynamicInvalidBackup', 'このファイルはバックアップの形式ではありません');
         syncStatus.style.color = 'var(--danger)';
         return;
       }
-      syncStatus.textContent = `${data.length}件を統合中...`;
+      syncStatus.textContent = popupMessage('popupDynamicMergingCount', `${data.length}件を統合中...`, [data.length]);
       chrome.runtime.sendMessage({ type: 'MERGE_IMPORT', data: parsed }, (response) => {
         if (response && response.success) {
           const result = formatMergeImportStatus(response);
@@ -770,12 +800,12 @@ syncFileInput.addEventListener('change', (e) => {
           loadStats();
           if (historyPanel.style.display !== 'none') loadHistory();
         } else {
-          syncStatus.textContent = '統合に失敗しました';
+          syncStatus.textContent = popupMessage('popupDynamicMergeFailed', '統合に失敗しました');
           syncStatus.style.color = 'var(--danger)';
         }
       });
     } catch {
-      syncStatus.textContent = 'JSONを読み取れませんでした';
+      syncStatus.textContent = popupMessage('popupDynamicJsonFailed', 'JSONを読み取れませんでした');
       syncStatus.style.color = 'var(--danger)';
     }
   };
