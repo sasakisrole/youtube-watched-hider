@@ -406,5 +406,86 @@
   },
   "popupDynamicCacheDetail": {
     "message": "positive $1 / recent $2 / pages $3 / load $4ms"
+  },
+  "content_reloadNotice": {
+    "message": "YT-Watched-Hider has been updated. Please reload this page."
+  },
+  "content_reload": {
+    "message": "Reload"
+  },
+  "content_close": {
+    "message": "Close"
+  },
+  "content_importToast": {
+    "message": "Added to watched: +$1"
+  },
+  "content_harvestStop": {
+    "message": "■ Stop"
+  },
+  "content_harvestStart": {
+    "message": "▶ Start Harvest"
+  },
+  "content_harvestIdleHint": {
+    "message": " · idle $1/6"
+  },
+  "content_harvestRunning": {
+    "message": "Running · +$1 / $2$3"
+  },
+  "content_harvestCounts": {
+    "message": "+$1 / $2"
+  },
+  "content_harvestDone": {
+    "message": "✅ Done (end of history) Imported +$1 / Scanned $2"
+  },
+  "content_harvestStopped": {
+    "message": "⏸ Stopped Imported +$1 / Scanned $2"
+  },
+  "content_harvestIdle": {
+    "message": "Idle"
+  },
+  "content_harvestTitle": {
+    "message": "YT Harvest"
+  },
+  "content_harvestHelp": {
+    "message": "Hide thumbnails + auto-scroll + trim page elements"
+  },
+  "content_queueRelatedConfirm": {
+    "message": "Add to queue? Related videos: $1.\nYouTube menus will open and close during processing. Continue?"
+  },
+  "content_queueVisibleConfirm": {
+    "message": "Add to queue? Visible videos: $1.\nYouTube menus will open and close during processing. Continue?"
+  },
+  "content_largeBatchHint": {
+    "message": "\n\nThis is a large batch. Estimated minimum time (minutes): $1. Click the button during processing to stop."
+  },
+  "content_watchLaterConfirm": {
+    "message": "Add to Watch Later? Videos: $1.\nMenus will open and close during processing. Continue?"
+  },
+  "content_watchLaterVisibleConfirm": {
+    "message": "Add to Watch Later? Visible videos: $1.\nMenus will open and close during processing. Continue?"
+  },
+  "content_queueLabel": {
+    "message": "⏭ Add to queue ($1)"
+  },
+  "content_stopping": {
+    "message": "Stopping..."
+  },
+  "content_queueCurrent": {
+    "message": "Adding current video to queue..."
+  },
+  "content_queueProgress": {
+    "message": "Adding $1/$2 (click to stop)"
+  },
+  "content_watchLaterLabel": {
+    "message": "Watch Later ($1)"
+  },
+  "content_watchLaterProgress": {
+    "message": "Adding $1/$2 (click to stop)"
+  },
+  "content_bulkDone": {
+    "message": "Done: $1 added$2"
+  },
+  "content_bulkFailures": {
+    "message": " / $1 failed"
   }
 }

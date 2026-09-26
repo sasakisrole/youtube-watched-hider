@@ -406,5 +406,86 @@
   },
   "popupDynamicCacheDetail": {
     "message": "positive $1 / recent $2 / pages $3 / load $4ms"
+  },
+  "content_reloadNotice": {
+    "message": "YT-Watched-Hider が更新されました。このページを再読み込みしてください"
+  },
+  "content_reload": {
+    "message": "再読み込み"
+  },
+  "content_close": {
+    "message": "閉じる"
+  },
+  "content_importToast": {
+    "message": "+$1件 視聴済みに取り込み"
+  },
+  "content_harvestStop": {
+    "message": "■ Stop"
+  },
+  "content_harvestStart": {
+    "message": "▶ Start Harvest"
+  },
+  "content_harvestIdleHint": {
+    "message": " · idle $1/6"
+  },
+  "content_harvestRunning": {
+    "message": "Running · +$1 / $2$3"
+  },
+  "content_harvestCounts": {
+    "message": "+$1 / $2"
+  },
+  "content_harvestDone": {
+    "message": "✅ 完了（履歴末尾） 取込 +$1 / 走査 $2"
+  },
+  "content_harvestStopped": {
+    "message": "⏸ 停止 取込 +$1 / 走査 $2"
+  },
+  "content_harvestIdle": {
+    "message": "Idle"
+  },
+  "content_harvestTitle": {
+    "message": "YT Harvest"
+  },
+  "content_harvestHelp": {
+    "message": "サムネ非表示＋自動スクロール＋DOM間引き"
+  },
+  "content_queueRelatedConfirm": {
+    "message": "$1件の関連動画をキューに追加します。\n処理中YouTubeのメニューが順次開閉します。続行しますか？"
+  },
+  "content_queueVisibleConfirm": {
+    "message": "$1件の表示中動画をキューに追加します。\n処理中YouTubeのメニューが順次開閉します。続行しますか？"
+  },
+  "content_largeBatchHint": {
+    "message": "\n\n件数が多いため、完了まで約$1分以上かかる可能性があります。途中で中止する場合は処理中のボタンをクリックしてください。"
+  },
+  "content_watchLaterConfirm": {
+    "message": "$1件の動画を「後で見る」に追加します。\nメニューが順次開閉します。続行しますか？"
+  },
+  "content_watchLaterVisibleConfirm": {
+    "message": "$1件の表示中動画を「後で見る」に追加します。\nメニューが順次開閉します。続行しますか？"
+  },
+  "content_queueLabel": {
+    "message": "⏭ キューに追加 ($1)"
+  },
+  "content_stopping": {
+    "message": "中止中..."
+  },
+  "content_queueCurrent": {
+    "message": "現在の動画をキューに追加中..."
+  },
+  "content_queueProgress": {
+    "message": "追加中 $1/$2(クリックで中止)"
+  },
+  "content_watchLaterLabel": {
+    "message": "後で見る ($1)"
+  },
+  "content_watchLaterProgress": {
+    "message": "追加中 $1/$2（クリックで中止）"
+  },
+  "content_bulkDone": {
+    "message": "完了: $1件追加$2"
+  },
+  "content_bulkFailures": {
+    "message": " / $1件失敗"
   }
 }

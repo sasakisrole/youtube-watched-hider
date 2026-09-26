@@ -69,6 +69,16 @@ window._ytWatchedHider = (() => {
   const harvest = { running: false, added: 0, scanned: 0, noNewStreak: 0, timer: null, ui: null, styleEl: null };
 
   // Extension context lifecycle (also extracted by the regression harness).
+  // Display messages only: never translate YouTube selectors or detection text.
+  function contentMessage(key, fallback, values = []) {
+    try {
+      return chrome.i18n?.getMessage(key, values.map(String)) || fallback;
+    } catch (_) {
+      // The extension context may already be invalid when showing the reload notice.
+      return fallback;
+    }
+  }
+
   let contextInvalidated = false;
   let contextReady = false;
   const contextTimers = new Set();
@@ -104,17 +114,17 @@ window._ytWatchedHider = (() => {
       'box-shadow:0 4px 12px rgba(0,0,0,0.3)'
     ].join(';');
     const message = document.createElement('span');
-    message.textContent = 'YT-Watched-Hider が更新されました。このページを再読み込みしてください';
+    message.textContent = contentMessage('content_reloadNotice', 'YT-Watched-Hider が更新されました。このページを再読み込みしてください');
     el.appendChild(message);
     const reload = document.createElement('button');
     reload.type = 'button';
-    reload.textContent = '再読み込み';
+    reload.textContent = contentMessage('content_reload', '再読み込み');
     reload.style.cssText = 'margin:8px 0 0 12px;padding:6px 12px;cursor:pointer;background:#1a73e8;color:#fff;border:0;border-radius:4px;font:inherit';
     reload.addEventListener('click', () => location.reload());
     el.appendChild(reload);
     const close = document.createElement('button');
     close.type = 'button';
-    close.textContent = '閉じる';
+    close.textContent = contentMessage('content_close', '閉じる');
     close.style.cssText = 'margin-left:8px;padding:6px 12px;cursor:pointer;background:#444;color:#fff;border:0;border-radius:4px;font:inherit';
     close.addEventListener('click', () => el.remove());
     el.appendChild(close);
@@ -188,7 +198,7 @@ window._ytWatchedHider = (() => {
       toastState.el = el;
       requestAnimationFrame(() => { if (toastState.el) toastState.el.style.opacity = '1'; });
     }
-    toastState.el.textContent = `+${toastState.count}件 視聴済みに取り込み`;
+    toastState.el.textContent = contentMessage('content_importToast', `+${toastState.count}件 視聴済みに取り込み`, [toastState.count]);
     clearTimeout(toastState.timer);
     toastState.timer = setTimeout(() => {
       if (!toastState.el) return;
@@ -1611,24 +1621,24 @@ window._ytWatchedHider = (() => {
     const stat = harvest.ui.querySelector('.yt-hv-stat');
     const dot = harvest.ui.querySelector('.yt-hv-dot');
     const banner = harvest.ui.querySelector('.yt-hv-banner');
-    btn.textContent = harvest.running ? '■ Stop' : '▶ Start Harvest';
+    btn.textContent = harvest.running ? contentMessage('content_harvestStop', '■ Stop') : contentMessage('content_harvestStart', '▶ Start Harvest');
     btn.style.background = harvest.running ? '#d32f2f' : '#1a73e8';
     dot.style.background = harvest.running ? '#ff5252' : '#666';
     dot.style.animation = harvest.running ? 'ythvPulse 1s infinite' : 'none';
 
     if (harvest.running) {
-      const streakHint = harvest.noNewStreak > 0 ? ` · idle ${harvest.noNewStreak}/6` : '';
-      stat.textContent = `Running · +${harvest.added} / ${harvest.scanned}${streakHint}`;
+      const streakHint = harvest.noNewStreak > 0 ? contentMessage('content_harvestIdleHint', ` · idle ${harvest.noNewStreak}/6`, [harvest.noNewStreak]) : '';
+      stat.textContent = contentMessage('content_harvestRunning', `Running · +${harvest.added} / ${harvest.scanned}${streakHint}`, [harvest.added, harvest.scanned, streakHint]);
       banner.style.display = 'none';
     } else if (harvest.scanned > 0) {
-      stat.textContent = `+${harvest.added} / ${harvest.scanned}`;
+      stat.textContent = contentMessage('content_harvestCounts', `+${harvest.added} / ${harvest.scanned}`, [harvest.added, harvest.scanned]);
       banner.textContent = harvest.endReason === 'auto'
-        ? `✅ 完了（履歴末尾） 取込 +${harvest.added} / 走査 ${harvest.scanned}`
-        : `⏸ 停止 取込 +${harvest.added} / 走査 ${harvest.scanned}`;
+        ? contentMessage('content_harvestDone', `✅ 完了（履歴末尾） 取込 +${harvest.added} / 走査 ${harvest.scanned}`, [harvest.added, harvest.scanned])
+        : contentMessage('content_harvestStopped', `⏸ 停止 取込 +${harvest.added} / 走査 ${harvest.scanned}`, [harvest.added, harvest.scanned]);
       banner.style.background = harvest.endReason === 'auto' ? '#2e7d32' : '#616161';
       banner.style.display = 'block';
     } else {
-      stat.textContent = 'Idle';
+      stat.textContent = contentMessage('content_harvestIdle', 'Idle');
       banner.style.display = 'none';
     }
   }
@@ -1648,14 +1658,16 @@ window._ytWatchedHider = (() => {
       <div style="font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:8px;">
         <span style="display:flex;align-items:center;gap:6px;">
           <span class="yt-hv-dot" style="width:8px;height:8px;border-radius:50%;background:#666;display:inline-block;"></span>
-          YT Harvest
+          <span class="yt-hv-title"></span>
         </span>
         <span class="yt-hv-stat" style="font-weight:400;opacity:0.85;"></span>
       </div>
       <button class="yt-hv-btn" style="background:#1a73e8;color:#fff;border:0;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:12px;"></button>
       <div class="yt-hv-banner" style="display:none;padding:6px 8px;border-radius:4px;font-size:11px;font-weight:600;text-align:center;"></div>
-      <div style="font-size:10px;opacity:0.6;">サムネ非表示＋自動スクロール＋DOM間引き</div>
+      <div class="yt-hv-help" style="font-size:10px;opacity:0.6;"></div>
     `;
+    wrap.querySelector('.yt-hv-title').textContent = contentMessage('content_harvestTitle', 'YT Harvest');
+    wrap.querySelector('.yt-hv-help').textContent = contentMessage('content_harvestHelp', 'サムネ非表示＋自動スクロール＋DOM間引き');
     document.body.appendChild(wrap);
     harvest.ui = wrap;
     wrap.querySelector('.yt-hv-btn').addEventListener('click', () => {
@@ -1989,23 +2001,23 @@ window._ytWatchedHider = (() => {
   function buildBulkConfirmMessage(kind, count, context) {
     if (kind === 'queue') {
       if (context === 'watch') {
-        return `${count}件の関連動画をキューに追加します。\n処理中YouTubeのメニューが順次開閉します。続行しますか？`;
+        return contentMessage('content_queueRelatedConfirm', `${count}件の関連動画をキューに追加します。\n処理中YouTubeのメニューが順次開閉します。続行しますか？`, [count]);
       }
-      let message = `${count}件の表示中動画をキューに追加します。\n処理中YouTubeのメニューが順次開閉します。続行しますか？`;
+      let message = contentMessage('content_queueVisibleConfirm', `${count}件の表示中動画をキューに追加します。\n処理中YouTubeのメニューが順次開閉します。続行しますか？`, [count]);
       if (count > BULK_LARGE_COUNT_THRESHOLD) {
         const minutes = Math.max(1, Math.ceil((count * 0.6) / 60));
-        message += `\n\n件数が多いため、完了まで約${minutes}分以上かかる可能性があります。途中で中止する場合は処理中のボタンをクリックしてください。`;
+        message += contentMessage('content_largeBatchHint', `\n\n件数が多いため、完了まで約${minutes}分以上かかる可能性があります。途中で中止する場合は処理中のボタンをクリックしてください。`, [minutes]);
       }
       return message;
     }
 
     if (context === 'watch') {
-      return `${count}件の動画を「後で見る」に追加します。\nメニューが順次開閉します。続行しますか？`;
+      return contentMessage('content_watchLaterConfirm', `${count}件の動画を「後で見る」に追加します。\nメニューが順次開閉します。続行しますか？`, [count]);
     }
-    let message = `${count}件の表示中動画を「後で見る」に追加します。\nメニューが順次開閉します。続行しますか？`;
+    let message = contentMessage('content_watchLaterVisibleConfirm', `${count}件の表示中動画を「後で見る」に追加します。\nメニューが順次開閉します。続行しますか？`, [count]);
     if (count > BULK_LARGE_COUNT_THRESHOLD) {
       const minutes = Math.max(1, Math.ceil((count * 0.65) / 60));
-      message += `\n\n件数が多いため、完了まで約${minutes}分以上かかる可能性があります。途中で中止する場合は処理中のボタンをクリックしてください。`;
+      message += contentMessage('content_largeBatchHint', `\n\n件数が多いため、完了まで約${minutes}分以上かかる可能性があります。途中で中止する場合は処理中のボタンをクリックしてください。`, [minutes]);
     }
     return message;
   }
@@ -2263,7 +2275,7 @@ window._ytWatchedHider = (() => {
   function updateQueueButtonLabel() {
     if (!queueAllBtn || queueInProgress) return;
     const count = findQueueableCards(queueButtonContext || getBulkPageContext()).length;
-    queueAllBtn.textContent = `⏭ キューに追加 (${count})`;
+    queueAllBtn.textContent = contentMessage('content_queueLabel', `⏭ キューに追加 (${count})`, [count]);
     queueAllBtn.disabled = count === 0;
     queueAllBtn.style.opacity = count === 0 ? '0.5' : '1';
   }
@@ -2271,7 +2283,7 @@ window._ytWatchedHider = (() => {
   async function onQueueAllClick() {
     if (queueInProgress) {
       queueAbort = true;
-      if (queueAllBtn) queueAllBtn.textContent = '中止中...';
+      if (queueAllBtn) queueAllBtn.textContent = contentMessage('content_stopping', '中止中...');
       return;
     }
     const context = getBulkPageContext();
@@ -2289,7 +2301,7 @@ window._ytWatchedHider = (() => {
       // videos get appended AFTER it (otherwise YouTube starts a new queue
       // with the first added video placed above the current one).
       try {
-        if (queueAllBtn) queueAllBtn.textContent = '現在の動画をキューに追加中...';
+        if (queueAllBtn) queueAllBtn.textContent = contentMessage('content_queueCurrent', '現在の動画をキューに追加中...');
         await seedQueueWithCurrentVideo();
         await sleep(200);
       } catch (e) {
@@ -2300,7 +2312,7 @@ window._ytWatchedHider = (() => {
     for (let i = 0; i < cards.length; i++) {
       if (queueAbort) break;
       if (!queueAllBtn) break;
-      queueAllBtn.textContent = `追加中 ${i + 1}/${cards.length}(クリックで中止)`;
+      queueAllBtn.textContent = contentMessage('content_queueProgress', `追加中 ${i + 1}/${cards.length}(クリックで中止)`, [i + 1, cards.length]);
       try {
         const res = await queueOneCard(cards[i]);
         if (res.ok) success++; else failed++;
@@ -2315,7 +2327,7 @@ window._ytWatchedHider = (() => {
     queueAbort = false;
     if (!queueAllBtn) return;
     queueAllBtn.style.background = '#ff4444';
-    queueAllBtn.textContent = `完了: ${success}件追加${failed ? ` / ${failed}件失敗` : ''}`;
+    queueAllBtn.textContent = contentMessage('content_bulkDone', `完了: ${success}件追加${failed ? ` / ${failed}件失敗` : ''}`, [success, failed ? contentMessage('content_bulkFailures', ` / ${failed}件失敗`, [failed]) : '']);
     setTimeout(updateQueueButtonLabel, 3000);
   }
 
@@ -2468,7 +2480,7 @@ window._ytWatchedHider = (() => {
   function updateWatchLaterButtonLabel() {
     if (!watchLaterBtn || watchLaterInProgress) return;
     const count = findWatchLaterableCards(watchLaterButtonContext || getBulkPageContext()).length;
-    watchLaterBtn.textContent = `後で見る (${count})`;
+    watchLaterBtn.textContent = contentMessage('content_watchLaterLabel', `後で見る (${count})`, [count]);
     watchLaterBtn.disabled = count === 0;
     watchLaterBtn.style.opacity = count === 0 ? '0.5' : '1';
   }
@@ -2476,7 +2488,7 @@ window._ytWatchedHider = (() => {
   async function onWatchLaterClick() {
     if (watchLaterInProgress) {
       watchLaterAbort = true;
-      if (watchLaterBtn) watchLaterBtn.textContent = '中止中...';
+      if (watchLaterBtn) watchLaterBtn.textContent = contentMessage('content_stopping', '中止中...');
       return;
     }
     const context = getBulkPageContext();
@@ -2492,7 +2504,7 @@ window._ytWatchedHider = (() => {
     for (let i = 0; i < cards.length; i++) {
       if (watchLaterAbort) break;
       if (!watchLaterBtn) break;
-      watchLaterBtn.textContent = `追加中 ${i + 1}/${cards.length}（クリックで中止）`;
+      watchLaterBtn.textContent = contentMessage('content_watchLaterProgress', `追加中 ${i + 1}/${cards.length}（クリックで中止）`, [i + 1, cards.length]);
       try {
         const res = await watchLaterOneCard(cards[i]);
         if (res.ok) success++; else failed++;
@@ -2506,7 +2518,7 @@ window._ytWatchedHider = (() => {
     watchLaterAbort = false;
     if (!watchLaterBtn) return;
     watchLaterBtn.style.background = '#1565c0';
-    watchLaterBtn.textContent = `完了: ${success}件追加${failed ? ` / ${failed}件失敗` : ''}`;
+    watchLaterBtn.textContent = contentMessage('content_bulkDone', `完了: ${success}件追加${failed ? ` / ${failed}件失敗` : ''}`, [success, failed ? contentMessage('content_bulkFailures', ` / ${failed}件失敗`, [failed]) : '']);
     setTimeout(updateWatchLaterButtonLabel, 4000);
   }
 
