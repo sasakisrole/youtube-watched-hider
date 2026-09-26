@@ -1,0 +1,179 @@
+{
+  "popup_recordedCountLabel": {
+    "message": "watched videos recorded"
+  },
+  "popup_migrationBanner": {
+    "message": "Open YouTube once to complete the initial sync."
+  },
+  "popup_recentHistory": {
+    "message": "Recent history"
+  },
+  "popup_openViewer": {
+    "message": "Open history and analytics"
+  },
+  "popup_openGuide": {
+    "message": "Help and release notes"
+  },
+  "popup_settings": {
+    "message": "Settings and data"
+  },
+  "popup_cache": {
+    "message": "Cache"
+  },
+  "popup_cacheLoading": {
+    "message": "Loading cache status..."
+  },
+  "popup_display": {
+    "message": "Display"
+  },
+  "popup_watchedThreshold": {
+    "message": "Watched threshold (%)"
+  },
+  "popup_watchedThresholdHelp": {
+    "message": "1-100% (default: 95%). Invalid or out-of-range values reset to 95%. Existing watch records are unchanged."
+  },
+  "popup_pageVisibility": {
+    "message": "Hide videos by page"
+  },
+  "popup_hideHome": {
+    "message": "Hide on Home"
+  },
+  "popup_hideSubscriptions": {
+    "message": "Hide in Subscriptions"
+  },
+  "popup_hideSearch": {
+    "message": "Hide in search results"
+  },
+  "popup_hideRelated": {
+    "message": "Hide related videos"
+  },
+  "popup_pageVisibilityHelp": {
+    "message": "Videos stay visible on pages where hiding is off. Watch history is still recorded. Related videos refers to suggestions on watch pages."
+  },
+  "popup_hideShorts": {
+    "message": "Hide Shorts"
+  },
+  "popup_hideShortsHelp": {
+    "message": "Hide Shorts from video lists"
+  },
+  "popup_hideMovies": {
+    "message": "Hide movies and shows"
+  },
+  "popup_hideMoviesHelp": {
+    "message": "Hide movies and shows from video lists"
+  },
+  "popup_recording": {
+    "message": "Recording"
+  },
+  "popup_harvestMode": {
+    "message": "Show the bulk import button on the History page"
+  },
+  "popup_harvestHelp": {
+    "message": "Show a Harvest button on the History page. Pause thumbnail loading for fast scrolling and automatic import (remove processed page elements to prevent crashes)."
+  },
+  "popup_recordWhileOff": {
+    "message": "Record while OFF"
+  },
+  "popup_recordWhileOffHelp": {
+    "message": "Keep recording watch history while hiding is turned OFF"
+  },
+  "popup_backup": {
+    "message": "Backup"
+  },
+  "popup_autoBackup": {
+    "message": "Back up automatically every day"
+  },
+  "popup_autoBackupHelp": {
+    "message": "Save once a day to youtube-watched-hider-backup in your Downloads folder"
+  },
+  "popup_backupNow": {
+    "message": "Back up now"
+  },
+  "popup_restoreBackup": {
+    "message": "Restore a backup"
+  },
+  "popup_restoreMethod": {
+    "message": "Choose how to restore"
+  },
+  "popup_replaceBackup": {
+    "message": "Replace (restore this backup after an automatic backup)"
+  },
+  "popup_safeMerge": {
+    "message": "Merge safely (keep current data on conflicts)"
+  },
+  "popup_backupMerge": {
+    "message": "Merge with backup priority (overwrite conflicts with imported data)"
+  },
+  "popup_cancel": {
+    "message": "Cancel"
+  },
+  "popup_syncHeading": {
+    "message": "Sync with another PC (Dropbox)"
+  },
+  "popup_syncHelp": {
+    "message": "Import a backup from another PC and merge only the differences"
+  },
+  "popup_syncImport": {
+    "message": "Import and merge"
+  },
+  "popup_deleteHeading": {
+    "message": "Delete data"
+  },
+  "popup_deleteHelp": {
+    "message": "Choose which data to delete. Reset all data saves an automatic backup before proceeding."
+  },
+  "popup_clearWatched": {
+    "message": "Delete watch history only"
+  },
+  "popup_clearLiked": {
+    "message": "Delete liked video data only"
+  },
+  "popup_clearAll": {
+    "message": "Reset all data (after an automatic backup)"
+  },
+  "popup_about": {
+    "message": "About this tool"
+  },
+  "popup_aboutStorage": {
+    "message": "IndexedDB: no storage limit (about 300 B per track / 3 MB per 10,000 tracks)"
+  },
+  "popup_aboutRecording": {
+    "message": "Recording: detects when playback ends (ended)"
+  },
+  "popup_aboutSeekBar": {
+    "message": "Progress bar: automatically detects YouTube's red bar"
+  },
+  "popup_aboutBackup": {
+    "message": "Backup: automatic daily backups / manual export"
+  },
+  "popup_aboutHistory": {
+    "message": "History: records titles, play counts, and detection sources"
+  },
+  "popup_aboutSync": {
+    "message": "Sync between PCs:"
+  },
+  "popup_aboutSyncStep1": {
+    "message": "Share the JSON saved by automatic backup"
+  },
+  "popup_aboutSyncStep2": {
+    "message": "via Dropbox or a similar service, then select Import and merge"
+  },
+  "popup_aboutSyncStep3": {
+    "message": "on another PC to import only the differences."
+  },
+  "popup_support": {
+    "message": "Support development (Ko-fi)"
+  },
+  "popup_supportNote": {
+    "message": "All features are available whether or not you donate."
+  },
+  "popup_historySearchPlaceholder": {
+    "message": "Search by title or channel"
+  },
+  "popup_historySearchLabel": {
+    "message": "Search recent history"
+  },
+  "popup_appTitle": {
+    "message": "YT Watched Hider"
+  }
+}

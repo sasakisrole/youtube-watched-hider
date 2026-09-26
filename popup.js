@@ -1,3 +1,19 @@
+// Static popup localization: keep the HTML fallback when a key is unavailable.
+function applyStaticPopupI18n() {
+  if (typeof chrome === 'undefined' || !chrome.i18n?.getMessage) return;
+  for (const target of ['', 'placeholder', 'title', 'aria-label']) {
+    const attribute = target ? 'data-i18n-' + target : 'data-i18n';
+    for (const element of document.querySelectorAll('[' + attribute + ']')) {
+      const message = chrome.i18n.getMessage(element.getAttribute(attribute));
+      if (!message) continue;
+      if (target) element.setAttribute(target, message);
+      else element.textContent = element.textContent.replace(/\S(?:[\s\S]*\S)?/, () => message);
+    }
+  }
+}
+applyStaticPopupI18n();
+// End static popup localization
+
 // Popup script for YouTube Watched Hider
 
 const countEl = document.getElementById('count');

@@ -1,0 +1,179 @@
+{
+  "popup_recordedCountLabel": {
+    "message": "件の視聴済み動画を記録済み"
+  },
+  "popup_migrationBanner": {
+    "message": "初回同期のため、一度YouTubeを開いてください。"
+  },
+  "popup_recentHistory": {
+    "message": "最近の履歴"
+  },
+  "popup_openViewer": {
+    "message": "履歴・分析を開く"
+  },
+  "popup_openGuide": {
+    "message": "使い方・更新履歴"
+  },
+  "popup_settings": {
+    "message": "設定・データ管理"
+  },
+  "popup_cache": {
+    "message": "キャッシュ"
+  },
+  "popup_cacheLoading": {
+    "message": "キャッシュの状態を読み込み中..."
+  },
+  "popup_display": {
+    "message": "表示"
+  },
+  "popup_watchedThreshold": {
+    "message": "視聴済みとみなす％"
+  },
+  "popup_watchedThresholdHelp": {
+    "message": "1〜100％（既定95％）。範囲外や数値でない値は95％に戻ります。登録済みの視聴記録は変更しません。"
+  },
+  "popup_pageVisibility": {
+    "message": "ページ別の非表示"
+  },
+  "popup_hideHome": {
+    "message": "ホームで隠す"
+  },
+  "popup_hideSubscriptions": {
+    "message": "登録チャンネルで隠す"
+  },
+  "popup_hideSearch": {
+    "message": "検索結果で隠す"
+  },
+  "popup_hideRelated": {
+    "message": "関連動画で隠す"
+  },
+  "popup_pageVisibilityHelp": {
+    "message": "オフのページでは動画を隠しません。視聴記録は継続します。関連動画は視聴ページが対象です。"
+  },
+  "popup_hideShorts": {
+    "message": "ショート動画を隠す"
+  },
+  "popup_hideShortsHelp": {
+    "message": "ショート動画を一覧から非表示にする"
+  },
+  "popup_hideMovies": {
+    "message": "映画・番組を隠す"
+  },
+  "popup_hideMoviesHelp": {
+    "message": "映画・番組を一覧から非表示にする"
+  },
+  "popup_recording": {
+    "message": "記録"
+  },
+  "popup_harvestMode": {
+    "message": "履歴ページに一括取り込みボタンを出す"
+  },
+  "popup_harvestHelp": {
+    "message": "履歴ページに「Harvest」ボタンを表示。サムネ読込を止めて高速スクロール＋自動取込（処理済みDOMを間引いてクラッシュ回避）"
+  },
+  "popup_recordWhileOff": {
+    "message": "OFF中も記録する"
+  },
+  "popup_recordWhileOffHelp": {
+    "message": "非表示をOFFにしている間も視聴履歴だけは記録する"
+  },
+  "popup_backup": {
+    "message": "バックアップ"
+  },
+  "popup_autoBackup": {
+    "message": "毎日自動でバックアップ"
+  },
+  "popup_autoBackupHelp": {
+    "message": "ダウンロードフォルダの youtube-watched-hider-backup に1日1回保存する"
+  },
+  "popup_backupNow": {
+    "message": "今すぐバックアップ"
+  },
+  "popup_restoreBackup": {
+    "message": "バックアップを復元"
+  },
+  "popup_restoreMethod": {
+    "message": "復元方法を選択"
+  },
+  "popup_replaceBackup": {
+    "message": "置換（このバックアップ時点に戻す・自動バックアップ後）"
+  },
+  "popup_safeMerge": {
+    "message": "安全に統合（競合は現在のデータを優先）"
+  },
+  "popup_backupMerge": {
+    "message": "バックアップ優先で統合（競合は取込側で上書き）"
+  },
+  "popup_cancel": {
+    "message": "キャンセル"
+  },
+  "popup_syncHeading": {
+    "message": "別PCと同期（Dropbox）"
+  },
+  "popup_syncHelp": {
+    "message": "別PCで保存したバックアップを読み込んで差分だけ統合する"
+  },
+  "popup_syncImport": {
+    "message": "読み込んで統合"
+  },
+  "popup_deleteHeading": {
+    "message": "データ削除"
+  },
+  "popup_deleteHelp": {
+    "message": "削除する範囲を選べます。「全データを初期化」は実行前に自動でバックアップを1件保存します。"
+  },
+  "popup_clearWatched": {
+    "message": "視聴履歴だけ削除"
+  },
+  "popup_clearLiked": {
+    "message": "高評価データだけ削除"
+  },
+  "popup_clearAll": {
+    "message": "全データを初期化（自動バックアップ後）"
+  },
+  "popup_about": {
+    "message": "このツールについて"
+  },
+  "popup_aboutStorage": {
+    "message": "IndexedDB: 容量制限なし（1曲≒300B / 1万曲≒3MB）"
+  },
+  "popup_aboutRecording": {
+    "message": "記録: 動画再生完了(ended)で検知"
+  },
+  "popup_aboutSeekBar": {
+    "message": "シークバー: YouTube赤バー自動検出"
+  },
+  "popup_aboutBackup": {
+    "message": "バックアップ: 毎日自動 / 手動エクスポート"
+  },
+  "popup_aboutHistory": {
+    "message": "履歴: タイトル・再生回数・検出元を記録"
+  },
+  "popup_aboutSync": {
+    "message": "PC間の同期:"
+  },
+  "popup_aboutSyncStep1": {
+    "message": "自動バックアップで保存されたJSONを"
+  },
+  "popup_aboutSyncStep2": {
+    "message": "Dropbox等で共有し、別PCで「読み込んで統合」"
+  },
+  "popup_aboutSyncStep3": {
+    "message": "すると差分だけ取り込めます。"
+  },
+  "popup_support": {
+    "message": "開発を支援する（Ko-fi）"
+  },
+  "popup_supportNote": {
+    "message": "支援しなくても使える機能は変わりません。"
+  },
+  "popup_historySearchPlaceholder": {
+    "message": "タイトル・チャンネル名で検索"
+  },
+  "popup_historySearchLabel": {
+    "message": "最近の履歴を検索"
+  },
+  "popup_appTitle": {
+    "message": "YT Watched Hider"
+  }
+}
