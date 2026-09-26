@@ -23,7 +23,7 @@ for (const match of html.matchAll(/<([\w-]+)\b([^>]*\bdata-i18n(?:-[\w-]+)?="[^"
   }
 }
 assert(entries.length > 0, 'popup must declare translation keys');
-assert.strictEqual(Object.keys(ja).length, new Set(entries.map(e => e.key)).size);
+for (const key of new Set(entries.map(e => e.key))) assert.ok(Object.hasOwn(ja, key), `missing ja key: ${key}`);
 assert.deepStrictEqual(Object.keys(ja).sort(), Object.keys(en).sort());
 
 // Exercise the actual initializer with a small DOM double, including fallback.
