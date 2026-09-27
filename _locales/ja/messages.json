@@ -1419,6 +1419,131 @@
   "history_wl_changed_many": {
     "message": "削除ID変化 $1件"
   },
+  "history_enrich_none": {
+    "message": "対象なし"
+  },
+  "history_enrich_overwrite_one": {
+    "message": "$1: $2件のチャンネル名をYouTube oEmbed APIで上書きします。続行しますか？"
+  },
+  "history_enrich_overwrite_many": {
+    "message": "$1: $2件のチャンネル名をYouTube oEmbed APIで上書きします。続行しますか？"
+  },
+  "history_enrich_channels_one": {
+    "message": "$1: $2件のチャンネル名をYouTube oEmbed APIで補完します。続行しますか？"
+  },
+  "history_enrich_channels_many": {
+    "message": "$1: $2件のチャンネル名をYouTube oEmbed APIで補完します。続行しますか？"
+  },
+  "history_enrich_running": {
+    "message": "実行中…"
+  },
+  "history_enrich_busy": {
+    "message": "他のメンテナンス処理が実行中"
+  },
+  "history_enrich_refetch_label": {
+    "message": "チャンネル名を再取得"
+  },
+  "history_enrich_channels_label": {
+    "message": "チャンネル名を補完"
+  },
+  "history_enrich_channels_progress": {
+    "message": "処理中... 残り$1/$2（更新$3 / 失敗$4）"
+  },
+  "history_enrich_refetch_aborted": {
+    "message": "チャンネル名の再取得を中止しました"
+  },
+  "history_enrich_channels_aborted": {
+    "message": "チャンネル名の補完を中止しました"
+  },
+  "history_enrich_refetch_done": {
+    "message": "チャンネル名を再取得しました"
+  },
+  "history_enrich_channels_done": {
+    "message": "チャンネル名を補完しました"
+  },
+  "history_enrich_channels_result": {
+    "message": "$1: 更新$2件 / 失敗$3件 / 処理$4/$5件"
+  },
+  "history_enrich_failed": {
+    "message": "失敗: $1"
+  },
+  "history_enrich_channels_button": {
+    "message": "チャンネル名補完"
+  },
+  "history_enrich_held_one": {
+    "message": "\n\n※前に調べて情報が見つからなかった$1件は、しばらく間隔を空けるため今回は対象外です（「チェック済みスキップ」を外すと全部やり直せます）。"
+  },
+  "history_enrich_held_many": {
+    "message": "\n\n※前に調べて情報が見つからなかった$1件は、しばらく間隔を空けるため今回は対象外です（「チェック済みスキップ」を外すと全部やり直せます）。"
+  },
+  "history_enrich_none_held_one": {
+    "message": "対象なし（間隔待ち $1件）"
+  },
+  "history_enrich_none_held_many": {
+    "message": "対象なし（間隔待ち $1件）"
+  },
+  "history_enrich_credits_one": {
+    "message": "$1: $2件の動画から作曲/作詞/編曲を概要欄で補完します。続行しますか？$3\n\n※YouTubeタブを1つ以上開いたままにしてください（Cookie経由でfetchするため）。"
+  },
+  "history_enrich_credits_many": {
+    "message": "$1: $2件の動画から作曲/作詞/編曲を概要欄で補完します。続行しますか？$3\n\n※YouTubeタブを1つ以上開いたままにしてください（Cookie経由でfetchするため）。"
+  },
+  "history_enrich_running_abort": {
+    "message": "実行中…（中止）"
+  },
+  "history_enrich_credits_label": {
+    "message": "概要欄からクレジット補完"
+  },
+  "history_enrich_credits_progress": {
+    "message": "処理中... 残り$1/$2（更新$3 / 情報なし$4 / 取得失敗$5）"
+  },
+  "history_enrich_credits_done": {
+    "message": "概要欄からクレジットを補完しました"
+  },
+  "history_enrich_credits_stopped": {
+    "message": "概要欄からのクレジット補完を自動停止しました（Googleのbot検知 / 時間を空けて再実行）"
+  },
+  "history_enrich_credits_aborted": {
+    "message": "概要欄からのクレジット補完を中止しました"
+  },
+  "history_enrich_credits_result": {
+    "message": "$value1$: 更新$value2$ / 情報なし$value3$ / 取得失敗$value4$ / 処理$value5$/$value6$$value7$",
+    "placeholders": {
+      "value1": {
+        "content": "$1"
+      },
+      "value2": {
+        "content": "$2"
+      },
+      "value3": {
+        "content": "$3"
+      },
+      "value4": {
+        "content": "$4"
+      },
+      "value5": {
+        "content": "$5"
+      },
+      "value6": {
+        "content": "$6"
+      },
+      "value7": {
+        "content": "$7"
+      }
+    }
+  },
+  "history_enrich_aborting_status": {
+    "message": "中止中..."
+  },
+  "history_enrich_aborting_button": {
+    "message": "中止中…"
+  },
+  "history_enrich_general_label": {
+    "message": "クレジット補完（Topic+一般）"
+  },
+  "history_enrich_topic_label": {
+    "message": "Topic動画のクレジット補完"
+  },
   "extensionDescription": {
     "message": "YouTubeのおすすめ・検索結果・関連動画から視聴済みの動画を非表示にします",
     "description": "Chrome Web Store / extensions page summary (max 132 chars)"

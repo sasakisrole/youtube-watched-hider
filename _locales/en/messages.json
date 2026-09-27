@@ -1419,6 +1419,131 @@
   "history_wl_changed_many": {
     "message": "Changed removal IDs: $1 videos"
   },
+  "history_enrich_none": {
+    "message": "No targets"
+  },
+  "history_enrich_overwrite_one": {
+    "message": "$1: Overwrite the channel name for $2 video using the YouTube oEmbed API. Continue?"
+  },
+  "history_enrich_overwrite_many": {
+    "message": "$1: Overwrite the channel names for $2 videos using the YouTube oEmbed API. Continue?"
+  },
+  "history_enrich_channels_one": {
+    "message": "$1: Fill in the missing channel name for $2 video using the YouTube oEmbed API. Continue?"
+  },
+  "history_enrich_channels_many": {
+    "message": "$1: Fill in the missing channel names for $2 videos using the YouTube oEmbed API. Continue?"
+  },
+  "history_enrich_running": {
+    "message": "Running…"
+  },
+  "history_enrich_busy": {
+    "message": "Another maintenance task is running"
+  },
+  "history_enrich_refetch_label": {
+    "message": "Fetch channel names again"
+  },
+  "history_enrich_channels_label": {
+    "message": "Fill in channel names"
+  },
+  "history_enrich_channels_progress": {
+    "message": "Processing... $1/$2 remaining (updated: $3 / failed: $4)"
+  },
+  "history_enrich_refetch_aborted": {
+    "message": "Fetching channel names again was canceled"
+  },
+  "history_enrich_channels_aborted": {
+    "message": "Filling in channel names was canceled"
+  },
+  "history_enrich_refetch_done": {
+    "message": "Fetched channel names again"
+  },
+  "history_enrich_channels_done": {
+    "message": "Filled in channel names"
+  },
+  "history_enrich_channels_result": {
+    "message": "$1: Updated: $2 / failed: $3 / processed: $4/$5"
+  },
+  "history_enrich_failed": {
+    "message": "Failed: $1"
+  },
+  "history_enrich_channels_button": {
+    "message": "Fill in channel names"
+  },
+  "history_enrich_held_one": {
+    "message": "\n\nNote: $1 video with no information found previously is excluded this time to allow a waiting period (clear “Skip checked” to retry everything)."
+  },
+  "history_enrich_held_many": {
+    "message": "\n\nNote: $1 videos with no information found previously are excluded this time to allow a waiting period (clear “Skip checked” to retry everything)."
+  },
+  "history_enrich_none_held_one": {
+    "message": "No targets ($1 video in the waiting period)"
+  },
+  "history_enrich_none_held_many": {
+    "message": "No targets ($1 videos in the waiting period)"
+  },
+  "history_enrich_credits_one": {
+    "message": "$1: Fill in composer/lyricist/arranger credits from the description of $2 video. Continue?$3\n\nNote: Keep at least one YouTube tab open (fetching uses cookies)."
+  },
+  "history_enrich_credits_many": {
+    "message": "$1: Fill in composer/lyricist/arranger credits from the descriptions of $2 videos. Continue?$3\n\nNote: Keep at least one YouTube tab open (fetching uses cookies)."
+  },
+  "history_enrich_running_abort": {
+    "message": "Running… (Cancel)"
+  },
+  "history_enrich_credits_label": {
+    "message": "Fill in credits from descriptions"
+  },
+  "history_enrich_credits_progress": {
+    "message": "Processing... $1/$2 remaining (updated: $3 / no information: $4 / fetch failed: $5)"
+  },
+  "history_enrich_credits_done": {
+    "message": "Filled in credits from descriptions"
+  },
+  "history_enrich_credits_stopped": {
+    "message": "Filling in credits from descriptions stopped automatically (Google bot detection / wait before retrying)"
+  },
+  "history_enrich_credits_aborted": {
+    "message": "Filling in credits from descriptions was canceled"
+  },
+  "history_enrich_credits_result": {
+    "message": "$value1$: Updated: $value2$ / no information: $value3$ / fetch failed: $value4$ / processed: $value5$/$value6$$value7$",
+    "placeholders": {
+      "value1": {
+        "content": "$1"
+      },
+      "value2": {
+        "content": "$2"
+      },
+      "value3": {
+        "content": "$3"
+      },
+      "value4": {
+        "content": "$4"
+      },
+      "value5": {
+        "content": "$5"
+      },
+      "value6": {
+        "content": "$6"
+      },
+      "value7": {
+        "content": "$7"
+      }
+    }
+  },
+  "history_enrich_aborting_status": {
+    "message": "Canceling..."
+  },
+  "history_enrich_aborting_button": {
+    "message": "Canceling…"
+  },
+  "history_enrich_general_label": {
+    "message": "Fill in credits (Topic + general)"
+  },
+  "history_enrich_topic_label": {
+    "message": "Fill in credits for Topic videos"
+  },
   "extensionDescription": {
     "message": "Hide videos you've already watched from YouTube recommendations, search results, and related videos",
     "description": "Chrome Web Store / extensions page summary (max 132 chars)"

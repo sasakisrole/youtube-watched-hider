@@ -1015,23 +1015,27 @@ if (wlPanelRunAll) {
 
 function runFix(videoIds, force, label) {
   if (!videoIds.length) {
-    showJobMessage('対象なし');
+    showJobMessage(historyMessage('history_enrich_none', '対象なし'));
     return;
   }
-  if (!confirm(`${label}: ${videoIds.length}件のチャンネル名をYouTube oEmbed APIで${force ? '上書き' : '補完'}します。続行しますか？`)) {
+  if (!confirm(historyMessage(force
+    ? (videoIds.length === 1 ? 'history_enrich_overwrite_one' : 'history_enrich_overwrite_many')
+    : (videoIds.length === 1 ? 'history_enrich_channels_one' : 'history_enrich_channels_many'),
+  `${label}: ${videoIds.length}件のチャンネル名をYouTube oEmbed APIで${force ? '上書き' : '補完'}します。続行しますか？`, [label, videoIds.length]))) {
     return;
   }
 
   const maintenanceKey = force ? 'fixChannelsForce' : 'fixChannels';
-  if (!beginMaintenance(maintenanceKey, { activeText: '実行中…' })) {
-    showJobMessage('他のメンテナンス処理が実行中', { state: 'error' });
+  if (!beginMaintenance(maintenanceKey, { activeText: historyMessage('history_enrich_running', '実行中…') })) {
+    showJobMessage(historyMessage('history_enrich_busy', '他のメンテナンス処理が実行中'), { state: 'error' });
     return;
   }
 
   const total = videoIds.length;
   let remaining = total;
-  showJobMessage(`処理中... 残り${remaining}/${total}（更新0 / 失敗0）`, {
-    kind: maintenanceKey, label: force ? 'チャンネル名を再取得' : 'チャンネル名を補完',
+  const jobLabel = force ? historyMessage('history_enrich_refetch_label', 'チャンネル名を再取得') : historyMessage('history_enrich_channels_label', 'チャンネル名を補完');
+  showJobMessage(historyMessage('history_enrich_channels_progress', `処理中... 残り${remaining}/${total}（更新0 / 失敗0）`, [remaining, total, 0, 0]), {
+    kind: maintenanceKey, label: jobLabel,
     state: 'running', total, processed: 0, counters: { updated: 0, failed: 0 }, abortable: true,
   });
 
@@ -1076,8 +1080,8 @@ function runFix(videoIds, force, label) {
       }
 
       updateTotalCount();
-      showJobMessage(`処理中... 残り${remaining}/${total}（更新${msg.updated} / 失敗${msg.failed}）`, {
-        kind: maintenanceKey, label: force ? 'チャンネル名を再取得' : 'チャンネル名を補完',
+      showJobMessage(historyMessage('history_enrich_channels_progress', `処理中... 残り${remaining}/${total}（更新${msg.updated} / 失敗${msg.failed}）`, [remaining, total, msg.updated, msg.failed]), {
+        kind: maintenanceKey, label: jobLabel,
         state: 'running', total, processed: msg.processed,
         counters: { updated: msg.updated, failed: msg.failed }, abortable: true,
       });
@@ -1086,10 +1090,10 @@ function runFix(videoIds, force, label) {
 
     if (msg.type === 'DONE') {
       const outcome = msg.aborted
-        ? `${force ? 'チャンネル名の再取得' : 'チャンネル名の補完'}を中止しました`
-        : `${force ? 'チャンネル名を再取得しました' : 'チャンネル名を補完しました'}`;
-      showJobMessage(`${outcome}: 更新${msg.updated}件 / 失敗${msg.failed}件 / 処理${msg.processed || 0}/${msg.total}件`, {
-        kind: maintenanceKey, label: force ? 'チャンネル名を再取得' : 'チャンネル名を補完',
+        ? (force ? historyMessage('history_enrich_refetch_aborted', 'チャンネル名の再取得を中止しました') : historyMessage('history_enrich_channels_aborted', 'チャンネル名の補完を中止しました'))
+        : (force ? historyMessage('history_enrich_refetch_done', 'チャンネル名を再取得しました') : historyMessage('history_enrich_channels_done', 'チャンネル名を補完しました'));
+      showJobMessage(historyMessage('history_enrich_channels_result', `${outcome}: 更新${msg.updated}件 / 失敗${msg.failed}件 / 処理${msg.processed || 0}/${msg.total}件`, [outcome, msg.updated, msg.failed, msg.processed || 0, msg.total]), {
+        kind: maintenanceKey, label: jobLabel,
         state: msg.aborted ? 'aborted' : 'done', total: msg.total, processed: msg.processed || 0,
         counters: { updated: msg.updated, failed: msg.failed },
       });
@@ -1100,8 +1104,8 @@ function runFix(videoIds, force, label) {
     }
 
     if (msg.type === 'ERROR') {
-      showJobMessage(`失敗: ${msg.error || 'unknown'}`, {
-        kind: maintenanceKey, label: force ? 'チャンネル名を再取得' : 'チャンネル名を補完', state: 'error', error: msg.error,
+      showJobMessage(historyMessage('history_enrich_failed', `失敗: ${msg.error || 'unknown'}`, [msg.error || 'unknown']), {
+        kind: maintenanceKey, label: jobLabel, state: 'error', error: msg.error,
       });
       finish();
       return;
@@ -1117,12 +1121,12 @@ const fixBtn = document.getElementById('fixChannels');
 if (fixBtn) {
   fixBtn.addEventListener('click', () => {
     if (hasRunningMaintenance()) {
-      showJobMessage('他のメンテナンス処理が実行中', { state: 'error' });
+      showJobMessage(historyMessage('history_enrich_busy', '他のメンテナンス処理が実行中'), { state: 'error' });
       return;
     }
     // Only videos missing channel (across allData, not just visible)
     const targets = allData.filter(v => !v.channel || v.channel.trim() === '').map(v => v.videoId);
-    runFix(targets, false, 'チャンネル名補完');
+    runFix(targets, false, historyMessage('history_enrich_channels_button', 'チャンネル名補完'));
   });
 }
 
@@ -1132,28 +1136,29 @@ function runFixCredits(videoIds, sources, label, heldBack) {
   // 間隔待ちで今回外れた件数を添える。設定の説明がツールチップにしか無く気づけないため。
   const held = Number(heldBack) > 0 ? Number(heldBack) : 0;
   const heldNote = held
-    ? `\n\n※前に調べて情報が見つからなかった${held.toLocaleString()}件は、しばらく間隔を空けるため今回は対象外です（「チェック済みスキップ」を外すと全部やり直せます）。`
+    ? historyMessage(held === 1 ? 'history_enrich_held_one' : 'history_enrich_held_many', `\n\n※前に調べて情報が見つからなかった${held.toLocaleString()}件は、しばらく間隔を空けるため今回は対象外です（「チェック済みスキップ」を外すと全部やり直せます）。`, [held.toLocaleString(historyUILanguage())])
     : '';
   if (!videoIds.length) {
     showJobMessage(held
-      ? `対象なし（間隔待ち ${held.toLocaleString()}件）`
-      : '対象なし');
+      ? historyMessage(held === 1 ? 'history_enrich_none_held_one' : 'history_enrich_none_held_many', `対象なし（間隔待ち ${held.toLocaleString()}件）`, [held.toLocaleString(historyUILanguage())])
+      : historyMessage('history_enrich_none', '対象なし'));
     return;
   }
-  if (!confirm(`${label}: ${videoIds.length}件の動画から作曲/作詞/編曲を概要欄で補完します。続行しますか？${heldNote}\n\n※YouTubeタブを1つ以上開いたままにしてください（Cookie経由でfetchするため）。`)) {
+  if (!confirm(historyMessage(videoIds.length === 1 ? 'history_enrich_credits_one' : 'history_enrich_credits_many', `${label}: ${videoIds.length}件の動画から作曲/作詞/編曲を概要欄で補完します。続行しますか？${heldNote}\n\n※YouTubeタブを1つ以上開いたままにしてください（Cookie経由でfetchするため）。`, [label, videoIds.length, heldNote]))) {
     return;
   }
 
-  if (!beginMaintenance('fixCredits', { activeText: '実行中…（中止）', allowAbort: true })) {
-    showJobMessage('他のメンテナンス処理が実行中', { state: 'error' });
+  if (!beginMaintenance('fixCredits', { activeText: historyMessage('history_enrich_running_abort', '実行中…（中止）'), allowAbort: true })) {
+    showJobMessage(historyMessage('history_enrich_busy', '他のメンテナンス処理が実行中'), { state: 'error' });
     return;
   }
 
   const total = videoIds.length;
   let remaining = total;
   const fixCreditsBtn = document.getElementById('fixCredits');
-  showJobMessage(`処理中... 残り${remaining}/${total}（更新0 / 情報なし0 / 取得失敗0）`, {
-    kind: 'fixCredits', label: '概要欄からクレジット補完', state: 'running',
+  const jobLabel = historyMessage('history_enrich_credits_label', '概要欄からクレジット補完');
+  showJobMessage(historyMessage('history_enrich_credits_progress', `処理中... 残り${remaining}/${total}（更新0 / 情報なし0 / 取得失敗0）`, [remaining, total, 0, 0, 0]), {
+    kind: 'fixCredits', label: jobLabel, state: 'running',
     total, processed: 0, counters: { updated: 0, noCredits: 0, fetchFailed: 0 }, abortable: true,
   });
   if (fixCreditsBtn) {
@@ -1181,8 +1186,8 @@ function runFixCredits(videoIds, sources, label, heldBack) {
           if (msg.credits.arranger && !rec.arranger) rec.arranger = msg.credits.arranger;
         }
       }
-      showJobMessage(`処理中... 残り${remaining}/${total}（更新${msg.updated} / 情報なし${msg.noCredits} / 取得失敗${msg.fetchFailed}）`, {
-        kind: 'fixCredits', label: '概要欄からクレジット補完', state: 'running',
+      showJobMessage(historyMessage('history_enrich_credits_progress', `処理中... 残り${remaining}/${total}（更新${msg.updated} / 情報なし${msg.noCredits} / 取得失敗${msg.fetchFailed}）`, [remaining, total, msg.updated, msg.noCredits, msg.fetchFailed]), {
+        kind: 'fixCredits', label: jobLabel, state: 'running',
         total, processed: msg.processed,
         counters: { updated: msg.updated, noCredits: msg.noCredits, fetchFailed: msg.fetchFailed }, abortable: true,
       });
@@ -1195,11 +1200,11 @@ function runFixCredits(videoIds, sources, label, heldBack) {
       const reasons = msg.failReasons && Object.keys(msg.failReasons).length
         ? ` [${Object.entries(msg.failReasons).map(([k, v]) => `${k}:${v}`).join(', ')}]`
         : '';
-      let prefix = '概要欄からクレジットを補完しました';
-      if (msg.autoStopped) prefix = '概要欄からのクレジット補完を自動停止しました（Googleのbot検知 / 時間を空けて再実行）';
-      else if (msg.aborted) prefix = '概要欄からのクレジット補完を中止しました';
-      showJobMessage(`${prefix}: 更新${msg.updated} / 情報なし${msg.noCredits} / 取得失敗${msg.fetchFailed} / 処理${msg.processed || 0}/${msg.total}${reasons}`, {
-        kind: 'fixCredits', label: '概要欄からクレジット補完', state: msg.aborted ? 'aborted' : 'done',
+      let prefix = historyMessage('history_enrich_credits_done', '概要欄からクレジットを補完しました');
+      if (msg.autoStopped) prefix = historyMessage('history_enrich_credits_stopped', '概要欄からのクレジット補完を自動停止しました（Googleのbot検知 / 時間を空けて再実行）');
+      else if (msg.aborted) prefix = historyMessage('history_enrich_credits_aborted', '概要欄からのクレジット補完を中止しました');
+      showJobMessage(historyMessage('history_enrich_credits_result', `${prefix}: 更新${msg.updated} / 情報なし${msg.noCredits} / 取得失敗${msg.fetchFailed} / 処理${msg.processed || 0}/${msg.total}${reasons}`, [prefix, msg.updated, msg.noCredits, msg.fetchFailed, msg.processed || 0, msg.total, reasons]), {
+        kind: 'fixCredits', label: jobLabel, state: msg.aborted ? 'aborted' : 'done',
         total: msg.total, processed: msg.processed || 0,
         counters: { updated: msg.updated, noCredits: msg.noCredits, fetchFailed: msg.fetchFailed },
       });
@@ -1209,8 +1214,8 @@ function runFixCredits(videoIds, sources, label, heldBack) {
       return;
     }
     if (msg.type === 'ERROR') {
-      showJobMessage(`失敗: ${msg.error || 'unknown'}`, {
-        kind: 'fixCredits', label: '概要欄からクレジット補完', state: 'error', error: msg.error,
+      showJobMessage(historyMessage('history_enrich_failed', `失敗: ${msg.error || 'unknown'}`, [msg.error || 'unknown']), {
+        kind: 'fixCredits', label: jobLabel, state: 'error', error: msg.error,
       });
       finish();
     }
@@ -1223,14 +1228,14 @@ if (fixCreditsBtn) {
   fixCreditsBtn.addEventListener('click', () => {
     if (fixCreditsBtn.dataset.mode === 'abort' && activeCreditsPort) {
       try { activeCreditsPort.postMessage({ type: 'ABORT' }); } catch (_e) {}
-      showJobMessage('中止中...', {
-        kind: 'fixCredits', label: '概要欄からクレジット補完', state: 'running', abortable: true,
+      showJobMessage(historyMessage('history_enrich_aborting_status', '中止中...'), {
+        kind: 'fixCredits', label: historyMessage('history_enrich_credits_label', '概要欄からクレジット補完'), state: 'running', abortable: true,
       });
-      updateRunningMaintenance('fixCredits', { activeText: '中止中…', allowAbort: true });
+      updateRunningMaintenance('fixCredits', { activeText: historyMessage('history_enrich_aborting_button', '中止中…'), allowAbort: true });
       return;
     }
     if (hasRunningMaintenance()) {
-      showJobMessage('他のメンテナンス処理が実行中', { state: 'error' });
+      showJobMessage(historyMessage('history_enrich_busy', '他のメンテナンス処理が実行中'), { state: 'error' });
       return;
     }
     // Topicチャンネル優先。「一般も含める」ONなら非Topicも対象。
@@ -1264,7 +1269,7 @@ if (fixCreditsBtn) {
       ? inScope.filter(v => window.CreditTarget.hasMissingCreditRole(v)
           && !window.CreditTarget.isFixCreditsTarget(v, { skipChecked: true, now })).length
       : 0;
-    const label = includeGen ? 'クレジット補完（Topic+一般）' : 'Topic動画のクレジット補完';
+    const label = includeGen ? historyMessage('history_enrich_general_label', 'クレジット補完（Topic+一般）') : historyMessage('history_enrich_topic_label', 'Topic動画のクレジット補完');
     runFixCredits(targets, sources, label, heldBack);
   });
 }
