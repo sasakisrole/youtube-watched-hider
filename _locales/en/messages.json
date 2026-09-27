@@ -1,4 +1,193 @@
 {
+  "history_cancel": {
+    "message": "Cancel"
+  },
+  "history_commitSelection": {
+    "message": "Confirm and save selection"
+  },
+  "history_searchVideos": {
+    "message": "Search videos"
+  },
+  "history_manualSearchPlaceholder": {
+    "message": "Title, channel, or videoId"
+  },
+  "history_noManualTargets": {
+    "message": "No videos need manual review."
+  },
+  "history_backToTop": {
+    "message": "Back to top"
+  },
+  "history_undo": {
+    "message": "Undo"
+  },
+  "history_abort": {
+    "message": "Abort"
+  },
+  "history_candidateChannels": {
+    "message": "Channels with credit candidates"
+  },
+  "history_select": {
+    "message": "Select"
+  },
+  "history_videoTitle": {
+    "message": "Video title"
+  },
+  "history_suggestedValue": {
+    "message": "Suggested value"
+  },
+  "history_reject": {
+    "message": "Reject"
+  },
+  "history_noCandidates": {
+    "message": "No candidates yet."
+  },
+  "history_downloadPlan": {
+    "message": "Save confirmation JSON"
+  },
+  "history_needsReview": {
+    "message": "Needs review"
+  },
+  "history_autoCandidate": {
+    "message": "Automatic candidates"
+  },
+  "history_unresolved": {
+    "message": "Unresolved"
+  },
+  "history_verified": {
+    "message": "Verified"
+  },
+  "history_enrichTitle": {
+    "message": "Fill credits (external databases)"
+  },
+  "history_enrichMethod": {
+    "message": "Credit completion method"
+  },
+  "history_manualReview": {
+    "message": "Manual review"
+  },
+  "history_generate": {
+    "message": "Generate candidates"
+  },
+  "history_cancelRemoval": {
+    "message": "Cancel"
+  },
+  "history_reviewTitle": {
+    "message": "Credit review center"
+  },
+  "history_reviewNote": {
+    "message": "Compare current and suggested composer, lyricist, and arranger credits for each video, and accept one candidate per role."
+  },
+  "history_reviewCloseLabel": {
+    "message": "Close the credit review center"
+  },
+  "history_close": {
+    "message": "Close"
+  },
+  "history_reviewFilterLabel": {
+    "message": "Filter by review status"
+  },
+  "history_all": {
+    "message": "All"
+  },
+  "history_conflict": {
+    "message": "Conflicts"
+  },
+  "history_recentJobs": {
+    "message": "Recent jobs"
+  },
+  "history_repair": {
+    "message": "Repair data"
+  },
+  "history_repairNote": {
+    "message": "Clear saved credit values that are not names so they can be filled again. Original values are logged and can be restored."
+  },
+  "history_bulkDialogTitle": {
+    "message": "Videos to remove in bulk"
+  },
+  "history_removeLimit": {
+    "message": "Number of videos to remove"
+  },
+  "history_removeLimitTitle": {
+    "message": "You can also adjust this with the mouse wheel"
+  },
+  "history_runRemoval": {
+    "message": "Remove videos"
+  },
+  "history_removeAllTitle": {
+    "message": "Remove all watched videos listed above. This cannot be undone."
+  },
+  "history_bulkRemoveTitle": {
+    "message": "Review the matched watched videos, then remove them in bulk. This cannot be undone."
+  },
+  "history_bulkRemove": {
+    "message": "Remove in bulk"
+  },
+  "history_maintenance": {
+    "message": "Data management and bulk actions"
+  },
+  "history_complete": {
+    "message": "Fill missing data"
+  },
+  "history_skipCheckedTitle": {
+    "message": "Skip recently checked videos: 30 days after finding data, or 180, 360, then 720 days when the description had no usable data. Uncheck to retry all videos with missing data regardless of the interval."
+  },
+  "history_skipChecked": {
+    "message": "Skip checked videos"
+  },
+  "history_includeGeneralTitle": {
+    "message": "Include non-Topic channels (music videos, official uploads, etc.). Use only labeled lines."
+  },
+  "history_includeGeneral": {
+    "message": "Include non-Topic channels"
+  },
+  "history_channelOrder": {
+    "message": "By channel"
+  },
+  "history_titleOrder": {
+    "message": "By title"
+  },
+  "history_filter": {
+    "message": "Filter"
+  },
+  "history_noChannelTitle": {
+    "message": "Show only videos with no recorded channel name"
+  },
+  "history_noChannel": {
+    "message": "No channel name"
+  },
+  "history_watchLater": {
+    "message": "Watch Later"
+  },
+  "history_removeOneTitle": {
+    "message": "Remove only the first matched video from Watch Later. This cannot be undone."
+  },
+  "history_removeOne": {
+    "message": "Remove one video"
+  },
+  "history_countUnit": {
+    "message": "videos"
+  },
+  "history_searchPlaceholder": {
+    "message": "Search by title or channel"
+  },
+  "history_analyzeTitle": {
+    "message": "Analyze music trends"
+  },
+  "history_analyze": {
+    "message": "Analyze trends"
+  },
+  "history_sortOrder": {
+    "message": "Sort order"
+  },
+  "history_newest": {
+    "message": "Newest first"
+  },
+  "history_oldest": {
+    "message": "Oldest first"
+  },
+  "history_playCount": {
+    "message": "Most played"
+  },
   "popup_recordedCountLabel": {
     "message": "watched videos recorded"
   },

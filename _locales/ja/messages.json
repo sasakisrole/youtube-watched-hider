@@ -1,4 +1,193 @@
 {
+  "history_cancel": {
+    "message": "キャンセル"
+  },
+  "history_commitSelection": {
+    "message": "選択を確定して書き戻し"
+  },
+  "history_searchVideos": {
+    "message": "動画を検索"
+  },
+  "history_manualSearchPlaceholder": {
+    "message": "タイトル・チャンネル・videoId"
+  },
+  "history_noManualTargets": {
+    "message": "手動確認の対象はありません。"
+  },
+  "history_backToTop": {
+    "message": "先頭へ戻る"
+  },
+  "history_undo": {
+    "message": "元に戻す"
+  },
+  "history_abort": {
+    "message": "中止"
+  },
+  "history_candidateChannels": {
+    "message": "補完候補チャンネル"
+  },
+  "history_select": {
+    "message": "選択"
+  },
+  "history_videoTitle": {
+    "message": "動画タイトル"
+  },
+  "history_suggestedValue": {
+    "message": "補完値"
+  },
+  "history_reject": {
+    "message": "却下"
+  },
+  "history_noCandidates": {
+    "message": "候補はまだありません。"
+  },
+  "history_downloadPlan": {
+    "message": "確定JSON保存"
+  },
+  "history_needsReview": {
+    "message": "要確認"
+  },
+  "history_autoCandidate": {
+    "message": "自動候補"
+  },
+  "history_unresolved": {
+    "message": "未解決"
+  },
+  "history_verified": {
+    "message": "確認済み"
+  },
+  "history_enrichTitle": {
+    "message": "クレジット補完（外部DB）"
+  },
+  "history_enrichMethod": {
+    "message": "クレジット補完方法"
+  },
+  "history_manualReview": {
+    "message": "手動確認"
+  },
+  "history_generate": {
+    "message": "候補生成"
+  },
+  "history_cancelRemoval": {
+    "message": "やめる"
+  },
+  "history_reviewTitle": {
+    "message": "クレジット確認センター"
+  },
+  "history_reviewNote": {
+    "message": "動画ごとの作曲・作詞・編曲を、現在値と候補を並べて確認し、役割ごとに1件ずつ採用できます。"
+  },
+  "history_reviewCloseLabel": {
+    "message": "クレジット確認センターを閉じる"
+  },
+  "history_close": {
+    "message": "閉じる"
+  },
+  "history_reviewFilterLabel": {
+    "message": "確認状態で絞り込み"
+  },
+  "history_all": {
+    "message": "すべて"
+  },
+  "history_conflict": {
+    "message": "競合"
+  },
+  "history_recentJobs": {
+    "message": "最近の処理"
+  },
+  "history_repair": {
+    "message": "データ修復"
+  },
+  "history_repairNote": {
+    "message": "保存済みのクレジットのうち人名でない値を空欄へ戻し、補完対象に復帰させます。元の値は記録に残り、元に戻せます。"
+  },
+  "history_bulkDialogTitle": {
+    "message": "まとめて削除する動画"
+  },
+  "history_removeLimit": {
+    "message": "今回削除する件数"
+  },
+  "history_removeLimitTitle": {
+    "message": "マウスホイールでも増減できます"
+  },
+  "history_runRemoval": {
+    "message": "削除を実行"
+  },
+  "history_removeAllTitle": {
+    "message": "上の一覧に出ている視聴済みの動画をすべて削除する。取り消せません"
+  },
+  "history_bulkRemoveTitle": {
+    "message": "照合で見つかった視聴済みの動画を一覧で確認してから、まとめて削除する。取り消せない"
+  },
+  "history_bulkRemove": {
+    "message": "まとめて削除"
+  },
+  "history_maintenance": {
+    "message": "データ管理・一括処理"
+  },
+  "history_complete": {
+    "message": "補完"
+  },
+  "history_skipCheckedTitle": {
+    "message": "一度調べた動画をしばらく再取得しない。何か補完できた動画は30日、概要欄に情報が無くて空のままだった動画は180日→360日→720日と間隔が延びる（同じ概要欄を読み直しても埋まらないため）。外すと、空きのある動画を間隔に関係なく全部取り直す"
+  },
+  "history_skipChecked": {
+    "message": "チェック済みスキップ"
+  },
+  "history_includeGeneralTitle": {
+    "message": "非Topicチャンネル（MV・公式配信など）も対象にする。ラベル付き行のみ採用"
+  },
+  "history_includeGeneral": {
+    "message": "一般も含める"
+  },
+  "history_channelOrder": {
+    "message": "チャンネル順"
+  },
+  "history_titleOrder": {
+    "message": "タイトル順"
+  },
+  "history_filter": {
+    "message": "絞り込み"
+  },
+  "history_noChannelTitle": {
+    "message": "チャンネル名が未記録の動画だけ表示"
+  },
+  "history_noChannel": {
+    "message": "チャンネル名なし"
+  },
+  "history_watchLater": {
+    "message": "後で見る"
+  },
+  "history_removeOneTitle": {
+    "message": "照合で見つかった先頭の1件だけを後で見るから削除する。取り消せない"
+  },
+  "history_removeOne": {
+    "message": "1件だけ削除"
+  },
+  "history_countUnit": {
+    "message": "件"
+  },
+  "history_searchPlaceholder": {
+    "message": "タイトル・チャンネル名で検索"
+  },
+  "history_analyzeTitle": {
+    "message": "音楽傾向分析"
+  },
+  "history_analyze": {
+    "message": "傾向を分析"
+  },
+  "history_sortOrder": {
+    "message": "並び順"
+  },
+  "history_newest": {
+    "message": "新しい順"
+  },
+  "history_oldest": {
+    "message": "古い順"
+  },
+  "history_playCount": {
+    "message": "再生回数順"
+  },
   "popup_recordedCountLabel": {
     "message": "件の視聴済み動画を記録済み"
   },

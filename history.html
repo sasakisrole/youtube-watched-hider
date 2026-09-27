@@ -1173,37 +1173,37 @@
   <div class="header">
     <h1>YT Watched History</h1>
     <div class="header-right">
-      <span class="stats-badge"><strong id="totalCount">-</strong> 件<span class="stats-of" id="totalCountOf"></span></span>
+      <span class="stats-badge"><strong id="totalCount">-</strong> <span data-i18n="history_countUnit">件</span><span class="stats-of" id="totalCountOf"></span></span>
     </div>
   </div>
 
   <div class="toolbar">
     <!-- Row 1: 探す + ビュー切替 -->
     <div class="toolbar-row">
-      <input type="text" class="search-box" id="search" placeholder="タイトル・チャンネル名で検索">
-      <button class="sort-btn" id="toggleAnalyze" title="音楽傾向分析">傾向を分析</button>
+      <input type="text" class="search-box" id="search" data-i18n-placeholder="history_searchPlaceholder" placeholder="タイトル・チャンネル名で検索">
+      <button class="sort-btn" id="toggleAnalyze" data-i18n-title="history_analyzeTitle" title="音楽傾向分析" data-i18n="history_analyze">傾向を分析</button>
     </div>
 
     <!-- Row 2: 並べる・絞る -->
     <div class="toolbar-row">
-      <span class="toolbar-label">並び順</span>
-      <div class="btn-group" role="group" aria-label="並び順">
-        <button class="sort-btn active" data-sort="date-desc">新しい順</button>
-        <button class="sort-btn" data-sort="date-asc">古い順</button>
-        <button class="sort-btn" data-sort="count-desc">再生回数順</button>
-        <button class="sort-btn" data-sort="channel">チャンネル順</button>
-        <button class="sort-btn" data-sort="title">タイトル順</button>
+      <span class="toolbar-label" data-i18n="history_sortOrder">並び順</span>
+      <div class="btn-group" role="group" data-i18n-aria-label="history_sortOrder" aria-label="並び順">
+        <button class="sort-btn active" data-sort="date-desc" data-i18n="history_newest">新しい順</button>
+        <button class="sort-btn" data-sort="date-asc" data-i18n="history_oldest">古い順</button>
+        <button class="sort-btn" data-sort="count-desc" data-i18n="history_playCount">再生回数順</button>
+        <button class="sort-btn" data-sort="channel" data-i18n="history_channelOrder">チャンネル順</button>
+        <button class="sort-btn" data-sort="title" data-i18n="history_titleOrder">タイトル順</button>
       </div>
-      <span class="toolbar-label" style="margin-left:8px;">絞り込み</span>
-      <button class="sort-btn" id="filterNoChannel" title="チャンネル名が未記録の動画だけ表示">チャンネル名なし</button>
+      <span class="toolbar-label" style="margin-left:8px;" data-i18n="history_filter">絞り込み</span>
+      <button class="sort-btn" id="filterNoChannel" data-i18n-title="history_noChannelTitle" title="チャンネル名が未記録の動画だけ表示" data-i18n="history_noChannel">チャンネル名なし</button>
     </div>
 
     <!-- Row 3: 後で見る。よく使うので折り畳みの外に置く（対象一覧は中央のダイアログで出す） -->
     <div class="toolbar-row">
-      <span class="toolbar-label">後で見る</span>
+      <span class="toolbar-label" data-i18n="history_watchLater">後で見る</span>
       <button class="sort-btn" id="scanWatchLater" title="後で見るの全件を取得し、視聴済みデータベースと一致する件数を数える。削除はしない">照合</button>
-      <button class="sort-btn" id="removeOneWatchLater" title="照合で見つかった先頭の1件だけを後で見るから削除する。取り消せない" disabled>1件だけ削除</button>
-      <button class="sort-btn" id="bulkRemoveWatchLater" title="照合で見つかった視聴済みの動画を一覧で確認してから、まとめて削除する。取り消せない" disabled>まとめて削除</button>
+      <button class="sort-btn" id="removeOneWatchLater" data-i18n-title="history_removeOneTitle" title="照合で見つかった先頭の1件だけを後で見るから削除する。取り消せない" disabled data-i18n="history_removeOne">1件だけ削除</button>
+      <button class="sort-btn" id="bulkRemoveWatchLater" data-i18n-title="history_bulkRemoveTitle" title="照合で見つかった視聴済みの動画を一覧で確認してから、まとめて削除する。取り消せない" disabled data-i18n="history_bulkRemove">まとめて削除</button>
     </div>
 
     <!-- クレジット確認センターの入口は外した（2026-09-02）。実データでは意味を持つ
@@ -1215,7 +1215,7 @@
     <div class="toolbar-row maint-bar">
       <button class="maint-toggle" id="maintToggle" type="button" aria-expanded="false" aria-controls="maintPanel">
         <svg class="icon chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
-        <span>データ管理・一括処理</span>
+        <span data-i18n="history_maintenance">データ管理・一括処理</span>
       </button>
       <div class="maint-job-summary">
         <span id="fixStatus" role="status" aria-live="polite"></span>
@@ -1226,7 +1226,7 @@
     <!-- Row 5: メンテナンス本体（既定は折り畳み・実行中は開いたまま固定） -->
     <div class="toolbar-row maint" id="maintPanel" hidden>
       <div class="maint-group">
-        <span class="toolbar-label">補完</span>
+        <span class="toolbar-label" data-i18n="history_complete">補完</span>
         <button class="sort-btn" id="fixChannels" title="oEmbed APIでチャンネル名を補正（未記録のみ）">チャンネル名を補完</button>
         <button class="sort-btn" id="fixChannelsForce" title="oEmbed APIでチャンネル名を上書き補正（表示中の全件）">チャンネル名を再取得</button>
         <button class="sort-btn" id="fixCredits" title="動画の作曲・作詞・編曲を概要欄から補完（ラベル行のみ採用）">概要欄からクレジット補完</button>
@@ -1235,20 +1235,20 @@
           <span>クレジット補完（外部DB）</span>
         </button>
         <button class="sort-btn" id="fixDurations" title="動画時間をwatchページから補完（ライブは-1として記録）">動画の長さを補完</button>
-        <label class="chk" title="一度調べた動画をしばらく再取得しない。何か補完できた動画は30日、概要欄に情報が無くて空のままだった動画は180日→360日→720日と間隔が延びる（同じ概要欄を読み直しても埋まらないため）。外すと、空きのある動画を間隔に関係なく全部取り直す"><input type="checkbox" id="skipCreditsChecked" checked>チェック済みスキップ</label>
-        <label class="chk" title="非Topicチャンネル（MV・公式配信など）も対象にする。ラベル付き行のみ採用"><input type="checkbox" id="includeGeneralCredits">一般も含める</label>
+        <label class="chk" data-i18n-title="history_skipCheckedTitle" title="一度調べた動画をしばらく再取得しない。何か補完できた動画は30日、概要欄に情報が無くて空のままだった動画は180日→360日→720日と間隔が延びる（同じ概要欄を読み直しても埋まらないため）。外すと、空きのある動画を間隔に関係なく全部取り直す"><input type="checkbox" id="skipCreditsChecked" checked><span data-i18n="history_skipChecked">チェック済みスキップ</span></label>
+        <label class="chk" data-i18n-title="history_includeGeneralTitle" title="非Topicチャンネル（MV・公式配信など）も対象にする。ラベル付き行のみ採用"><input type="checkbox" id="includeGeneralCredits"><span data-i18n="history_includeGeneral">一般も含める</span></label>
       </div>
       <div class="maint-group">
-        <span class="toolbar-label" id="jobRecentLabel">最近の処理</span>
+        <span class="toolbar-label" id="jobRecentLabel" data-i18n="history_recentJobs">最近の処理</span>
         <ol id="jobRecentList" aria-labelledby="jobRecentLabel"></ol>
       </div>
       <div class="maint-group">
         <button class="maint-toggle" id="repairToggle" type="button" aria-expanded="false" aria-controls="repairPanel">
           <svg class="icon chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
-          <span>データ修復</span>
+          <span data-i18n="history_repair">データ修復</span>
         </button>
         <div id="repairPanel" class="repair-panel" hidden>
-          <p>保存済みのクレジットのうち人名でない値を空欄へ戻し、補完対象に復帰させます。元の値は記録に残り、元に戻せます。</p>
+          <p data-i18n="history_repairNote">保存済みのクレジットのうち人名でない値を空欄へ戻し、補完対象に復帰させます。元の値は記録に残り、元に戻せます。</p>
           <div class="repair-actions">
             <button class="sort-btn" id="repairCredits" title="保存済みの作曲・作詞・編曲のうち、URL・権利表示・説明文の切れ端など人名でない値を空欄へ戻し、補完対象に復帰させる。元の値は記録に残す">クレジットの不正値を修復</button>
             <button class="sort-btn" id="restoreCredits" title="修復で空欄にしたクレジットを記録から元に戻す。現在値が入っている役割は上書きしない">修復を元に戻す</button>
@@ -1261,15 +1261,15 @@
 
   <div class="wl-panel" id="wlPanel" hidden aria-hidden="true">
     <section class="wl-dialog" role="dialog" aria-modal="true" aria-labelledby="wlPanelTitle">
-      <h2 id="wlPanelTitle">まとめて削除する動画</h2>
+      <h2 id="wlPanelTitle" data-i18n="history_bulkDialogTitle">まとめて削除する動画</h2>
       <p class="wl-note" id="wlPanelNote"></p>
       <ul class="wl-list" id="wlPanelList"></ul>
       <div class="wl-actions">
-        <label for="wlPanelLimit">今回削除する件数</label>
-        <input type="number" id="wlPanelLimit" min="1" step="1" value="5" title="マウスホイールでも増減できます">
-        <button class="sort-btn wl-danger" id="wlPanelRun" type="button">削除を実行</button>
-        <button class="sort-btn wl-danger" id="wlPanelRunAll" type="button" title="上の一覧に出ている視聴済みの動画をすべて削除する。取り消せません">全件を削除</button>
-        <button class="sort-btn" id="wlPanelCancel" type="button">やめる</button>
+        <label for="wlPanelLimit" data-i18n="history_removeLimit">今回削除する件数</label>
+        <input type="number" id="wlPanelLimit" min="1" step="1" value="5" data-i18n-title="history_removeLimitTitle" title="マウスホイールでも増減できます">
+        <button class="sort-btn wl-danger" id="wlPanelRun" type="button" data-i18n="history_runRemoval">削除を実行</button>
+        <button class="sort-btn wl-danger" id="wlPanelRunAll" type="button" data-i18n-title="history_removeAllTitle" title="上の一覧に出ている視聴済みの動画をすべて削除する。取り消せません">全件を削除</button>
+        <button class="sort-btn" id="wlPanelCancel" type="button" data-i18n="history_cancelRemoval">やめる</button>
         <span id="wlPanelStatus" role="status" aria-live="polite"></span>
       </div>
     </section>
@@ -1279,18 +1279,18 @@
     <section class="credit-review-dialog" role="dialog" aria-modal="true" aria-labelledby="creditReviewTitle" aria-describedby="creditReviewNote">
       <div class="credit-review-header">
         <div class="credit-review-heading">
-          <h2 id="creditReviewTitle">クレジット確認センター</h2>
-          <p class="credit-review-note" id="creditReviewNote">動画ごとの作曲・作詞・編曲を、現在値と候補を並べて確認し、役割ごとに1件ずつ採用できます。</p>
+          <h2 id="creditReviewTitle" data-i18n="history_reviewTitle">クレジット確認センター</h2>
+          <p class="credit-review-note" id="creditReviewNote" data-i18n="history_reviewNote">動画ごとの作曲・作詞・編曲を、現在値と候補を並べて確認し、役割ごとに1件ずつ採用できます。</p>
         </div>
-        <button class="sort-btn credit-review-close" id="creditReviewClose" type="button" aria-label="クレジット確認センターを閉じる">閉じる</button>
+        <button class="sort-btn credit-review-close" id="creditReviewClose" type="button" data-i18n-aria-label="history_reviewCloseLabel" aria-label="クレジット確認センターを閉じる" data-i18n="history_close">閉じる</button>
       </div>
-      <div class="credit-review-filters" id="creditReviewFilters" role="group" aria-label="確認状態で絞り込み">
-        <button class="sort-btn credit-review-filter active" type="button" data-credit-review-state="all" aria-pressed="true">すべて <span data-credit-review-count="all">0</span></button>
-        <button class="sort-btn credit-review-filter" type="button" data-credit-review-state="conflict" aria-pressed="false">競合 <span data-credit-review-count="conflict">0</span></button>
-        <button class="sort-btn credit-review-filter" type="button" data-credit-review-state="needs_review" aria-pressed="false">要確認 <span data-credit-review-count="needs_review">0</span></button>
-        <button class="sort-btn credit-review-filter" type="button" data-credit-review-state="auto_candidate" aria-pressed="false">自動候補 <span data-credit-review-count="auto_candidate">0</span></button>
-        <button class="sort-btn credit-review-filter" type="button" data-credit-review-state="unresolved" aria-pressed="false">未解決 <span data-credit-review-count="unresolved">0</span></button>
-        <button class="sort-btn credit-review-filter" type="button" data-credit-review-state="verified" aria-pressed="false">確認済み <span data-credit-review-count="verified">0</span></button>
+      <div class="credit-review-filters" id="creditReviewFilters" role="group" data-i18n-aria-label="history_reviewFilterLabel" aria-label="確認状態で絞り込み">
+        <button class="sort-btn credit-review-filter active" type="button" data-credit-review-state="all" aria-pressed="true"><span data-i18n="history_all">すべて</span> <span data-credit-review-count="all">0</span></button>
+        <button class="sort-btn credit-review-filter" type="button" data-credit-review-state="conflict" aria-pressed="false"><span data-i18n="history_conflict">競合</span> <span data-credit-review-count="conflict">0</span></button>
+        <button class="sort-btn credit-review-filter" type="button" data-credit-review-state="needs_review" aria-pressed="false"><span data-i18n="history_needsReview">要確認</span> <span data-credit-review-count="needs_review">0</span></button>
+        <button class="sort-btn credit-review-filter" type="button" data-credit-review-state="auto_candidate" aria-pressed="false"><span data-i18n="history_autoCandidate">自動候補</span> <span data-credit-review-count="auto_candidate">0</span></button>
+        <button class="sort-btn credit-review-filter" type="button" data-credit-review-state="unresolved" aria-pressed="false"><span data-i18n="history_unresolved">未解決</span> <span data-credit-review-count="unresolved">0</span></button>
+        <button class="sort-btn credit-review-filter" type="button" data-credit-review-state="verified" aria-pressed="false"><span data-i18n="history_verified">確認済み</span> <span data-credit-review-count="verified">0</span></button>
       </div>
       <p class="credit-review-summary" id="creditReviewSummary" role="status" aria-live="polite"></p>
       <div class="credit-review-feedback" id="creditReviewFeedback" role="status" aria-live="polite" hidden></div>
@@ -1303,72 +1303,72 @@
     <div class="enrich-dialog" role="dialog" aria-modal="true" aria-labelledby="enrichTitle">
       <div class="enrich-header">
         <div class="enrich-title">
-          <h2 id="enrichTitle">クレジット補完（外部DB）</h2>
+          <h2 id="enrichTitle" data-i18n="history_enrichTitle">クレジット補完（外部DB）</h2>
           <p id="enrichSubtitle">未割当 creditsRaw を固定ルール、MusicBrainz の順に照合します。</p>
         </div>
-        <button class="enrich-icon-btn" id="enrichClose" type="button" aria-label="閉じる" title="閉じる">
+        <button class="enrich-icon-btn" id="enrichClose" type="button" data-i18n-aria-label="history_close" aria-label="閉じる" data-i18n-title="history_close" title="閉じる">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
         </button>
       </div>
-      <div class="enrich-view-switcher" role="tablist" aria-label="クレジット補完方法">
+      <div class="enrich-view-switcher" role="tablist" data-i18n-aria-label="history_enrichMethod" aria-label="クレジット補完方法">
         <button class="enrich-view-tab active" id="enrichAutoViewTab" type="button" role="tab" aria-selected="true" aria-controls="enrichAutoView">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16"></path><path d="M4 12h10"></path><path d="M4 18h7"></path><path d="m17 15 3 3-3 3"></path></svg>
-          <span>自動候補</span>
+          <span data-i18n="history_autoCandidate">自動候補</span>
         </button>
         <button class="enrich-view-tab" id="enrichManualViewTab" type="button" role="tab" aria-selected="false" aria-controls="enrichManualView" tabindex="-1">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"></path></svg>
-          <span>手動確認</span>
+          <span data-i18n="history_manualReview">手動確認</span>
         </button>
       </div>
       <div class="enrich-view-panel enrich-auto-view" id="enrichAutoView" role="tabpanel" aria-labelledby="enrichAutoViewTab">
       <div class="enrich-controls">
         <button class="sort-btn enrich-primary enrich-btn" id="enrichGenerate" type="button">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"></path><path d="M17 8H7"></path><path d="M19 14H5"></path></svg>
-          <span>候補生成</span>
+          <span data-i18n="history_generate">候補生成</span>
         </button>
-        <button class="sort-btn" id="enrichAbort" type="button" disabled>中止</button>
+        <button class="sort-btn" id="enrichAbort" type="button" disabled data-i18n="history_abort">中止</button>
         <span class="enrich-progress-text" id="enrichProgress">待機中</span>
       </div>
       <div class="enrich-progress-track" aria-hidden="true"><div class="enrich-progress-bar" id="enrichProgressBar"></div></div>
       <div class="enrich-message" id="enrichMessage">候補生成を開始してください。</div>
-      <div class="enrich-tabs" id="enrichTabs" role="tablist" aria-label="補完候補チャンネル"></div>
+      <div class="enrich-tabs" id="enrichTabs" role="tablist" data-i18n-aria-label="history_candidateChannels" aria-label="補完候補チャンネル"></div>
       <div class="enrich-main">
         <div class="enrich-table-wrap" id="enrichTableWrap">
           <table class="enrich-table">
             <thead>
               <tr>
-                <th style="width:42px;">選択</th>
-                <th data-enrich-sort="title">動画タイトル</th>
-                <th style="width:260px;" data-enrich-sort="value">補完値</th>
+                <th style="width:42px;" data-i18n="history_select">選択</th>
+                <th data-enrich-sort="title" data-i18n="history_videoTitle">動画タイトル</th>
+                <th style="width:260px;" data-enrich-sort="value" data-i18n="history_suggestedValue">補完値</th>
                 <th style="width:100px;" data-enrich-sort="role">role</th>
                 <th style="width:86px;" data-enrich-sort="source">source</th>
                 <th style="width:70px;" data-enrich-sort="sim">sim</th>
-                <th style="width:64px;">却下</th>
+                <th style="width:64px;" data-i18n="history_reject">却下</th>
               </tr>
             </thead>
             <tbody id="enrichCandidateBody"></tbody>
           </table>
-          <div class="enrich-empty" id="enrichEmpty">候補はまだありません。</div>
+          <div class="enrich-empty" id="enrichEmpty" data-i18n="history_noCandidates">候補はまだありません。</div>
         </div>
       </div>
       <div class="enrich-footer">
         <span class="enrich-total" id="enrichTotal">確定予定 0件 / 候補 0件</span>
-        <button class="sort-btn" id="enrichDownloadPlan" type="button" disabled>確定JSON保存</button>
-        <button class="sort-btn" id="enrichCancel" type="button">キャンセル</button>
-        <button class="sort-btn enrich-primary" id="enrichCommit" type="button" disabled>選択を確定して書き戻し</button>
+        <button class="sort-btn" id="enrichDownloadPlan" type="button" disabled data-i18n="history_downloadPlan">確定JSON保存</button>
+        <button class="sort-btn" id="enrichCancel" type="button" data-i18n="history_cancel">キャンセル</button>
+        <button class="sort-btn enrich-primary" id="enrichCommit" type="button" disabled data-i18n="history_commitSelection">選択を確定して書き戻し</button>
       </div>
       </div>
       <section class="enrich-view-panel enrich-manual-view" id="enrichManualView" role="tabpanel" aria-labelledby="enrichManualViewTab" hidden>
         <div class="manual-review-toolbar">
           <div class="manual-search-field">
-            <label for="enrichManualSearch">動画を検索</label>
-            <input id="enrichManualSearch" type="search" autocomplete="off" placeholder="タイトル・チャンネル・videoId">
+            <label for="enrichManualSearch" data-i18n="history_searchVideos">動画を検索</label>
+            <input id="enrichManualSearch" type="search" autocomplete="off" data-i18n-placeholder="history_manualSearchPlaceholder" placeholder="タイトル・チャンネル・videoId">
           </div>
           <span class="manual-review-count" id="enrichManualCount">対象 0件 / 不足 0役割</span>
         </div>
         <p class="manual-review-note" id="enrichManualStatus" role="status" aria-live="polite">検索語のコピーはクリップボードだけを使用します。</p>
         <div class="manual-review-list" id="enrichManualList"></div>
-        <div class="enrich-empty manual-review-empty" id="enrichManualEmpty">手動確認の対象はありません。</div>
+        <div class="enrich-empty manual-review-empty" id="enrichManualEmpty" data-i18n="history_noManualTargets">手動確認の対象はありません。</div>
       </section>
     </div>
   </div>
@@ -1500,12 +1500,12 @@
 
   <button class="back-to-top" id="backToTop" type="button" hidden>
     <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"></path></svg>
-    <span>先頭へ戻る</span>
+    <span data-i18n="history_backToTop">先頭へ戻る</span>
   </button>
 
   <div class="undo-toast" id="undoToast" role="status" aria-live="polite" hidden>
     <span id="undoToastText"></span>
-    <button class="undo-toast-btn" id="undoToastBtn" type="button">元に戻す</button>
+    <button class="undo-toast-btn" id="undoToastBtn" type="button" data-i18n="history_undo">元に戻す</button>
   </div>
 
   <script src="chart.umd.min.js"></script>

@@ -1,3 +1,19 @@
+// Static history localization: keep the HTML fallback when a key is unavailable.
+function applyStaticHistoryI18n() {
+  if (typeof chrome === 'undefined' || !chrome.i18n?.getMessage) return;
+  for (const target of ['', 'placeholder', 'title', 'aria-label']) {
+    const attribute = target ? 'data-i18n-' + target : 'data-i18n';
+    for (const element of document.querySelectorAll('[' + attribute + ']')) {
+      const message = chrome.i18n.getMessage(element.getAttribute(attribute));
+      if (!message) continue;
+      if (target) element.setAttribute(target, message);
+      else element.textContent = element.textContent.replace(/\S(?:[\s\S]*\S)?/, () => message);
+    }
+  }
+}
+applyStaticHistoryI18n();
+// End static history localization
+
 // History viewer script for YouTube Watched Hider
 // Separated from history.html for Manifest V3 CSP compliance
 // Uses incremental rendering to avoid UI freeze with large datasets
