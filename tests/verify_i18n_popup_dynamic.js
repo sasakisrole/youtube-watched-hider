@@ -28,9 +28,13 @@ function boot(locale, language = 'en-US') {
     getUILanguage: () => language,
     getMessage(key, values = []) {
       calls.push({ key, values });
-      const expected = Math.max(0, ...[...(locale[key]?.message || '').matchAll(/\$(\d+)/g)].map(m => Number(m[1])));
-      if (locale[key]) assert.strictEqual(values.length, expected, `argument count: ${key}`);
-      return (locale[key]?.message || '').replace(/\$(\d+)/g, (_, n) => String(values[n - 1]));
+      // Expand named placeholders first, as Chrome does, then count positional substitutions.
+      const entry = locale[key];
+      const placeholders = Object.fromEntries(Object.entries(entry?.placeholders || {}).map(([n, v]) => [n.toLowerCase(), v.content]));
+      const message = (entry?.message || '').replace(/\$([A-Za-z0-9_@]+)\$/g, (m, n) => placeholders[n.toLowerCase()] ?? m);
+      const expected = Math.max(0, ...[...message.matchAll(/\$(\d+)/g)].map(m => Number(m[1])));
+      if (entry) assert.strictEqual(values.length, expected, `argument count: ${key}`);
+      return message.replace(/\$(\d+)/g, (_, n) => String(values[n - 1]));
     },
   };
   vm.createContext(context);

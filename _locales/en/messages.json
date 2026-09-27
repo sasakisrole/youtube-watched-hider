@@ -273,7 +273,24 @@
     "message": "$1 (partial success)"
   },
   "popupDynamicImportResult": {
-    "message": "$1: $2 records$3$4$5"
+    "message": "$p1$: $p2$ records$p3$$p4$$p5$",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      },
+      "p2": {
+        "content": "$2"
+      },
+      "p3": {
+        "content": "$3"
+      },
+      "p4": {
+        "content": "$4"
+      },
+      "p5": {
+        "content": "$5"
+      }
+    }
   },
   "popupDynamicMergeLikedFailed": {
     "message": ", failed to restore likes"
@@ -285,7 +302,24 @@
     "message": "Invalid likes account information format"
   },
   "popupDynamicMergeResult": {
-    "message": "$1 New: $2 / Existing: $3$4$5"
+    "message": "$p1$ New: $p2$ / Existing: $p3$$p4$$p5$",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      },
+      "p2": {
+        "content": "$2"
+      },
+      "p3": {
+        "content": "$3"
+      },
+      "p4": {
+        "content": "$4"
+      },
+      "p5": {
+        "content": "$5"
+      }
+    }
   },
   "popupDynamicBackupAbortImport": {
     "message": "Stopped because the backup failed (data has not been changed)"
@@ -429,7 +463,18 @@
     "message": " · idle $1/6"
   },
   "content_harvestRunning": {
-    "message": "Running · +$1 / $2$3"
+    "message": "Running · +$p1$ / $p2$$p3$",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      },
+      "p2": {
+        "content": "$2"
+      },
+      "p3": {
+        "content": "$3"
+      }
+    }
   },
   "content_harvestCounts": {
     "message": "+$1 / $2"
@@ -849,7 +894,21 @@
     "message": " / Evidence: $1"
   },
   "officialRegistrationTarget": {
-    "message": "Register: ID: $1 / path: $2 / Name: $3$4"
+    "message": "Register: ID: $p1$ / path: $p2$ / Name: $p3$$p4$",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      },
+      "p2": {
+        "content": "$2"
+      },
+      "p3": {
+        "content": "$3"
+      },
+      "p4": {
+        "content": "$4"
+      }
+    }
   },
   "officialNormalizedQuery": {
     "message": "Current normalized query: $1"

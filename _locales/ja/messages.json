@@ -273,7 +273,24 @@
     "message": "$1（一部成功）"
   },
   "popupDynamicImportResult": {
-    "message": "$1: $2件$3$4$5"
+    "message": "$p1$: $p2$件$p3$$p4$$p5$",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      },
+      "p2": {
+        "content": "$2"
+      },
+      "p3": {
+        "content": "$3"
+      },
+      "p4": {
+        "content": "$4"
+      },
+      "p5": {
+        "content": "$5"
+      }
+    }
   },
   "popupDynamicMergeLikedFailed": {
     "message": ", 高評価の復元に失敗"
@@ -285,7 +302,24 @@
     "message": "高評価アカウント情報の形式が不正"
   },
   "popupDynamicMergeResult": {
-    "message": "$1 新規 $2件 / 既存 $3件$4$5"
+    "message": "$p1$ 新規 $p2$件 / 既存 $p3$件$p4$$p5$",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      },
+      "p2": {
+        "content": "$2"
+      },
+      "p3": {
+        "content": "$3"
+      },
+      "p4": {
+        "content": "$4"
+      },
+      "p5": {
+        "content": "$5"
+      }
+    }
   },
   "popupDynamicBackupAbortImport": {
     "message": "バックアップに失敗したため中止しました（データは変更していません）"
@@ -429,7 +463,18 @@
     "message": " · idle $1/6"
   },
   "content_harvestRunning": {
-    "message": "Running · +$1 / $2$3"
+    "message": "Running · +$p1$ / $p2$$p3$",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      },
+      "p2": {
+        "content": "$2"
+      },
+      "p3": {
+        "content": "$3"
+      }
+    }
   },
   "content_harvestCounts": {
     "message": "+$1 / $2"
@@ -849,7 +894,21 @@
     "message": " / 根拠: $1"
   },
   "officialRegistrationTarget": {
-    "message": "登録対象: ID: $1 / path: $2 / 名前: $3$4"
+    "message": "登録対象: ID: $p1$ / path: $p2$ / 名前: $p3$$p4$",
+    "placeholders": {
+      "p1": {
+        "content": "$1"
+      },
+      "p2": {
+        "content": "$2"
+      },
+      "p3": {
+        "content": "$3"
+      },
+      "p4": {
+        "content": "$4"
+      }
+    }
   },
   "officialNormalizedQuery": {
     "message": "現在の正規化検索語: $1"
