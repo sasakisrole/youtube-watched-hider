@@ -1807,5 +1807,227 @@
   "extensionDescription": {
     "message": "Hide videos you've already watched from YouTube recommendations, search results, and related videos",
     "description": "Chrome Web Store / extensions page summary (max 132 chars)"
+  },
+  "history_wlScanHint": {
+    "message": "Fetch all Watch Later videos and count matches in your watched database. Nothing is deleted."
+  },
+  "history_fillChannelsHint": {
+    "message": "Fill in missing channel names using the oEmbed API"
+  },
+  "history_refetchChannelsHint": {
+    "message": "Overwrite channel names for all displayed videos using the oEmbed API"
+  },
+  "history_fillCreditsHint": {
+    "message": "Fill composer, lyricist, and arranger credits from labeled lines in video descriptions"
+  },
+  "history_externalCreditsHint": {
+    "message": "Match unassigned creditsRaw against external databases"
+  },
+  "history_fillDurationsHint": {
+    "message": "Fetch video lengths from watch pages (live streams are recorded as -1)"
+  },
+  "history_repairCreditsHint": {
+    "message": "Clear saved composer, lyricist, and arranger values that are not names, such as URLs, rights notices, or description fragments, so they can be filled again. Original values are kept in the repair log."
+  },
+  "history_restoreCreditsHint": {
+    "message": "Restore credits cleared by a repair from the log. Roles that already have values are not overwritten."
+  },
+  "history_deleteAll": {
+    "message": "Delete all"
+  },
+  "history_noMatches": {
+    "message": "No matches"
+  },
+  "history_enrichSubtitle": {
+    "message": "Match unassigned creditsRaw using fixed rules first, then MusicBrainz."
+  },
+  "history_waiting": {
+    "message": "Idle"
+  },
+  "history_enrichStartHint": {
+    "message": "Start generating candidates."
+  },
+  "history_enrichInitialTotal": {
+    "message": "To confirm: 0 / Candidates: 0"
+  },
+  "history_manualInitialCount": {
+    "message": "Videos: 0 / Missing roles: 0"
+  },
+  "history_manualClipboardNote": {
+    "message": "Copying search terms uses only the clipboard."
+  },
+  "history_totalWatched": {
+    "message": "Total watched"
+  },
+  "history_channels": {
+    "message": "Channels"
+  },
+  "history_topicArtists": {
+    "message": "Artists (Topic)"
+  },
+  "history_musicPlays": {
+    "message": "Music plays"
+  },
+  "history_artists": {
+    "message": "Artists"
+  },
+  "history_allChannels": {
+    "message": "All channels"
+  },
+  "history_keywords": {
+    "message": "Keywords"
+  },
+  "history_credits": {
+    "message": "Credits"
+  },
+  "history_likedVideos": {
+    "message": "Liked videos"
+  },
+  "history_trends": {
+    "message": "Trends"
+  },
+  "history_claudePrompt": {
+    "message": "Claude recommendation prompt"
+  },
+  "history_officialProfiles": {
+    "message": "Official profiles"
+  },
+  "history_artistFilterPlaceholder": {
+    "message": "Filter by artist name"
+  },
+  "history_topicOnly": {
+    "message": "Topic channels only"
+  },
+  "history_videoCountHint": {
+    "message": "Number of videos. Each video counts once, regardless of how often you watch it (playCount is not included)."
+  },
+  "history_videoCount": {
+    "message": "Videos"
+  },
+  "history_links": {
+    "message": "Links"
+  },
+  "history_officialCandidates": {
+    "message": "Official profile candidates"
+  },
+  "history_officialCandidatesNote": {
+    "message": "Candidates are based on the Topic label or credit ratios. A name alone does not confirm an official channel. Nothing is saved until you check the linked channel."
+  },
+  "history_verifiedChannelUrl": {
+    "message": "Verified channel URL"
+  },
+  "history_openCandidateChannel": {
+    "message": "Open candidate channel"
+  },
+  "history_openCandidateVideo": {
+    "message": "Open source video"
+  },
+  "history_officialConfirmed": {
+    "message": "I confirmed that the linked channel is this artist's official channel or Topic channel"
+  },
+  "history_bindCandidateQuery": {
+    "message": "Also link this candidate's search term"
+  },
+  "history_saveProfileChannel": {
+    "message": "Save profile and channel"
+  },
+  "history_channelFilterPlaceholder": {
+    "message": "Filter by channel name"
+  },
+  "history_videoCountSortHint": {
+    "message": "Number of videos. Each video counts once, regardless of how often you watch it (playCount is not included). Click to sort by video count."
+  },
+  "history_durationSortHint": {
+    "message": "lengthSeconds is the video length, not actual watch time (partial views, playback speed, and repeats are not reflected). Each video's length is added once. Click to sort by total duration."
+  },
+  "history_totalDuration": {
+    "message": "Total duration"
+  },
+  "history_topicKeywordsNote": {
+    "message": "Common words in song titles from Topic channels"
+  },
+  "history_unassignedHint": {
+    "message": "Unknown roles: names from Topic credits separated by a middle dot. Credits with known roles are not shown here."
+  },
+  "history_includeGeneralHint": {
+    "message": "Include credits from non-Topic channels"
+  },
+  "history_nameFilterPlaceholder": {
+    "message": "Filter by name"
+  },
+  "history_name": {
+    "message": "Name"
+  },
+  "history_selfArrangedHint": {
+    "message": "Songs where the composer and arranger are the same person (composer and arranger tabs only)"
+  },
+  "history_selfArranged": {
+    "message": "Self-arranged songs"
+  },
+  "history_syncLiked": {
+    "message": "Sync Liked videos"
+  },
+  "history_likedVideoCount": {
+    "message": "Liked videos"
+  },
+  "history_likedArtistCount": {
+    "message": "Liked artists"
+  },
+  "history_likedSyncNote": {
+    "message": "Keep a YouTube tab open while syncing. Continuation tokens retrieve older likes (up to 5,000 videos across 50 pages)."
+  },
+  "history_artistChannel": {
+    "message": "Artist / Channel"
+  },
+  "history_likes": {
+    "message": "Likes"
+  },
+  "history_allTime": {
+    "message": "All time"
+  },
+  "history_newThisMonth": {
+    "message": "New this month"
+  },
+  "history_todayNewRewatched": {
+    "message": "Today (new / rewatched)"
+  },
+  "history_period": {
+    "message": "Period"
+  },
+  "history_days30": {
+    "message": "30 days"
+  },
+  "history_days90": {
+    "message": "90 days"
+  },
+  "history_year1": {
+    "message": "1 year"
+  },
+  "history_allDates": {
+    "message": "All time"
+  },
+  "history_totalWatchedTrend": {
+    "message": "Total watched over time"
+  },
+  "history_dailyNewVideos": {
+    "message": "New videos watched per day"
+  },
+  "history_clipOutliersHint": {
+    "message": "Cap outliers, such as bulk imports, so other days remain visible. Actual counts appear above the bars."
+  },
+  "history_clipOutliers": {
+    "message": "Compress outliers"
+  },
+  "history_dailyBasisPrefix": {
+    "message": "Daily counts use"
+  },
+  "history_dailyBasisSuffix": {
+    "message": "(first watch date). Rewatch dates are not stored in the database, so only cumulative totals and daily new videos are shown."
+  },
+  "history_claudePromptNote": {
+    "message": "Paste into Claude to get recommendations for artists to listen to next"
+  },
+  "history_copyPrompt": {
+    "message": "Copy prompt"
   }
 }

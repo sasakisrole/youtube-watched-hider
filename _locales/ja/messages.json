@@ -1807,5 +1807,227 @@
   "extensionDescription": {
     "message": "YouTubeのおすすめ・検索結果・関連動画から視聴済みの動画を非表示にします",
     "description": "Chrome Web Store / extensions page summary (max 132 chars)"
+  },
+  "history_wlScanHint": {
+    "message": "後で見るの全件を取得し、視聴済みデータベースと一致する件数を数える。削除はしない"
+  },
+  "history_fillChannelsHint": {
+    "message": "oEmbed APIでチャンネル名を補正（未記録のみ）"
+  },
+  "history_refetchChannelsHint": {
+    "message": "oEmbed APIでチャンネル名を上書き補正（表示中の全件）"
+  },
+  "history_fillCreditsHint": {
+    "message": "動画の作曲・作詞・編曲を概要欄から補完（ラベル行のみ採用）"
+  },
+  "history_externalCreditsHint": {
+    "message": "未割当creditsRawを外部DB照合で補完"
+  },
+  "history_fillDurationsHint": {
+    "message": "動画時間をwatchページから補完（ライブは-1として記録）"
+  },
+  "history_repairCreditsHint": {
+    "message": "保存済みの作曲・作詞・編曲のうち、URL・権利表示・説明文の切れ端など人名でない値を空欄へ戻し、補完対象に復帰させる。元の値は記録に残す"
+  },
+  "history_restoreCreditsHint": {
+    "message": "修復で空欄にしたクレジットを記録から元に戻す。現在値が入っている役割は上書きしない"
+  },
+  "history_deleteAll": {
+    "message": "全件を削除"
+  },
+  "history_noMatches": {
+    "message": "該当なし"
+  },
+  "history_enrichSubtitle": {
+    "message": "未割当 creditsRaw を固定ルール、MusicBrainz の順に照合します。"
+  },
+  "history_waiting": {
+    "message": "待機中"
+  },
+  "history_enrichStartHint": {
+    "message": "候補生成を開始してください。"
+  },
+  "history_enrichInitialTotal": {
+    "message": "確定予定 0件 / 候補 0件"
+  },
+  "history_manualInitialCount": {
+    "message": "対象 0件 / 不足 0役割"
+  },
+  "history_manualClipboardNote": {
+    "message": "検索語のコピーはクリップボードだけを使用します。"
+  },
+  "history_totalWatched": {
+    "message": "総視聴"
+  },
+  "history_channels": {
+    "message": "チャンネル"
+  },
+  "history_topicArtists": {
+    "message": "アーティスト(Topic)"
+  },
+  "history_musicPlays": {
+    "message": "音楽再生"
+  },
+  "history_artists": {
+    "message": "アーティスト"
+  },
+  "history_allChannels": {
+    "message": "全チャンネル"
+  },
+  "history_keywords": {
+    "message": "キーワード"
+  },
+  "history_credits": {
+    "message": "クレジット"
+  },
+  "history_likedVideos": {
+    "message": "高評価"
+  },
+  "history_trends": {
+    "message": "推移"
+  },
+  "history_claudePrompt": {
+    "message": "Claude推薦プロンプト"
+  },
+  "history_officialProfiles": {
+    "message": "公式プロファイル"
+  },
+  "history_artistFilterPlaceholder": {
+    "message": "アーティスト名で絞り込み"
+  },
+  "history_topicOnly": {
+    "message": "-Topicのみ"
+  },
+  "history_videoCountHint": {
+    "message": "動画の本数です。同じ動画を何回見ても1本と数えます（playCount＝再生回数は集計していません）。"
+  },
+  "history_videoCount": {
+    "message": "本数"
+  },
+  "history_links": {
+    "message": "リンク"
+  },
+  "history_officialCandidates": {
+    "message": "公式プロファイル候補"
+  },
+  "history_officialCandidatesNote": {
+    "message": "Topic表記またはクレジット比率から候補を出します。名前だけでは公式と確定せず、リンク先を確認するまで保存しません。"
+  },
+  "history_verifiedChannelUrl": {
+    "message": "確認済みチャンネルURL"
+  },
+  "history_openCandidateChannel": {
+    "message": "候補チャンネルを開く"
+  },
+  "history_openCandidateVideo": {
+    "message": "候補元動画を開く"
+  },
+  "history_officialConfirmed": {
+    "message": "リンク先が本人の公式またはTopicチャンネルであることを確認した"
+  },
+  "history_bindCandidateQuery": {
+    "message": "この候補の検索語にも紐づける"
+  },
+  "history_saveProfileChannel": {
+    "message": "プロフィール＋チャンネルを登録"
+  },
+  "history_channelFilterPlaceholder": {
+    "message": "チャンネル名で絞り込み"
+  },
+  "history_videoCountSortHint": {
+    "message": "動画の本数です。同じ動画を何回見ても1本と数えます（playCount＝再生回数は集計していません）。クリックで本数順に並べ替え"
+  },
+  "history_durationSortHint": {
+    "message": "lengthSeconds は動画の長さです。実視聴時間ではありません（途中離脱・倍速・リピートは反映されません）。本数と同じく1本につき1回だけ足しています。クリックで合計時間順に並べ替え"
+  },
+  "history_totalDuration": {
+    "message": "合計時間"
+  },
+  "history_topicKeywordsNote": {
+    "message": "Topicチャンネル楽曲のタイトル頻出ワード"
+  },
+  "history_unassignedHint": {
+    "message": "役割不明（Topic「·」区切りで取得した名前のみ。役割が確定したものはここに出ません）"
+  },
+  "history_includeGeneralHint": {
+    "message": "非Topicチャンネルのクレジットも集計対象にする"
+  },
+  "history_nameFilterPlaceholder": {
+    "message": "名前で絞り込み"
+  },
+  "history_name": {
+    "message": "名前"
+  },
+  "history_selfArrangedHint": {
+    "message": "作曲者と編曲者が同一人物だった曲数（作曲・編曲タブのみ集計）"
+  },
+  "history_selfArranged": {
+    "message": "セルフアレンジ曲"
+  },
+  "history_syncLiked": {
+    "message": "高評価を同期"
+  },
+  "history_likedVideoCount": {
+    "message": "高評価動画数"
+  },
+  "history_likedArtistCount": {
+    "message": "高評価アーティスト数"
+  },
+  "history_likedSyncNote": {
+    "message": "※ YouTubeタブを開いた状態で同期してください。続きトークン経由で過去分（最大5000件・50ページ）まで遡ります。"
+  },
+  "history_artistChannel": {
+    "message": "アーティスト/チャンネル"
+  },
+  "history_likes": {
+    "message": "高評価数"
+  },
+  "history_allTime": {
+    "message": "累計"
+  },
+  "history_newThisMonth": {
+    "message": "今月の新規"
+  },
+  "history_todayNewRewatched": {
+    "message": "今日（新規/再視聴）"
+  },
+  "history_period": {
+    "message": "期間"
+  },
+  "history_days30": {
+    "message": "30日"
+  },
+  "history_days90": {
+    "message": "90日"
+  },
+  "history_year1": {
+    "message": "1年"
+  },
+  "history_allDates": {
+    "message": "全期間"
+  },
+  "history_totalWatchedTrend": {
+    "message": "累計総視聴数の推移"
+  },
+  "history_dailyNewVideos": {
+    "message": "日別 新規視聴数"
+  },
+  "history_clipOutliersHint": {
+    "message": "一括取り込み等の異常値で他の日が潰れる場合、上限でクリップして実数をバー上に表示します"
+  },
+  "history_clipOutliers": {
+    "message": "外れ値を圧縮"
+  },
+  "history_dailyBasisPrefix": {
+    "message": "※ 日別は"
+  },
+  "history_dailyBasisSuffix": {
+    "message": "（初回視聴日）ベース。再視聴の履歴日付はDBに残らないため、累計と日別新規のみを表示しています。"
+  },
+  "history_claudePromptNote": {
+    "message": "Claudeに貼って「次に聴くべきアーティスト」を推薦してもらう用"
+  },
+  "history_copyPrompt": {
+    "message": "プロンプトをコピー"
   }
 }

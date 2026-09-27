@@ -1201,7 +1201,7 @@
     <!-- Row 3: 後で見る。よく使うので折り畳みの外に置く（対象一覧は中央のダイアログで出す） -->
     <div class="toolbar-row">
       <span class="toolbar-label" data-i18n="history_watchLater">後で見る</span>
-      <button class="sort-btn" id="scanWatchLater" title="後で見るの全件を取得し、視聴済みデータベースと一致する件数を数える。削除はしない">照合</button>
+      <button class="sort-btn" id="scanWatchLater" data-i18n-title="history_wlScanHint" title="後で見るの全件を取得し、視聴済みデータベースと一致する件数を数える。削除はしない" data-i18n="history_wl_scan_label">照合</button>
       <button class="sort-btn" id="removeOneWatchLater" data-i18n-title="history_removeOneTitle" title="照合で見つかった先頭の1件だけを後で見るから削除する。取り消せない" disabled data-i18n="history_removeOne">1件だけ削除</button>
       <button class="sort-btn" id="bulkRemoveWatchLater" data-i18n-title="history_bulkRemoveTitle" title="照合で見つかった視聴済みの動画を一覧で確認してから、まとめて削除する。取り消せない" disabled data-i18n="history_bulkRemove">まとめて削除</button>
     </div>
@@ -1227,14 +1227,14 @@
     <div class="toolbar-row maint" id="maintPanel" hidden>
       <div class="maint-group">
         <span class="toolbar-label" data-i18n="history_complete">補完</span>
-        <button class="sort-btn" id="fixChannels" title="oEmbed APIでチャンネル名を補正（未記録のみ）">チャンネル名を補完</button>
-        <button class="sort-btn" id="fixChannelsForce" title="oEmbed APIでチャンネル名を上書き補正（表示中の全件）">チャンネル名を再取得</button>
-        <button class="sort-btn" id="fixCredits" title="動画の作曲・作詞・編曲を概要欄から補完（ラベル行のみ採用）">概要欄からクレジット補完</button>
-        <button class="sort-btn enrich-btn" id="enrichCredits" title="未割当creditsRawを外部DB照合で補完">
+        <button class="sort-btn" id="fixChannels" data-i18n-title="history_fillChannelsHint" title="oEmbed APIでチャンネル名を補正（未記録のみ）" data-i18n="history_enrich_channels_label">チャンネル名を補完</button>
+        <button class="sort-btn" id="fixChannelsForce" data-i18n-title="history_refetchChannelsHint" title="oEmbed APIでチャンネル名を上書き補正（表示中の全件）" data-i18n="history_enrich_refetch_label">チャンネル名を再取得</button>
+        <button class="sort-btn" id="fixCredits" data-i18n-title="history_fillCreditsHint" title="動画の作曲・作詞・編曲を概要欄から補完（ラベル行のみ採用）" data-i18n="history_enrich_credits_label">概要欄からクレジット補完</button>
+        <button class="sort-btn enrich-btn" id="enrichCredits" data-i18n-title="history_externalCreditsHint" title="未割当creditsRawを外部DB照合で補完">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 12H3"></path><path d="M16 6H3"></path><path d="M16 18H3"></path><path d="M18 9v6"></path><path d="M21 12h-6"></path></svg>
-          <span>クレジット補完（外部DB）</span>
+          <span data-i18n="history_enrichTitle">クレジット補完（外部DB）</span>
         </button>
-        <button class="sort-btn" id="fixDurations" title="動画時間をwatchページから補完（ライブは-1として記録）">動画の長さを補完</button>
+        <button class="sort-btn" id="fixDurations" data-i18n-title="history_fillDurationsHint" title="動画時間をwatchページから補完（ライブは-1として記録）" data-i18n="history_duration_label">動画の長さを補完</button>
         <label class="chk" data-i18n-title="history_skipCheckedTitle" title="一度調べた動画をしばらく再取得しない。何か補完できた動画は30日、概要欄に情報が無くて空のままだった動画は180日→360日→720日と間隔が延びる（同じ概要欄を読み直しても埋まらないため）。外すと、空きのある動画を間隔に関係なく全部取り直す"><input type="checkbox" id="skipCreditsChecked" checked><span data-i18n="history_skipChecked">チェック済みスキップ</span></label>
         <label class="chk" data-i18n-title="history_includeGeneralTitle" title="非Topicチャンネル（MV・公式配信など）も対象にする。ラベル付き行のみ採用"><input type="checkbox" id="includeGeneralCredits"><span data-i18n="history_includeGeneral">一般も含める</span></label>
       </div>
@@ -1250,10 +1250,10 @@
         <div id="repairPanel" class="repair-panel" hidden>
           <p data-i18n="history_repairNote">保存済みのクレジットのうち人名でない値を空欄へ戻し、補完対象に復帰させます。元の値は記録に残り、元に戻せます。</p>
           <div class="repair-actions">
-            <button class="sort-btn" id="repairCredits" title="保存済みの作曲・作詞・編曲のうち、URL・権利表示・説明文の切れ端など人名でない値を空欄へ戻し、補完対象に復帰させる。元の値は記録に残す">クレジットの不正値を修復</button>
-            <button class="sort-btn" id="restoreCredits" title="修復で空欄にしたクレジットを記録から元に戻す。現在値が入っている役割は上書きしない">修復を元に戻す</button>
+            <button class="sort-btn" id="repairCredits" data-i18n-title="history_repairCreditsHint" title="保存済みの作曲・作詞・編曲のうち、URL・権利表示・説明文の切れ端など人名でない値を空欄へ戻し、補完対象に復帰させる。元の値は記録に残す" data-i18n="history_repair_label">クレジットの不正値を修復</button>
+            <button class="sort-btn" id="restoreCredits" data-i18n-title="history_restoreCreditsHint" title="修復で空欄にしたクレジットを記録から元に戻す。現在値が入っている役割は上書きしない" data-i18n="history_restore_label">修復を元に戻す</button>
           </div>
-          <p id="repairLastRun" role="status" aria-live="polite">最終実行: 未実行</p>
+          <p data-i18n="history_maintenance_never" id="repairLastRun" role="status" aria-live="polite">最終実行: 未実行</p>
         </div>
       </div>
     </div>
@@ -1268,7 +1268,7 @@
         <label for="wlPanelLimit" data-i18n="history_removeLimit">今回削除する件数</label>
         <input type="number" id="wlPanelLimit" min="1" step="1" value="5" data-i18n-title="history_removeLimitTitle" title="マウスホイールでも増減できます">
         <button class="sort-btn wl-danger" id="wlPanelRun" type="button" data-i18n="history_runRemoval">削除を実行</button>
-        <button class="sort-btn wl-danger" id="wlPanelRunAll" type="button" data-i18n-title="history_removeAllTitle" title="上の一覧に出ている視聴済みの動画をすべて削除する。取り消せません">全件を削除</button>
+        <button class="sort-btn wl-danger" id="wlPanelRunAll" type="button" data-i18n-title="history_removeAllTitle" title="上の一覧に出ている視聴済みの動画をすべて削除する。取り消せません" data-i18n="history_deleteAll">全件を削除</button>
         <button class="sort-btn" id="wlPanelCancel" type="button" data-i18n="history_cancelRemoval">やめる</button>
         <span id="wlPanelStatus" role="status" aria-live="polite"></span>
       </div>
@@ -1295,7 +1295,7 @@
       <p class="credit-review-summary" id="creditReviewSummary" role="status" aria-live="polite"></p>
       <div class="credit-review-feedback" id="creditReviewFeedback" role="status" aria-live="polite" hidden></div>
       <div class="credit-review-list" id="creditReviewList"></div>
-      <div class="credit-review-empty" id="creditReviewEmpty" hidden>該当なし</div>
+      <div class="credit-review-empty" id="creditReviewEmpty" hidden data-i18n="history_noMatches">該当なし</div>
     </section>
   </div>
 
@@ -1304,7 +1304,7 @@
       <div class="enrich-header">
         <div class="enrich-title">
           <h2 id="enrichTitle" data-i18n="history_enrichTitle">クレジット補完（外部DB）</h2>
-          <p id="enrichSubtitle">未割当 creditsRaw を固定ルール、MusicBrainz の順に照合します。</p>
+          <p id="enrichSubtitle" data-i18n="history_enrichSubtitle">未割当 creditsRaw を固定ルール、MusicBrainz の順に照合します。</p>
         </div>
         <button class="enrich-icon-btn" id="enrichClose" type="button" data-i18n-aria-label="history_close" aria-label="閉じる" data-i18n-title="history_close" title="閉じる">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
@@ -1327,10 +1327,10 @@
           <span data-i18n="history_generate">候補生成</span>
         </button>
         <button class="sort-btn" id="enrichAbort" type="button" disabled data-i18n="history_abort">中止</button>
-        <span class="enrich-progress-text" id="enrichProgress">待機中</span>
+        <span class="enrich-progress-text" id="enrichProgress" data-i18n="history_waiting">待機中</span>
       </div>
       <div class="enrich-progress-track" aria-hidden="true"><div class="enrich-progress-bar" id="enrichProgressBar"></div></div>
-      <div class="enrich-message" id="enrichMessage">候補生成を開始してください。</div>
+      <div class="enrich-message" id="enrichMessage" data-i18n="history_enrichStartHint">候補生成を開始してください。</div>
       <div class="enrich-tabs" id="enrichTabs" role="tablist" data-i18n-aria-label="history_candidateChannels" aria-label="補完候補チャンネル"></div>
       <div class="enrich-main">
         <div class="enrich-table-wrap" id="enrichTableWrap">
@@ -1352,7 +1352,7 @@
         </div>
       </div>
       <div class="enrich-footer">
-        <span class="enrich-total" id="enrichTotal">確定予定 0件 / 候補 0件</span>
+        <span class="enrich-total" id="enrichTotal" data-i18n="history_enrichInitialTotal">確定予定 0件 / 候補 0件</span>
         <button class="sort-btn" id="enrichDownloadPlan" type="button" disabled data-i18n="history_downloadPlan">確定JSON保存</button>
         <button class="sort-btn" id="enrichCancel" type="button" data-i18n="history_cancel">キャンセル</button>
         <button class="sort-btn enrich-primary" id="enrichCommit" type="button" disabled data-i18n="history_commitSelection">選択を確定して書き戻し</button>
@@ -1364,9 +1364,9 @@
             <label for="enrichManualSearch" data-i18n="history_searchVideos">動画を検索</label>
             <input id="enrichManualSearch" type="search" autocomplete="off" data-i18n-placeholder="history_manualSearchPlaceholder" placeholder="タイトル・チャンネル・videoId">
           </div>
-          <span class="manual-review-count" id="enrichManualCount">対象 0件 / 不足 0役割</span>
+          <span class="manual-review-count" id="enrichManualCount" data-i18n="history_manualInitialCount">対象 0件 / 不足 0役割</span>
         </div>
-        <p class="manual-review-note" id="enrichManualStatus" role="status" aria-live="polite">検索語のコピーはクリップボードだけを使用します。</p>
+        <p class="manual-review-note" id="enrichManualStatus" role="status" aria-live="polite" data-i18n="history_manualClipboardNote">検索語のコピーはクリップボードだけを使用します。</p>
         <div class="manual-review-list" id="enrichManualList"></div>
         <div class="enrich-empty manual-review-empty" id="enrichManualEmpty" data-i18n="history_noManualTargets">手動確認の対象はありません。</div>
       </section>
@@ -1379,119 +1379,119 @@
 
   <div class="content" id="analyzeView" style="display:none;">
     <div class="az-stats">
-      <div class="az-stat"><div class="az-n" id="azTotal">0</div><div class="az-l">総視聴</div></div>
-      <div class="az-stat"><div class="az-n" id="azCh">0</div><div class="az-l">チャンネル</div></div>
-      <div class="az-stat"><div class="az-n" id="azArtist">0</div><div class="az-l">アーティスト(Topic)</div></div>
-      <div class="az-stat"><div class="az-n" id="azMusic">0</div><div class="az-l">音楽再生</div></div>
+      <div class="az-stat"><div class="az-n" id="azTotal">0</div><div class="az-l" data-i18n="history_totalWatched">総視聴</div></div>
+      <div class="az-stat"><div class="az-n" id="azCh">0</div><div class="az-l" data-i18n="history_channels">チャンネル</div></div>
+      <div class="az-stat"><div class="az-n" id="azArtist">0</div><div class="az-l" data-i18n="history_topicArtists">アーティスト(Topic)</div></div>
+      <div class="az-stat"><div class="az-n" id="azMusic">0</div><div class="az-l" data-i18n="history_musicPlays">音楽再生</div></div>
     </div>
     <div class="az-tabs">
-      <div class="az-tab active" data-aztab="artists">アーティスト</div>
-      <div class="az-tab" data-aztab="channels">全チャンネル</div>
-      <div class="az-tab" data-aztab="keywords">キーワード</div>
-      <div class="az-tab" data-aztab="credits">クレジット</div>
-      <div class="az-tab" data-aztab="liked">高評価</div>
-      <div class="az-tab" data-aztab="trends">推移</div>
-      <div class="az-tab" data-aztab="prompt">Claude推薦プロンプト</div>
-      <div class="az-tab" data-aztab="official">公式プロファイル</div>
+      <div class="az-tab active" data-aztab="artists" data-i18n="history_artists">アーティスト</div>
+      <div class="az-tab" data-aztab="channels" data-i18n="history_allChannels">全チャンネル</div>
+      <div class="az-tab" data-aztab="keywords" data-i18n="history_keywords">キーワード</div>
+      <div class="az-tab" data-aztab="credits" data-i18n="history_credits">クレジット</div>
+      <div class="az-tab" data-aztab="liked" data-i18n="history_likedVideos">高評価</div>
+      <div class="az-tab" data-aztab="trends" data-i18n="history_trends">推移</div>
+      <div class="az-tab" data-aztab="prompt" data-i18n="history_claudePrompt">Claude推薦プロンプト</div>
+      <div class="az-tab" data-aztab="official" data-i18n="history_officialProfiles">公式プロファイル</div>
     </div>
     <div class="az-panel" id="azArtistsPanel">
       <div class="az-filter">
-        <input type="text" id="azArtistFilter" placeholder="アーティスト名で絞り込み" class="search-box" style="max-width:260px;">
-        <label class="chk"><input type="checkbox" id="azTopicOnly" checked>-Topicのみ</label>
+        <input type="text" id="azArtistFilter" data-i18n-placeholder="history_artistFilterPlaceholder" placeholder="アーティスト名で絞り込み" class="search-box" style="max-width:260px;">
+        <label class="chk"><input type="checkbox" id="azTopicOnly" checked><span data-i18n="history_topicOnly">-Topicのみ</span></label>
       </div>
-      <table class="az-table" id="azArtistsTable"><thead><tr><th style="width:40px;">#</th><th>アーティスト</th><th style="width:60px;" title="動画の本数です。同じ動画を何回見ても1本と数えます（playCount＝再生回数は集計していません）。">本数</th><th>リンク</th></tr></thead><tbody></tbody></table>
+      <table class="az-table" id="azArtistsTable"><thead><tr><th style="width:40px;">#</th><th data-i18n="history_artists">アーティスト</th><th style="width:60px;" data-i18n-title="history_videoCountHint" title="動画の本数です。同じ動画を何回見ても1本と数えます（playCount＝再生回数は集計していません）。" data-i18n="history_videoCount">本数</th><th data-i18n="history_links">リンク</th></tr></thead><tbody></tbody></table>
     </div>
     <div class="az-panel" id="azOfficialPanel" style="display:none;">
       <section class="az-official-box" aria-labelledby="azOfficialTitle">
-        <h3 id="azOfficialTitle">公式プロファイル候補</h3>
-        <p class="az-official-note">Topic表記またはクレジット比率から候補を出します。名前だけでは公式と確定せず、リンク先を確認するまで保存しません。</p>
+        <h3 id="azOfficialTitle" data-i18n="history_officialCandidates">公式プロファイル候補</h3>
+        <p class="az-official-note" data-i18n="history_officialCandidatesNote">Topic表記またはクレジット比率から候補を出します。名前だけでは公式と確定せず、リンク先を確認するまで保存しません。</p>
         <div class="az-official-candidates" id="azOfficialCandidates"></div>
         <p class="az-official-note" id="azOfficialHidden"></p>
         <div class="az-official-review" id="azOfficialReview" hidden>
           <div class="az-official-fields">
-            <input type="text" id="azOfficialProfileName" aria-label="プロフィール名" placeholder="プロフィール名">
-            <input type="url" id="azOfficialChannelUrl" aria-label="確認済みチャンネルURL" placeholder="https://www.youtube.com/@...">
+            <input type="text" id="azOfficialProfileName" data-i18n-aria-label="officialProfileName" aria-label="プロフィール名" data-i18n-placeholder="officialProfileName" placeholder="プロフィール名">
+            <input type="url" id="azOfficialChannelUrl" data-i18n-aria-label="history_verifiedChannelUrl" aria-label="確認済みチャンネルURL" placeholder="https://www.youtube.com/@...">
           </div>
           <div>
-            <a class="az-official-target" id="azOfficialTarget" target="_blank" rel="noopener">候補チャンネルを開く</a>
-            <a class="az-official-target" id="azOfficialSample" target="_blank" rel="noopener">候補元動画を開く</a>
+            <a class="az-official-target" id="azOfficialTarget" target="_blank" rel="noopener" data-i18n="history_openCandidateChannel">候補チャンネルを開く</a>
+            <a class="az-official-target" id="azOfficialSample" target="_blank" rel="noopener" data-i18n="history_openCandidateVideo">候補元動画を開く</a>
           </div>
-          <label class="chk"><input type="checkbox" id="azOfficialConfirmed">リンク先が本人の公式またはTopicチャンネルであることを確認した</label>
-          <label class="chk"><input type="checkbox" id="azOfficialBindQuery"><span id="azOfficialBindQueryText">この候補の検索語にも紐づける</span></label>
-          <div><button class="sort-btn" id="azOfficialSave" type="button">プロフィール＋チャンネルを登録</button></div>
+          <label class="chk"><input type="checkbox" id="azOfficialConfirmed"><span data-i18n="history_officialConfirmed">リンク先が本人の公式またはTopicチャンネルであることを確認した</span></label>
+          <label class="chk"><input type="checkbox" id="azOfficialBindQuery"><span id="azOfficialBindQueryText" data-i18n="history_bindCandidateQuery">この候補の検索語にも紐づける</span></label>
+          <div><button class="sort-btn" id="azOfficialSave" type="button" data-i18n="history_saveProfileChannel">プロフィール＋チャンネルを登録</button></div>
           <p class="az-official-status" id="azOfficialStatus" role="status" aria-live="polite"></p>
         </div>
       </section>
     </div>
     <div class="az-panel" id="azChannelsPanel" style="display:none;">
       <div class="az-filter">
-        <input type="text" id="azChannelFilter" placeholder="チャンネル名で絞り込み" class="search-box" style="max-width:260px;">
+        <input type="text" id="azChannelFilter" data-i18n-placeholder="history_channelFilterPlaceholder" placeholder="チャンネル名で絞り込み" class="search-box" style="max-width:260px;">
       </div>
-      <table class="az-table" id="azChannelsTable"><thead><tr><th style="width:40px;">#</th><th>チャンネル</th><th style="width:60px;" data-sort="count" title="動画の本数です。同じ動画を何回見ても1本と数えます（playCount＝再生回数は集計していません）。クリックで本数順に並べ替え">本数</th><th style="width:150px;" data-sort="duration" title="lengthSeconds は動画の長さです。実視聴時間ではありません（途中離脱・倍速・リピートは反映されません）。本数と同じく1本につき1回だけ足しています。クリックで合計時間順に並べ替え">合計時間</th></tr></thead><tbody></tbody></table>
+      <table class="az-table" id="azChannelsTable"><thead><tr><th style="width:40px;">#</th><th data-i18n="history_channels">チャンネル</th><th style="width:60px;" data-sort="count" data-i18n-title="history_videoCountSortHint" title="動画の本数です。同じ動画を何回見ても1本と数えます（playCount＝再生回数は集計していません）。クリックで本数順に並べ替え" data-i18n="history_videoCount">本数</th><th style="width:150px;" data-sort="duration" data-i18n-title="history_durationSortHint" title="lengthSeconds は動画の長さです。実視聴時間ではありません（途中離脱・倍速・リピートは反映されません）。本数と同じく1本につき1回だけ足しています。クリックで合計時間順に並べ替え" data-i18n="history_totalDuration">合計時間</th></tr></thead><tbody></tbody></table>
     </div>
     <div class="az-panel" id="azKeywordsPanel" style="display:none;">
-      <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">Topicチャンネル楽曲のタイトル頻出ワード</p>
+      <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;" data-i18n="history_topicKeywordsNote">Topicチャンネル楽曲のタイトル頻出ワード</p>
       <div class="az-kwgrid" id="azKwList"></div>
     </div>
     <div class="az-panel" id="azCreditsPanel" style="display:none;">
       <div class="az-filter">
         <div class="btn-group">
-          <button class="sort-btn az-credit-tab active" data-credit="composer">作曲</button>
-          <button class="sort-btn az-credit-tab" data-credit="lyricist">作詞</button>
-          <button class="sort-btn az-credit-tab" data-credit="arranger">編曲</button>
-          <button class="sort-btn az-credit-tab" data-credit="raw" title="役割不明（Topic「·」区切りで取得した名前のみ。役割が確定したものはここに出ません）">未割当</button>
+          <button class="sort-btn az-credit-tab active" data-credit="composer" data-i18n="officialComposer">作曲</button>
+          <button class="sort-btn az-credit-tab" data-credit="lyricist" data-i18n="officialLyricist">作詞</button>
+          <button class="sort-btn az-credit-tab" data-credit="arranger" data-i18n="officialArranger">編曲</button>
+          <button class="sort-btn az-credit-tab" data-credit="raw" data-i18n-title="history_unassignedHint" title="役割不明（Topic「·」区切りで取得した名前のみ。役割が確定したものはここに出ません）" data-i18n="officialUnassigned">未割当</button>
         </div>
-        <label class="chk" title="非Topicチャンネルのクレジットも集計対象にする"><input type="checkbox" id="azIncludeGeneral">一般も含める</label>
-        <input type="text" id="azCreditFilter" placeholder="名前で絞り込み" class="search-box" style="max-width:260px;">
+        <label class="chk" data-i18n-title="history_includeGeneralHint" title="非Topicチャンネルのクレジットも集計対象にする"><input type="checkbox" id="azIncludeGeneral"><span data-i18n="history_includeGeneral">一般も含める</span></label>
+        <input type="text" id="azCreditFilter" data-i18n-placeholder="history_nameFilterPlaceholder" placeholder="名前で絞り込み" class="search-box" style="max-width:260px;">
         <span id="azCreditStats" style="color:var(--text-muted);font-size:12px;"></span>
       </div>
-      <table class="az-table" id="azCreditsTable"><thead><tr><th style="width:40px;">#</th><th>名前</th><th style="width:60px;" data-sort="count" title="動画の本数です。同じ動画を何回見ても1本と数えます（playCount＝再生回数は集計していません）。クリックで本数順に並べ替え">本数</th><th style="width:150px;" data-sort="duration" title="lengthSeconds は動画の長さです。実視聴時間ではありません（途中離脱・倍速・リピートは反映されません）。本数と同じく1本につき1回だけ足しています。クリックで合計時間順に並べ替え">合計時間</th><th style="width:110px;" title="作曲者と編曲者が同一人物だった曲数（作曲・編曲タブのみ集計）">セルフアレンジ曲</th></tr></thead><tbody></tbody></table>
+      <table class="az-table" id="azCreditsTable"><thead><tr><th style="width:40px;">#</th><th data-i18n="history_name">名前</th><th style="width:60px;" data-sort="count" data-i18n-title="history_videoCountSortHint" title="動画の本数です。同じ動画を何回見ても1本と数えます（playCount＝再生回数は集計していません）。クリックで本数順に並べ替え" data-i18n="history_videoCount">本数</th><th style="width:150px;" data-sort="duration" data-i18n-title="history_durationSortHint" title="lengthSeconds は動画の長さです。実視聴時間ではありません（途中離脱・倍速・リピートは反映されません）。本数と同じく1本につき1回だけ足しています。クリックで合計時間順に並べ替え" data-i18n="history_totalDuration">合計時間</th><th style="width:110px;" data-i18n-title="history_selfArrangedHint" title="作曲者と編曲者が同一人物だった曲数（作曲・編曲タブのみ集計）" data-i18n="history_selfArranged">セルフアレンジ曲</th></tr></thead><tbody></tbody></table>
     </div>
     <div class="az-panel" id="azLikedPanel" style="display:none;">
       <div style="margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-        <button class="sort-btn" id="azSyncLiked">高評価を同期</button>
+        <button class="sort-btn" id="azSyncLiked" data-i18n="history_syncLiked">高評価を同期</button>
         <span id="azLikedMsg" style="color:var(--text-muted);font-size:12px;"></span>
       </div>
       <div id="azLikedAccount" style="color:var(--text-muted);font-size:12px;margin-bottom:10px;"></div>
       <div class="az-stats" style="grid-template-columns:repeat(2,1fr);max-width:400px;">
-        <div class="az-stat"><div class="az-n" id="azLikedTotal">0</div><div class="az-l">高評価動画数</div></div>
-        <div class="az-stat"><div class="az-n" id="azLikedArtists">0</div><div class="az-l">高評価アーティスト数</div></div>
+        <div class="az-stat"><div class="az-n" id="azLikedTotal">0</div><div class="az-l" data-i18n="history_likedVideoCount">高評価動画数</div></div>
+        <div class="az-stat"><div class="az-n" id="azLikedArtists">0</div><div class="az-l" data-i18n="history_likedArtistCount">高評価アーティスト数</div></div>
       </div>
-      <p style="color:var(--text-muted);font-size:12px;margin:6px 0 12px;">※ YouTubeタブを開いた状態で同期してください。続きトークン経由で過去分（最大5000件・50ページ）まで遡ります。</p>
-      <table class="az-table" id="azLikedTable"><thead><tr><th style="width:40px;">#</th><th>アーティスト/チャンネル</th><th style="width:80px;">高評価数</th></tr></thead><tbody></tbody></table>
+      <p style="color:var(--text-muted);font-size:12px;margin:6px 0 12px;" data-i18n="history_likedSyncNote">※ YouTubeタブを開いた状態で同期してください。続きトークン経由で過去分（最大5000件・50ページ）まで遡ります。</p>
+      <table class="az-table" id="azLikedTable"><thead><tr><th style="width:40px;">#</th><th data-i18n="history_artistChannel">アーティスト/チャンネル</th><th style="width:80px;" data-i18n="history_likes">高評価数</th></tr></thead><tbody></tbody></table>
     </div>
     <div class="az-panel" id="azTrendsPanel" style="display:none;">
       <div class="az-stats" style="grid-template-columns:repeat(3,1fr);max-width:600px;">
-        <div class="az-stat"><div class="az-n" id="trAllTime">0</div><div class="az-l">累計</div></div>
-        <div class="az-stat"><div class="az-n" id="trThisMonth">0</div><div class="az-l">今月の新規</div></div>
-        <div class="az-stat"><div class="az-n" id="trToday">0</div><div class="az-l">今日（新規/再視聴）</div></div>
+        <div class="az-stat"><div class="az-n" id="trAllTime">0</div><div class="az-l" data-i18n="history_allTime">累計</div></div>
+        <div class="az-stat"><div class="az-n" id="trThisMonth">0</div><div class="az-l" data-i18n="history_newThisMonth">今月の新規</div></div>
+        <div class="az-stat"><div class="az-n" id="trToday">0</div><div class="az-l" data-i18n="history_todayNewRewatched">今日（新規/再視聴）</div></div>
       </div>
       <div class="az-filter">
-        <span class="toolbar-label">期間</span>
+        <span class="toolbar-label" data-i18n="history_period">期間</span>
         <div class="btn-group" role="group">
-          <button class="sort-btn tr-range-btn active" data-range="30">30日</button>
-          <button class="sort-btn tr-range-btn" data-range="90">90日</button>
-          <button class="sort-btn tr-range-btn" data-range="365">1年</button>
-          <button class="sort-btn tr-range-btn" data-range="all">全期間</button>
+          <button class="sort-btn tr-range-btn active" data-range="30" data-i18n="history_days30">30日</button>
+          <button class="sort-btn tr-range-btn" data-range="90" data-i18n="history_days90">90日</button>
+          <button class="sort-btn tr-range-btn" data-range="365" data-i18n="history_year1">1年</button>
+          <button class="sort-btn tr-range-btn" data-range="all" data-i18n="history_allDates">全期間</button>
         </div>
       </div>
       <div style="margin-top:16px;">
-        <h3 style="font-size:13px;color:var(--text-muted);margin-bottom:8px;font-weight:500;">累計総視聴数の推移</h3>
+        <h3 style="font-size:13px;color:var(--text-muted);margin-bottom:8px;font-weight:500;" data-i18n="history_totalWatchedTrend">累計総視聴数の推移</h3>
         <div style="position:relative;height:240px;"><canvas id="trChartTotal"></canvas></div>
       </div>
       <div style="margin-top:24px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:12px;flex-wrap:wrap;">
-          <h3 style="font-size:13px;color:var(--text-muted);font-weight:500;">日別 新規視聴数</h3>
-          <label class="chk" title="一括取り込み等の異常値で他の日が潰れる場合、上限でクリップして実数をバー上に表示します"><input type="checkbox" id="trClipOutliers" checked>外れ値を圧縮</label>
+          <h3 style="font-size:13px;color:var(--text-muted);font-weight:500;" data-i18n="history_dailyNewVideos">日別 新規視聴数</h3>
+          <label class="chk" data-i18n-title="history_clipOutliersHint" title="一括取り込み等の異常値で他の日が潰れる場合、上限でクリップして実数をバー上に表示します"><input type="checkbox" id="trClipOutliers" checked><span data-i18n="history_clipOutliers">外れ値を圧縮</span></label>
         </div>
         <div style="position:relative;height:240px;"><canvas id="trChartDaily"></canvas></div>
       </div>
-      <p style="color:var(--text-faint);font-size:11px;margin-top:14px;">※ 日別は <code>firstWatchedAt</code>（初回視聴日）ベース。再視聴の履歴日付はDBに残らないため、累計と日別新規のみを表示しています。</p>
+      <p style="color:var(--text-faint);font-size:11px;margin-top:14px;"><span data-i18n="history_dailyBasisPrefix">※ 日別は</span> <code>firstWatchedAt</code><span data-i18n="history_dailyBasisSuffix">（初回視聴日）ベース。再視聴の履歴日付はDBに残らないため、累計と日別新規のみを表示しています。</span></p>
     </div>
     <div class="az-panel" id="azPromptPanel" style="display:none;">
-      <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">Claudeに貼って「次に聴くべきアーティスト」を推薦してもらう用</p>
+      <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;" data-i18n="history_claudePromptNote">Claudeに貼って「次に聴くべきアーティスト」を推薦してもらう用</p>
       <div style="margin-bottom:12px;">
-        <button class="sort-btn" id="azCopyPrompt">プロンプトをコピー</button>
+        <button class="sort-btn" id="azCopyPrompt" data-i18n="history_copyPrompt">プロンプトをコピー</button>
         <span id="azCopyMsg" style="color:var(--accent);margin-left:12px;font-size:13px;"></span>
       </div>
       <pre id="azPromptText"></pre>

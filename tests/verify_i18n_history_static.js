@@ -16,7 +16,9 @@ function validateTranslations(markup, japanese, english) {
     const [, tag, attrs] = match;
     for (const attr of attrs.matchAll(/\bdata-i18n(?:-(placeholder|title|aria-label))?="([^"]+)"/g)) {
       const [, target, key] = attr;
-      assert(key.startsWith('history_'), `${key}: history prefix required`);
+      // Reuse identical messages already shared with the official-profile UI.
+      const sharedKeys = ['officialProfileName', 'officialComposer', 'officialLyricist', 'officialArranger', 'officialUnassigned'];
+      assert(key.startsWith('history_') || sharedKeys.includes(key), `${key}: history prefix required for new keys`);
       const fallback = target
         ? attrs.match(new RegExp(`(?:^|\\s)${target}="([^"]*)"`))?.[1]
         : markup.slice(match.index + match[0].length).split(`</${tag}>`)[0].trim();
@@ -37,41 +39,52 @@ const entries = validateTranslations(html, ja, en);
 assert.throws(() => validateTranslations(html, { ...ja, history_jaOnly: { message: '追加' } }, en), /locale key sets differ/);
 assert.throws(() => validateTranslations('<span data-i18n="history_missing">未登録</span>', ja, en), /history_missing: missing locale key/);
 
-// Coverage guard: every in-scope Japanese text/attribute must be annotated.
-// These nodes are rewritten by history.js, enrich_credits.js or credit_review.js;
-// their initial text belongs to the subsequent dynamic-localization stage.
-const dynamicIds = new Set([
-  'fixChannels', 'fixChannelsForce', 'fixCredits', 'repairCredits', 'restoreCredits',
-  'enrichCredits', 'fixDurations', 'scanWatchLater', 'repairLastRun', 'wlPanelRunAll',
-  'creditReviewEmpty', 'enrichSubtitle', 'enrichProgress', 'enrichMessage',
-  'enrichTotal', 'enrichManualCount', 'enrichManualStatus',
-]);
+// Coverage guard: include every body element, even initial text later rewritten
+// by another script. Only comments and script/style contents are out of scope.
 const japaneseText = /[\u3040-\u30ff\u3400-\u9fff]/;
+function validateCoverage(markup) {
 const stack = [];
-const body = html.slice(html.indexOf('<body>'));
+const body = markup.match(/<body\b[^>]*>([\s\S]*?)<\/body\s*>/i)?.[1];
+assert(typeof body === 'string', 'history body must exist');
 for (const token of body.matchAll(/<!--[\s\S]*?-->|<[^>]+>|[^<]+/g)) {
   const value = token[0];
+  const raw = stack.at(-1);
+  if (raw && ['script', 'style'].includes(raw.tag)) {
+    if (new RegExp(`^</${raw.tag}\\s*>$`, 'i').test(value)) stack.pop();
+    continue;
+  }
   if (value.startsWith('<!--')) continue;
-  if (value.startsWith('</')) { stack.pop(); continue; }
+  if (value.startsWith('</')) {
+    const closing = value.match(/^<\/([\w-]+)/)?.[1].toLowerCase();
+    const index = stack.findLastIndex(el => el.tag === closing);
+    if (index >= 0) stack.length = index;
+    continue;
+  }
   if (!value.startsWith('<')) {
     const parent = stack.at(-1);
-    if (japaneseText.test(value) && !stack.some(el => el.excluded || el.dynamic)) {
+    if (japaneseText.test(value)) {
       assert(parent?.attrs['data-i18n'], `untranslated static text: ${value.trim()}`);
     }
     continue;
   }
-  const tag = value.match(/^<([\w-]+)/)?.[1];
+  const tag = value.match(/^<([\w-]+)/)?.[1].toLowerCase();
   if (!tag) continue;
   const attrs = Object.fromEntries([...value.matchAll(/([\w-]+)="([^"]*)"/g)].map(m => [m[1], m[2]]));
-  const excluded = attrs.id === 'analyzeView' || stack.some(el => el.excluded);
-  const dynamic = dynamicIds.has(attrs.id) || stack.some(el => el.dynamic);
-  if (!excluded && !dynamic) {
-    for (const attr of ['placeholder', 'title', 'aria-label']) {
-      if (japaneseText.test(attrs[attr] || '')) assert(attrs[`data-i18n-${attr}`], `untranslated ${attr}: ${attrs[attr]}`);
-    }
+  for (const attr of ['placeholder', 'title', 'aria-label']) {
+    if (japaneseText.test(attrs[attr] || '')) assert(attrs[`data-i18n-${attr}`], `untranslated ${attr}: ${attrs[attr]}`);
   }
-  if (!['input', 'meta', 'link', 'br', 'hr', 'img'].includes(tag)) stack.push({ tag, attrs, excluded, dynamic });
+  if (!['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'].includes(tag)) stack.push({ tag, attrs });
 }
+}
+validateCoverage(html);
+// Each declared target must independently fail coverage if its binding is lost.
+let mutationCount = 0;
+for (const match of html.matchAll(/\sdata-i18n(?:-(?:placeholder|title|aria-label))?="[^"]+"/g)) {
+  const mutated = html.slice(0, match.index) + html.slice(match.index + match[0].length);
+  assert.throws(() => validateCoverage(mutated), /untranslated/, `missing binding was not detected: ${match[0]}`);
+  mutationCount++;
+}
+validateCoverage('<body><!-- 日本語 --><script>const label = "日本語";</script><style>/* 日本語 */</style></body>');
 
 // Exercise the actual initializer, including absent chrome/i18n/getMessage
 // and missing keys. Attribute translation must preserve child text.
@@ -104,4 +117,4 @@ for (const locale of [ja, en, {}, null, 'noChrome', 'noGetMessage']) {
 for (const target of ['', 'placeholder', 'title', 'aria-label']) {
   assert(entries.some(entry => (entry.target || '') === target), `missing target coverage: ${target}`);
 }
-console.log(`PASS static history i18n: ${new Set(entries.map(e => e.key)).size} keys, ${entries.length} targets; coverage, ja/en parity, fallback, English, two negative fixtures`);
+console.log(`PASS static history i18n: ${new Set(entries.map(e => e.key)).size} keys, ${entries.length} targets; full body coverage, ja/en parity, fallback, English, two negative fixtures, ${mutationCount} missing-binding mutations`);
