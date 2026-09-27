@@ -1,5 +1,31 @@
 'use strict';
 
+function whatsnewUILanguage() {
+  return globalThis.chrome?.i18n?.getUILanguage?.() || 'ja';
+}
+
+function isEnglish() {
+  return /^en(?:-|$)/i.test(whatsnewUILanguage());
+}
+
+function whatsnewMessage(key, fallback, substitutions = []) {
+  return globalThis.chrome?.i18n?.getMessage?.(key, substitutions.map(String)) || fallback;
+}
+
+function applyStaticWhatsnewI18n() {
+  document.documentElement.lang = isEnglish() ? 'en' : 'ja';
+  if (!globalThis.chrome?.i18n?.getMessage) return;
+  for (const target of ['', 'placeholder', 'title', 'aria-label']) {
+    const attribute = target ? 'data-i18n-' + target : 'data-i18n';
+    for (const element of document.querySelectorAll('[' + attribute + ']')) {
+      const message = chrome.i18n.getMessage(element.getAttribute(attribute));
+      if (!message) continue;
+      if (target) element.setAttribute(target, message);
+      else element.textContent = element.textContent.replace(/\S(?:[\s\S]*\S)?/, () => message);
+    }
+  }
+}
+
 // 使い方ガイド。「いまどうなっているか」だけを書く（履歴は書かない＝更新履歴側の役割）。
 //
 // uiText には、その説明が指している実際のUI文字列を書く。tests/verify_whatsnew.js が
@@ -108,6 +134,109 @@ const GUIDE = [
   },
 ];
 
+// Keep the original Japanese guide intact; select the English guide at render time.
+const GUIDE_EN = [
+  {
+    task: 'Hide watched videos from recommendations',
+    where: 'Just open YouTube. No setup needed.',
+    steps: [
+      'Videos you have played will no longer appear in recommendations or search results.',
+      'To show them temporarily, use the toggle in the extension popup.',
+    ],
+    uiText: [],
+  },
+  {
+    task: 'Import your liked videos',
+    where: 'Extension icon → Sync Liked videos',
+    steps: [
+      'You do not need to keep your Liked videos playlist open.',
+      'Sync stays tied to the tab and account it started with. Switching accounts during sync will not mix their data.',
+      'If sync stops early, its status shows that it is partial and explains why.',
+    ],
+    uiText: ['Sync Liked videos'],
+  },
+  {
+    task: 'Explore your viewing habits',
+    where: 'Extension icon → Open history and analytics',
+    steps: [
+      'Browse the Artists, All channels, Keywords, Credits, Liked videos, and Trends tabs.',
+      'Total duration is the sum of video lengths, not actual watch time. It does not account for leaving early, playback speed, or repeats.',
+    ],
+    uiText: ['Open history and analytics', 'Artists', 'All channels', 'Keywords', 'Credits', 'Liked videos', 'Trends'],
+  },
+  {
+    task: 'Fill in composer, lyricist, and arranger credits',
+    where: 'History and analytics → Fill credits (external databases)',
+    steps: [
+      'Credits can be filled from video descriptions or matched with MusicBrainz.',
+      'Before starting, you will see the number of videos and estimated time. You can choose all videos or limit the number.',
+      'Items that cannot be filled automatically go to a manual review list.',
+    ],
+    caution: 'Looking up external sites can take tens of minutes for large batches. Check the video count before starting.',
+    uiText: ['Fill credits (external databases)'],
+  },
+  {
+    task: 'Check existing credits',
+    where: 'History and analytics → Credits → Credit review center',
+    steps: [
+      'Each composer, lyricist, and arranger credit is counted under Conflicts, Needs review, Automatic candidates, Unresolved, or Verified. Use the buttons to filter.',
+      'Generate candidates with credit completion first. Only candidates generated in the same page session are used, so conflicts and automatic candidates start at zero otherwise.',
+      'For automatic candidates and credits needing review, accept or reject each role separately.',
+      'A conflict means there are multiple candidates and no automatic choice. Select one with a radio button, or leave all unselected.',
+      'Accepted values are saved as manual edits and will not be overwritten automatically.',
+    ],
+    caution: 'Credit completion fills empty fields only, and its manual review list only includes videos with missing roles. Use this center to check videos with every role filled. Automatically filled values that nobody has checked appear under Needs review.',
+    uiText: ['Credits', 'Credit review center', 'Conflicts', 'Needs review', 'Automatic candidates', 'Unresolved', 'Verified'],
+  },
+  {
+    task: 'Prioritize official channels in search',
+    where: 'YouTube search results → Panel at the bottom right',
+    steps: [
+      'The panel starts collapsed. Use its handle to open it.',
+      'Switch between Official first, Discover, and Show all.',
+      'To use it without registering channels, turn on Hide other channels (show official and Topic).',
+    ],
+    caution: 'This does not detect unauthorized reuploads. It simply prioritizes the channels you register.',
+    uiText: ['Official first', 'Discover', 'Show all', 'Hide other channels (show official and Topic)'],
+  },
+  {
+    task: 'Find out who a Topic channel belongs to',
+    where: 'YouTube search results → Bottom-right panel → Check credits for unknown videos',
+    steps: [
+      'A name ending in “- Topic” alone does not establish whose official channel it is. Video credits can provide clues.',
+      'The button opens up to 20 unregistered Topic videos from the search results and reads composer, lyricist, and arranger credits.',
+      'Results show the video ID and composer, or a reason if the credits could not be read.',
+      'Press Cancel to stop. Results collected so far are kept.',
+      'Once you have verified the channel, register it under Official profiles in history and analytics.',
+    ],
+    caution: 'This runs only when you press the button. It never registers channels automatically or adds the checked videos to your watch history.',
+    uiText: ['Check credits for unknown videos', 'Cancel', 'Official profiles'],
+  },
+  {
+    task: 'Register official channels for easier filtering',
+    where: 'History and analytics → Official profiles',
+    steps: [
+      'Candidates for official and Topic channels are drawn from your watch history.',
+      'Press Review registration to get the channel URL, then Open candidate channel to check that it belongs to the artist.',
+      'Tick the confirmation box before registering. A matching name alone is not enough.',
+      'Registered candidates disappear from the list. The same channel cannot be registered twice.',
+      'Use Exclude candidate to hide channels you do not want suggested, such as channels with multiple artists. Use Restore all exclusions below the list to bring them back.',
+    ],
+    uiText: ['Official profiles', 'Review registration', 'Open candidate channel', 'Exclude candidate', 'Restore all exclusions'],
+  },
+  {
+    task: 'Back up or restore your data',
+    where: 'Extension icon → Settings and data',
+    steps: [
+      'Export watched videos, liked videos, and credits together.',
+      'When importing, choose whether to replace or merge. You will see the number of changes before proceeding.',
+      'If the file contains invalid data, a warning appears before import.',
+    ],
+    caution: 'Replacing removes records added since the export. Merging keeps existing records.',
+    uiText: ['Settings and data'],
+  },
+];
+
 const RECENT_COUNT = 8;
 
 function el(tag, className, text) {
@@ -119,7 +248,7 @@ function el(tag, className, text) {
 
 function renderGuide(container) {
   container.textContent = '';
-  for (const item of GUIDE) {
+  for (const item of isEnglish() ? GUIDE_EN : GUIDE) {
     const card = el('div', 'card');
     card.appendChild(el('h3', '', item.task));
     card.appendChild(el('div', 'where', item.where));
@@ -135,7 +264,14 @@ function renderRelease(entry, compact) {
   const box = el('div', compact ? 'older' : 'release');
   const head = el('div', 'release-head');
   head.appendChild(el('span', 'ver', 'v' + entry.version));
-  if (entry.date) head.appendChild(el('span', 'date', entry.date));
+  if (entry.date) {
+    // Preserve the original Japanese display and format date-only values in UTC.
+    const date = isEnglish() && /^\d{4}-\d{2}-\d{2}$/.test(entry.date)
+      ? new Date(entry.date + 'T00:00:00Z').toLocaleDateString(whatsnewUILanguage(),
+        { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' })
+      : entry.date;
+    head.appendChild(el('span', 'date', date));
+  }
   box.appendChild(head);
   if (entry.summary) box.appendChild(el('p', 'summary', entry.summary));
   if (!compact && entry.points.length) {
@@ -147,6 +283,8 @@ function renderRelease(entry, compact) {
 }
 
 function main() {
+  applyStaticWhatsnewI18n();
+  document.getElementById('releaseLanguageNote').hidden = !isEnglish();
   const releases = Array.isArray(globalThis.YWH_WHATSNEW) ? globalThis.YWH_WHATSNEW : [];
   const recent = document.getElementById('recent');
   const olderWrap = document.getElementById('olderWrap');
@@ -161,7 +299,7 @@ function main() {
   recent.className = '';
   if (!releases.length) {
     recent.className = 'empty';
-    recent.textContent = '更新履歴を読み込めませんでした。';
+    recent.textContent = whatsnewMessage('whatsnew_load_failed', '更新履歴を読み込めませんでした。');
     return;
   }
 
@@ -172,13 +310,15 @@ function main() {
   const rest = releases.slice(RECENT_COUNT);
   if (!rest.length) return;
   document.getElementById('olderSummary').textContent =
-    'それより前の更新 ' + rest.length + ' 件を表示';
+    whatsnewMessage(rest.length === 1 ? 'whatsnew_older_one' : 'whatsnew_older_many',
+      'それより前の更新 ' + rest.length + ' 件を表示',
+      [isEnglish() ? rest.length.toLocaleString(whatsnewUILanguage()) : String(rest.length)]);
   for (const entry of rest) older.appendChild(renderRelease(entry, true));
   olderWrap.hidden = false;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { GUIDE, RECENT_COUNT };
+  module.exports = { GUIDE, GUIDE_EN, RECENT_COUNT };
 } else {
   main();
 }

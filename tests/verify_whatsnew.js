@@ -120,6 +120,23 @@ check('every guide entry says where it is and what to do',
   guide.GUIDE.length > 0 &&
   guide.GUIDE.every((item) => item.task && item.where && item.steps.length > 0));
 
+const englishMessages = JSON.parse(read('_locales/en/messages.json'));
+// Only existing product labels count; guide-specific messages cannot validate themselves.
+const englishLabels = new Set(Object.entries(englishMessages)
+  .filter(([key]) => !key.startsWith('whatsnew_')).map(([, value]) => value.message));
+const danglingEnglish = [];
+for (const item of guide.GUIDE_EN) {
+  for (const label of item.uiText) {
+    if (!englishLabels.has(label)) danglingEnglish.push(`${item.task} -> ${label}`);
+  }
+}
+check('every English UI label is an exact existing English product message',
+  danglingEnglish.length === 0, danglingEnglish.join(' / '));
+check('English guide covers the same tasks and steps as Japanese',
+  guide.GUIDE_EN.length === guide.GUIDE.length && guide.GUIDE_EN.every((item, i) =>
+    item.task && item.where && item.steps.length === guide.GUIDE[i].steps.length &&
+    Boolean(item.caution) === Boolean(guide.GUIDE[i].caution)));
+
 console.log('the page ships with the extension');
 // build_dist.py は scripts/ 配下＝このリポジトリでは .gitignore 対象のローカルツール。
 // 手元にあるときだけ登録漏れを検査し、無い環境では「検査できなかった」と明示する

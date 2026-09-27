@@ -1,4 +1,60 @@
 {
+  "whatsnew_title": {
+    "message": "Guide and release notes - YouTube Watched Hider"
+  },
+  "whatsnew_heading": {
+    "message": "Guide and release notes"
+  },
+  "whatsnew_current_prefix": {
+    "message": "You have"
+  },
+  "whatsnew_current_suffix": {
+    "message": "installed."
+  },
+  "whatsnew_guide_heading": {
+    "message": "How to use"
+  },
+  "whatsnew_guide_note": {
+    "message": "This guide describes current features. See the release notes below for past changes."
+  },
+  "whatsnew_releases_heading": {
+    "message": "Release notes"
+  },
+  "whatsnew_releases_note": {
+    "message": "Generated from CHANGELOG.md."
+  },
+  "whatsnew_japanese_only": {
+    "message": "Release notes are available in Japanese only."
+  },
+  "whatsnew_loading": {
+    "message": "Loading…"
+  },
+  "whatsnew_older": {
+    "message": "Show older releases"
+  },
+  "whatsnew_support_heading": {
+    "message": "Support development"
+  },
+  "whatsnew_support_intro": {
+    "message": "This is a free tool made by an independent developer as a hobby."
+  },
+  "whatsnew_support_link": {
+    "message": "Support on Ko-fi"
+  },
+  "whatsnew_support_note": {
+    "message": "Make a one-time contribution by card, Apple Pay, or Google Pay, with no account needed. Everyone gets the same features, whether they contribute or not. No ads."
+  },
+  "whatsnew_load_failed": {
+    "message": "Could not load release notes."
+  },
+  "whatsnew_older_one": {
+    "message": "Show $count$ older release",
+    "placeholders": { "count": { "content": "$1" } }
+  },
+  "whatsnew_older_many": {
+    "message": "Show $count$ older releases",
+    "placeholders": { "count": { "content": "$1" } }
+  },
   "history_cancel": {
     "message": "Cancel"
   },

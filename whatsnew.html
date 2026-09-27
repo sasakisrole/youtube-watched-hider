@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>使い方と更新情報 - YouTube Watched Hider</title>
+  <title data-i18n="whatsnew_title">使い方と更新情報 - YouTube Watched Hider</title>
   <style>
     :root {
       --bg: #fafafa;
@@ -113,30 +113,31 @@
 </head>
 <body>
   <div class="wrap">
-    <h1>使い方と更新情報</h1>
+    <h1 data-i18n="whatsnew_heading">使い方と更新情報</h1>
     <p class="lede">
-      いま入っているのは <span class="current" id="currentVersion">-</span> です。
+      <span data-i18n="whatsnew_current_prefix">いま入っているのは</span> <span class="current" id="currentVersion">-</span> <span data-i18n="whatsnew_current_suffix">です。</span>
     </p>
 
-    <h2>使い方</h2>
-    <p class="section-note">いまの状態の説明です。過去の経緯は下の更新履歴を見てください。</p>
+    <h2 data-i18n="whatsnew_guide_heading">使い方</h2>
+    <p class="section-note" data-i18n="whatsnew_guide_note">いまの状態の説明です。過去の経緯は下の更新履歴を見てください。</p>
     <div id="features"></div>
 
-    <h2>更新履歴</h2>
-    <p class="section-note">CHANGELOG.md から自動生成しています。</p>
-    <div id="recent" class="empty">読み込み中です…</div>
+    <h2 data-i18n="whatsnew_releases_heading">更新履歴</h2>
+    <p class="section-note" data-i18n="whatsnew_releases_note">CHANGELOG.md から自動生成しています。</p>
+    <p id="releaseLanguageNote" class="section-note" data-i18n="whatsnew_japanese_only" hidden>更新履歴は日本語のみです。</p>
+    <div id="recent" class="empty" data-i18n="whatsnew_loading">読み込み中です…</div>
     <details id="olderWrap" hidden>
-      <summary id="olderSummary">それより前の更新を表示</summary>
+      <summary id="olderSummary" data-i18n="whatsnew_older">それより前の更新を表示</summary>
       <div id="older"></div>
     </details>
 
-    <h2>開発を支援する</h2>
-    <p class="section-note">個人が趣味で作って無償で公開しているツールです。</p>
+    <h2 data-i18n="whatsnew_support_heading">開発を支援する</h2>
+    <p class="section-note" data-i18n="whatsnew_support_intro">個人が趣味で作って無償で公開しているツールです。</p>
     <a class="support-link" href="https://ko-fi.com/srole" target="_blank" rel="noopener noreferrer">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></svg>
-      <span>Ko-fi で支援する</span>
+      <span data-i18n="whatsnew_support_link">Ko-fi で支援する</span>
     </a>
-    <p class="support-note">アカウント登録なしで、カード・Apple Pay・Google Pay から一度だけ送れます。支援しても機能は増えません。支援しない人と使える範囲は同じです。広告は入れません。</p>
+    <p class="support-note" data-i18n="whatsnew_support_note">アカウント登録なしで、カード・Apple Pay・Google Pay から一度だけ送れます。支援しても機能は増えません。支援しない人と使える範囲は同じです。広告は入れません。</p>
   </div>
 
   <script src="whatsnew_data.js"></script>

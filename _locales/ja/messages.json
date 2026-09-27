@@ -1,4 +1,60 @@
 {
+  "whatsnew_title": {
+    "message": "使い方と更新情報 - YouTube Watched Hider"
+  },
+  "whatsnew_heading": {
+    "message": "使い方と更新情報"
+  },
+  "whatsnew_current_prefix": {
+    "message": "いま入っているのは"
+  },
+  "whatsnew_current_suffix": {
+    "message": "です。"
+  },
+  "whatsnew_guide_heading": {
+    "message": "使い方"
+  },
+  "whatsnew_guide_note": {
+    "message": "いまの状態の説明です。過去の経緯は下の更新履歴を見てください。"
+  },
+  "whatsnew_releases_heading": {
+    "message": "更新履歴"
+  },
+  "whatsnew_releases_note": {
+    "message": "CHANGELOG.md から自動生成しています。"
+  },
+  "whatsnew_japanese_only": {
+    "message": "更新履歴は日本語のみです。"
+  },
+  "whatsnew_loading": {
+    "message": "読み込み中です…"
+  },
+  "whatsnew_older": {
+    "message": "それより前の更新を表示"
+  },
+  "whatsnew_support_heading": {
+    "message": "開発を支援する"
+  },
+  "whatsnew_support_intro": {
+    "message": "個人が趣味で作って無償で公開しているツールです。"
+  },
+  "whatsnew_support_link": {
+    "message": "Ko-fi で支援する"
+  },
+  "whatsnew_support_note": {
+    "message": "アカウント登録なしで、カード・Apple Pay・Google Pay から一度だけ送れます。支援しても機能は増えません。支援しない人と使える範囲は同じです。広告は入れません。"
+  },
+  "whatsnew_load_failed": {
+    "message": "更新履歴を読み込めませんでした。"
+  },
+  "whatsnew_older_one": {
+    "message": "それより前の更新 $count$ 件を表示",
+    "placeholders": { "count": { "content": "$1" } }
+  },
+  "whatsnew_older_many": {
+    "message": "それより前の更新 $count$ 件を表示",
+    "placeholders": { "count": { "content": "$1" } }
+  },
   "history_cancel": {
     "message": "キャンセル"
   },
