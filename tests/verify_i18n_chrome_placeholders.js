@@ -23,4 +23,15 @@ for (const locale of fs.readdirSync(localesDir)) {
 }
 
 assert.ok(checked > 0, 'no messages checked');
+
+// Every __MSG_key__ in manifest.json must exist in each locale, or the listing shows the raw key.
+const manifestText = fs.readFileSync(path.join(root, 'manifest.json'), 'utf8');
+for (const locale of fs.readdirSync(localesDir)) {
+  const file = path.join(localesDir, locale, 'messages.json');
+  if (!fs.existsSync(file)) continue;
+  const keys = new Set(Object.keys(JSON.parse(fs.readFileSync(file, 'utf8'))).map(k => k.toLowerCase()));
+  for (const match of manifestText.matchAll(/__MSG_([A-Za-z0-9_@]+)__/g)) {
+    assert.ok(keys.has(match[1].toLowerCase()), `${locale}: manifest uses __MSG_${match[1]}__ but it is not defined`);
+  }
+}
 console.log(`PASS chrome placeholder definitions: ${checked} messages`);
