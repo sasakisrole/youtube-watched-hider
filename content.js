@@ -1755,7 +1755,8 @@ window._ytWatchedHider = (() => {
         if (node.nodeType === Node.ELEMENT_NODE) {
           if (node.matches?.(ALL_CARD_SELECTORS) || node.querySelector?.(ALL_CARD_SELECTORS) ||
               node.matches?.(HISTORY_CARD_SELECTOR) || node.querySelector?.(HISTORY_CARD_SELECTOR) ||
-              node.matches?.(SHORTS_SHELF_SELECTORS) || node.querySelector?.(SHORTS_SHELF_SELECTORS)) {
+              node.matches?.(SHORTS_SHELF_SELECTORS) || node.querySelector?.(SHORTS_SHELF_SELECTORS) ||
+              node.matches?.('ytd-playlist-video-renderer') || node.querySelector?.('ytd-playlist-video-renderer')) {
             hasRelevantChange = true;
             break;
           }
@@ -1956,6 +1957,103 @@ window._ytWatchedHider = (() => {
   function getBulkPageContext() {
     if (location.pathname === '/watch') return 'watch';
     if (isChannelVideosPage()) return 'channel';
+    if (location.pathname === '/playlist' && getCurrentPlaylistId()) return 'playlist';
+    return null;
+  }
+
+  function getCurrentPlaylistId() {
+    try {
+      return new URLSearchParams(location.search).get('list') || '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  // ===== Playlist page (unwatched only) =====
+  // プレイリストの行は隠さない。一括ボタンの対象を「未再生」に絞るためだけに判定を
+  // data 属性へ持たせる。判定不能は未再生に数えない（DBエラーを未再生と取り違えない）。
+  // 旧デザインは ytd-playlist-video-renderer、新デザインは一覧の yt-lockup-view-model（2026-09-27 実測）
+  const PLAYLIST_ROW_SELECTOR =
+    'ytd-playlist-video-list-renderer ytd-playlist-video-renderer, ' +
+    'ytd-browse yt-item-section-renderer yt-lockup-view-model';
+  let playlistRefreshRunning = false;
+  let playlistRefreshQueued = false;
+
+  function getPlaylistRowVideoId(card) {
+    const link = card.querySelector(SELECTORS.videoLink);
+    return link ? getVideoIdFromHref(link.href) : null;
+  }
+
+  function markPlaylistRow(card, videoId, watched) {
+    card.dataset.playlistWatchedId = videoId;
+    card.dataset.playlistWatched = watched ? 'true' : 'false';
+  }
+
+  async function refreshPlaylistWatchedState() {
+    if (playlistRefreshRunning) {
+      playlistRefreshQueued = true;
+      return;
+    }
+    playlistRefreshRunning = true;
+    try {
+      const pending = new Map();
+      for (const card of document.querySelectorAll(PLAYLIST_ROW_SELECTOR)) {
+        const videoId = getPlaylistRowVideoId(card);
+        if (!videoId) continue;
+        if (hasYouTubeSeekbar(card)) {
+          markPlaylistRow(card, videoId, true);
+          continue;
+        }
+        if (card.dataset.playlistWatchedId !== videoId) {
+          delete card.dataset.playlistWatched;
+          delete card.dataset.playlistWatchedId;
+        }
+        if (!pending.has(videoId)) pending.set(videoId, []);
+        pending.get(videoId).push(card);
+      }
+      if (pending.size > 0) {
+        const results = await lookupWatchedForIds(Array.from(pending.keys()));
+        for (const [videoId, cards] of pending) {
+          const watched = results[videoId];
+          if (watched !== true && watched !== false) continue;
+          for (const card of cards) {
+            if (getPlaylistRowVideoId(card) === videoId) markPlaylistRow(card, videoId, watched);
+          }
+        }
+      }
+    } catch (e) {
+      if (!e || !e.contextInvalidated) console.warn('[YT-Watched-Hider] playlist watched check error:', e);
+    } finally {
+      playlistRefreshRunning = false;
+    }
+    updateQueueButtonLabel();
+    updateWatchLaterButtonLabel();
+    if (playlistRefreshQueued) {
+      playlistRefreshQueued = false;
+      refreshPlaylistWatchedState();
+    }
+  }
+
+  function findPlaylistUnwatchedCards() {
+    const out = [];
+    for (const card of document.querySelectorAll(PLAYLIST_ROW_SELECTOR)) {
+      if (card.offsetParent === null) continue;
+      if (card.dataset.playlistWatched !== 'false') continue;
+      const videoId = getPlaylistRowVideoId(card);
+      if (!videoId || card.dataset.playlistWatchedId !== videoId) continue;
+      // 行の描画後に進捗バーが付くことがあるので、数える瞬間にも見直す
+      if (hasYouTubeSeekbar(card)) continue;
+      if (card.querySelector('a[href*="/shorts/"]')) continue;
+      if (hasLiveBadge(card)) continue;
+      out.push(card);
+    }
+    return out;
+  }
+
+  function findPlaylistBulkAnchor() {
+    for (const el of document.querySelectorAll(PLAYLIST_ROW_SELECTOR)) {
+      if (el.offsetParent !== null) return el;
+    }
     return null;
   }
 
@@ -1999,6 +2097,16 @@ window._ytWatchedHider = (() => {
   }
 
   function buildBulkConfirmMessage(kind, count, context) {
+    if (context === 'playlist') {
+      let message = kind === 'queue'
+        ? contentMessage('content_queueUnwatchedConfirm', `表示中の行のうち未再生の${count}件をキューに追加します。\nプレイリストの続きは、下へスクロールして読み込むと対象に加わります。\n処理中YouTubeのメニューが順次開閉します。続行しますか？`, [count])
+        : contentMessage('content_watchLaterUnwatchedConfirm', `表示中の行のうち未再生の${count}件を「後で見る」に追加します。\nプレイリストの続きは、下へスクロールして読み込むと対象に加わります。\nメニューが順次開閉します。続行しますか？`, [count]);
+      if (count > BULK_LARGE_COUNT_THRESHOLD) {
+        const minutes = Math.max(1, Math.ceil((count * (kind === 'queue' ? 0.6 : 0.65)) / 60));
+        message += contentMessage('content_largeBatchHint', `\n\n件数が多いため、完了まで約${minutes}分以上かかる可能性があります。途中で中止する場合は処理中のボタンをクリックしてください。`, [minutes]);
+      }
+      return message;
+    }
     if (kind === 'queue') {
       if (context === 'watch') {
         return contentMessage('content_queueRelatedConfirm', `${count}件の関連動画をキューに追加します。\n処理中YouTubeのメニューが順次開閉します。続行しますか？`, [count]);
@@ -2160,6 +2268,7 @@ window._ytWatchedHider = (() => {
 
   function findQueueableCards(context = getBulkPageContext()) {
     if (context === 'channel') return findChannelBulkActionCards();
+    if (context === 'playlist') return findPlaylistUnwatchedCards();
     if (context !== 'watch') return [];
 
     const cards = document.querySelectorAll(RELATED_CARD_SELECTORS);
@@ -2274,8 +2383,11 @@ window._ytWatchedHider = (() => {
 
   function updateQueueButtonLabel() {
     if (!queueAllBtn || queueInProgress) return;
-    const count = findQueueableCards(queueButtonContext || getBulkPageContext()).length;
-    queueAllBtn.textContent = contentMessage('content_queueLabel', `⏭ キューに追加 (${count})`, [count]);
+    const context = queueButtonContext || getBulkPageContext();
+    const count = findQueueableCards(context).length;
+    queueAllBtn.textContent = context === 'playlist'
+      ? contentMessage('content_queueUnwatchedLabel', `⏭ 未再生をキューに追加 (${count})`, [count])
+      : contentMessage('content_queueLabel', `⏭ キューに追加 (${count})`, [count]);
     queueAllBtn.disabled = count === 0;
     queueAllBtn.style.opacity = count === 0 ? '0.5' : '1';
   }
@@ -2287,6 +2399,7 @@ window._ytWatchedHider = (() => {
       return;
     }
     const context = getBulkPageContext();
+    if (context === 'playlist') await refreshPlaylistWatchedState();
     const cards = findQueueableCards(context);
     if (cards.length === 0) return;
     if (!confirm(buildBulkConfirmMessage('queue', cards.length, context))) return;
@@ -2338,6 +2451,7 @@ window._ytWatchedHider = (() => {
       removeQueueAllButton();
       return;
     }
+    if (context === 'playlist') refreshPlaylistWatchedState();
     // Insert right before the first visible related video card to avoid
     // inheriting weird flex/grid sizing from container elements.
     const firstCard = findBulkActionAnchor(context);
@@ -2406,6 +2520,8 @@ window._ytWatchedHider = (() => {
 
   function findWatchLaterableCards(context = getBulkPageContext()) {
     if (context === 'channel') return findChannelBulkActionCards();
+    // 「後で見る」自身のページでは追加先と一覧が同じなので対象にしない
+    if (context === 'playlist') return getCurrentPlaylistId() === 'WL' ? [] : findPlaylistUnwatchedCards();
     if (context !== 'watch') return [];
 
     const currentVid = getCurrentVideoId();
@@ -2456,7 +2572,10 @@ window._ytWatchedHider = (() => {
       );
       for (const c of candidates) {
         const text = (c.textContent || '').trim();
-        if (text.includes('後で見る') || text.toLowerCase().includes('watch later')) {
+        const lower = text.toLowerCase();
+        // プレイリスト上のメニューにある「[後で見る]から削除」を押さない
+        if (text.includes('削除') || lower.includes('remove')) continue;
+        if (text.includes('後で見る') || lower.includes('watch later')) {
           item = c;
           break;
         }
@@ -2479,8 +2598,11 @@ window._ytWatchedHider = (() => {
 
   function updateWatchLaterButtonLabel() {
     if (!watchLaterBtn || watchLaterInProgress) return;
-    const count = findWatchLaterableCards(watchLaterButtonContext || getBulkPageContext()).length;
-    watchLaterBtn.textContent = contentMessage('content_watchLaterLabel', `後で見る (${count})`, [count]);
+    const context = watchLaterButtonContext || getBulkPageContext();
+    const count = findWatchLaterableCards(context).length;
+    watchLaterBtn.textContent = context === 'playlist'
+      ? contentMessage('content_watchLaterUnwatchedLabel', `未再生を後で見る (${count})`, [count])
+      : contentMessage('content_watchLaterLabel', `後で見る (${count})`, [count]);
     watchLaterBtn.disabled = count === 0;
     watchLaterBtn.style.opacity = count === 0 ? '0.5' : '1';
   }
@@ -2492,6 +2614,7 @@ window._ytWatchedHider = (() => {
       return;
     }
     const context = getBulkPageContext();
+    if (context === 'playlist') await refreshPlaylistWatchedState();
     const cards = findWatchLaterableCards(context);
     if (cards.length === 0) return;
     if (!confirm(buildBulkConfirmMessage('watchLater', cards.length, context))) return;
@@ -2564,6 +2687,7 @@ window._ytWatchedHider = (() => {
   function findBulkActionAnchor(context) {
     if (context === 'channel') return findChannelBulkAnchor();
     if (context === 'watch') return findWatchLaterAnchor();
+    if (context === 'playlist') return findPlaylistBulkAnchor();
     return null;
   }
 

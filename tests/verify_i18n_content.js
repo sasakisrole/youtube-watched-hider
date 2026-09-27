@@ -79,8 +79,11 @@ function boot(locale) {
         harvest.running = true; harvest.noNewStreak = 0; renderHarvestStatus();
         harvest.noNewStreak = 2; renderHarvestStatus(); harvest.running = false;
         harvest.endReason = 'auto'; renderHarvestStatus(); harvest.endReason = 'user'; renderHarvestStatus();
-        updateQueueButtonLabel(); updateWatchLaterButtonLabel();`);
-      for (const kind of ['queue', 'watchLater']) for (const context of ['watch', 'channel']) {
+        updateQueueButtonLabel(); updateWatchLaterButtonLabel();
+        queueButtonContext = watchLaterButtonContext = 'playlist';
+        updateQueueButtonLabel(); updateWatchLaterButtonLabel();
+        queueButtonContext = watchLaterButtonContext = null;`);
+      for (const kind of ['queue', 'watchLater']) for (const context of ['watch', 'channel', 'playlist']) {
         app.output.push(app.run(`buildBulkConfirmMessage('${kind}', ${n}, '${context}')`));
       }
     }

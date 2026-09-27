@@ -778,6 +778,18 @@
   "content_bulkFailures": {
     "message": " / $1件失敗"
   },
+  "content_queueUnwatchedLabel": {
+    "message": "⏭ 未再生をキューに追加 ($1)"
+  },
+  "content_watchLaterUnwatchedLabel": {
+    "message": "未再生を後で見る ($1)"
+  },
+  "content_queueUnwatchedConfirm": {
+    "message": "表示中の行のうち未再生の$1件をキューに追加します。\nプレイリストの続きは、下へスクロールして読み込むと対象に加わります。\n処理中YouTubeのメニューが順次開閉します。続行しますか？"
+  },
+  "content_watchLaterUnwatchedConfirm": {
+    "message": "表示中の行のうち未再生の$1件を「後で見る」に追加します。\nプレイリストの続きは、下へスクロールして読み込むと対象に加わります。\nメニューが順次開閉します。続行しますか？"
+  },
   "officialRegisteredOfficialSources": {
     "message": "登録済み公式ソース"
   },

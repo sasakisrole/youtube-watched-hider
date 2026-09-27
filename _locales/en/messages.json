@@ -778,6 +778,18 @@
   "content_bulkFailures": {
     "message": " / $1 failed"
   },
+  "content_queueUnwatchedLabel": {
+    "message": "⏭ Queue unwatched ($1)"
+  },
+  "content_watchLaterUnwatchedLabel": {
+    "message": "Unwatched to Watch Later ($1)"
+  },
+  "content_queueUnwatchedConfirm": {
+    "message": "Add to queue? Unwatched videos among the loaded rows: $1.\nScroll down to load more of the playlist and include them.\nYouTube menus will open and close during processing. Continue?"
+  },
+  "content_watchLaterUnwatchedConfirm": {
+    "message": "Add to Watch Later? Unwatched videos among the loaded rows: $1.\nScroll down to load more of the playlist and include them.\nMenus will open and close during processing. Continue?"
+  },
   "officialRegisteredOfficialSources": {
     "message": "Registered official sources"
   },
