@@ -1776,6 +1776,34 @@
       }
     }
   },
+  "history_maintenance_running": {
+    "message": "Running…"
+  },
+  "history_maintenance_cancel_hint": {
+    "message": "Click to cancel"
+  },
+  "history_maintenance_locked": {
+    "message": "Cannot close while a task is running"
+  },
+  "history_maintenance_never": {
+    "message": "Last run: Never"
+  },
+  "history_maintenance_last_repair": {
+    "message": "Last run: $timestamp$ · Repaired credit values: $values$ (videos: $videos$)",
+    "placeholders": {
+      "timestamp": { "content": "$1" },
+      "values": { "content": "$2" },
+      "videos": { "content": "$3" }
+    }
+  },
+  "history_maintenance_last_restore": {
+    "message": "Last run: $timestamp$ · Restored credit values: $values$ (videos: $videos$)",
+    "placeholders": {
+      "timestamp": { "content": "$1" },
+      "values": { "content": "$2" },
+      "videos": { "content": "$3" }
+    }
+  },
   "extensionDescription": {
     "message": "Hide videos you've already watched from YouTube recommendations, search results, and related videos",
     "description": "Chrome Web Store / extensions page summary (max 132 chars)"

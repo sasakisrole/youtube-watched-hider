@@ -453,7 +453,7 @@ const maintenanceButtons = [
   defaultTitle: item.el.title,
 }));
 let runningMaintenance = null;
-let runningMaintenanceActiveText = '実行中…';
+let runningMaintenanceActiveText = historyMessage('history_maintenance_running', '実行中…');
 let runningMaintenanceAllowAbort = false;
 
 function hasRunningMaintenance() {
@@ -478,13 +478,13 @@ function updateMaintenanceButtons() {
     if (item.key === activeMaintenance) {
       const locallyOwned = item.key === runningMaintenance;
       btn.disabled = !locallyOwned || !runningMaintenanceAllowAbort;
-      setMaintenanceButtonText(item, locallyOwned ? runningMaintenanceActiveText : '実行中…');
-      btn.title = locallyOwned && runningMaintenanceAllowAbort ? 'クリックして中止' : item.defaultTitle;
+      setMaintenanceButtonText(item, locallyOwned ? runningMaintenanceActiveText : historyMessage('history_maintenance_running', '実行中…'));
+      btn.title = locallyOwned && runningMaintenanceAllowAbort ? historyMessage('history_maintenance_cancel_hint', 'クリックして中止') : item.defaultTitle;
       return;
     }
     btn.disabled = true;
     setMaintenanceButtonText(item, item.defaultText);
-    btn.title = '他のメンテナンス処理が実行中';
+    btn.title = historyMessage('history_enrich_busy', '他のメンテナンス処理が実行中');
   });
   updateMaintToggleLock();
 }
@@ -521,7 +521,7 @@ function updateMaintToggleLock() {
   // 走っている処理の中止ボタンは折り畳みの中にあるので、実行中は閉じさせない
   if (locked) setMaintOpen(true, false);
   maintToggle.disabled = locked;
-  maintToggle.title = locked ? '実行中は閉じられません' : '';
+  maintToggle.title = locked ? historyMessage('history_maintenance_locked', '実行中は閉じられません') : '';
 }
 
 if (maintToggle && maintPanel) {
@@ -538,9 +538,9 @@ const repairLastRun = document.getElementById('repairLastRun');
 const CREDIT_REPAIR_LAST_RUN_KEY = 'creditRepairLastRunV1';
 
 function formatCreditRepairLastRun(lastRun) {
-  if (!lastRun || !['repair', 'restore'].includes(lastRun.kind)) return '最終実行: 未実行';
+  if (!lastRun || !['repair', 'restore'].includes(lastRun.kind)) return historyMessage('history_maintenance_never', '最終実行: 未実行');
   const at = Number(lastRun.at);
-  if (!Number.isFinite(at) || at <= 0) return '最終実行: 未実行';
+  if (!Number.isFinite(at) || at <= 0) return historyMessage('history_maintenance_never', '最終実行: 未実行');
   const date = new Date(at);
   const yyyy = date.getFullYear();
   const mm = String(date.getMonth() + 1).padStart(2, '0');
@@ -549,8 +549,11 @@ function formatCreditRepairLastRun(lastRun) {
   const min = String(date.getMinutes()).padStart(2, '0');
   const values = Math.max(0, Math.trunc(Number(lastRun.values) || 0));
   const videos = Math.max(0, Math.trunc(Number(lastRun.videos) || 0));
-  const action = lastRun.kind === 'repair' ? '修復' : '元に戻した';
-  return `最終実行: ${yyyy}-${mm}-${dd} ${hh}:${min} · ${values.toLocaleString()}件（${videos.toLocaleString()}動画）を${action}`;
+  const timestamp = `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+  const counts = [values, videos].map(n => n.toLocaleString(historyUILanguage()));
+  return lastRun.kind === 'repair'
+    ? historyMessage('history_maintenance_last_repair', `最終実行: ${timestamp} · ${counts[0]}件（${counts[1]}動画）を修復`, [timestamp, ...counts])
+    : historyMessage('history_maintenance_last_restore', `最終実行: ${timestamp} · ${counts[0]}件（${counts[1]}動画）を元に戻した`, [timestamp, ...counts]);
 }
 
 function renderCreditRepairLastRun(lastRun) {
@@ -597,7 +600,7 @@ if (repairToggle && repairPanel) {
 function beginMaintenance(key, options = {}) {
   if (hasRunningMaintenance()) return false;
   runningMaintenance = key;
-  runningMaintenanceActiveText = options.activeText || '実行中…';
+  runningMaintenanceActiveText = options.activeText || historyMessage('history_maintenance_running', '実行中…');
   runningMaintenanceAllowAbort = !!options.allowAbort;
   updateMaintenanceButtons();
   return true;
@@ -616,7 +619,7 @@ function endMaintenance(key) {
   if (runningMaintenance !== key) return;
   runningMaintenance = null;
   if (persistedRunningMaintenance === key) persistedRunningMaintenance = null;
-  runningMaintenanceActiveText = '実行中…';
+  runningMaintenanceActiveText = historyMessage('history_maintenance_running', '実行中…');
   runningMaintenanceAllowAbort = false;
   updateMaintenanceButtons();
 }

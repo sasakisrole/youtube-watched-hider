@@ -13,6 +13,7 @@ const visited = new Set();
 for (const key of require('./verify_i18n_history_watch_later').visited) visited.add(key);
 for (const key of require('./verify_i18n_history_enrich').visited) visited.add(key);
 for (const key of require('./verify_i18n_history_repair').visited) visited.add(key);
+for (const key of require('./verify_i18n_history_maintenance').visited) visited.add(key);
 
 function boot(script, locale, language = 'ja') {
   const elements = {};

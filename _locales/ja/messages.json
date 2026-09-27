@@ -1776,6 +1776,34 @@
       }
     }
   },
+  "history_maintenance_running": {
+    "message": "実行中…"
+  },
+  "history_maintenance_cancel_hint": {
+    "message": "クリックして中止"
+  },
+  "history_maintenance_locked": {
+    "message": "実行中は閉じられません"
+  },
+  "history_maintenance_never": {
+    "message": "最終実行: 未実行"
+  },
+  "history_maintenance_last_repair": {
+    "message": "最終実行: $timestamp$ · $values$件（$videos$動画）を修復",
+    "placeholders": {
+      "timestamp": { "content": "$1" },
+      "values": { "content": "$2" },
+      "videos": { "content": "$3" }
+    }
+  },
+  "history_maintenance_last_restore": {
+    "message": "最終実行: $timestamp$ · $values$件（$videos$動画）を元に戻した",
+    "placeholders": {
+      "timestamp": { "content": "$1" },
+      "values": { "content": "$2" },
+      "videos": { "content": "$3" }
+    }
+  },
   "extensionDescription": {
     "message": "YouTubeのおすすめ・検索結果・関連動画から視聴済みの動画を非表示にします",
     "description": "Chrome Web Store / extensions page summary (max 132 chars)"
