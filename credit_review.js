@@ -2,16 +2,22 @@
 // Loaded as a plain script and exposed for the synthetic DOM tests.
 (function (root) {
   'use strict';
+  // Resolve on use: this script can load before history.js and also runs standalone.
+  function scriptMessage(key, fallback, substitutions = []) {
+    return typeof historyMessage === 'function'
+      ? historyMessage(key, fallback, substitutions) : fallback;
+  }
+
 
   var DEFAULT_LIMIT = 300;
   var STATE_LABELS = Object.freeze({
-    conflict: '競合',
-    needs_review: '要確認',
-    auto_candidate: '自動候補',
-    unresolved: '未解決',
-    verified: '確認済み',
+    get conflict() { return scriptMessage('history_scripts_conflict_1', '競合'); },
+    get needs_review() { return scriptMessage('history_scripts_needs_review_2', '要確認'); },
+    get auto_candidate() { return scriptMessage('history_scripts_automatic_candidate_3', '自動候補'); },
+    get unresolved() { return scriptMessage('history_scripts_unresolved_4', '未解決'); },
+    get verified() { return scriptMessage('history_scripts_verified_5', '確認済み'); },
   });
-  var ROLE_LABELS = Object.freeze({ composer: '作曲', lyricist: '作詞', arranger: '編曲' });
+  var ROLE_LABELS = Object.freeze({ get composer() { return scriptMessage('history_scripts_composer_6', '作曲'); }, get lyricist() { return scriptMessage('history_scripts_lyricist_7', '作詞'); }, get arranger() { return scriptMessage('history_scripts_arranger_8', '編曲'); } });
 
   function text(value, fallback) {
     var normalized = value == null ? '' : String(value).trim();
@@ -65,7 +71,7 @@
     button.dataset.videoId = item.videoId;
     button.dataset.role = item.role;
     button.textContent = label;
-    button.setAttribute('aria-label', text(ROLE_LABELS[item.role], item.role) + 'を' + label);
+    button.setAttribute('aria-label', scriptMessage('history_scripts_review_action', text(ROLE_LABELS[item.role], item.role) + 'を' + label, [text(ROLE_LABELS[item.role], item.role), label]));
     button.disabled = !!disabled;
     return button;
   }
@@ -81,10 +87,10 @@
     header.className = 'credit-review-item-head';
     var title = document.createElement('div');
     title.className = 'credit-review-title';
-    title.textContent = text(item.title, item.videoId || 'タイトル不明');
+    title.textContent = text(item.title, item.videoId || scriptMessage('history_scripts_unknown_title_9', 'タイトル不明'));
     var channel = document.createElement('div');
     channel.className = 'credit-review-channel';
-    channel.textContent = text(item.channel, 'チャンネル不明');
+    channel.textContent = text(item.channel, scriptMessage('history_scripts_unknown_channel_10', 'チャンネル不明'));
     var badge = document.createElement('span');
     badge.className = 'credit-review-badge';
     badge.textContent = text(ROLE_LABELS[item.role], item.role) + ' / ' + text(STATE_LABELS[item.state], item.state);
@@ -92,21 +98,21 @@
 
     var values = document.createElement('dl');
     values.className = 'credit-review-values';
-    appendValueRow(values, '現在値', text(currentValue, '未設定'));
+    appendValueRow(values, scriptMessage('history_scripts_current_value_11', '現在値'), text(currentValue, scriptMessage('history_scripts_not_set_12', '未設定')));
     var candidates = uniqueCandidateValues(item.candidates);
-    appendValueRow(values, '候補', candidates.length ? candidates.join(' / ') : 'なし');
+    appendValueRow(values, scriptMessage('history_scripts_candidate_13', '候補'), candidates.length ? candidates.join(' / ') : scriptMessage('history_scripts_none_14', 'なし'));
     card.append(header, values);
 
     var message = options.message;
     if (item.state === 'conflict') {
       var conflict = document.createElement('p');
       conflict.className = 'credit-review-message error';
-      conflict.textContent = '値が食い違っています。内容を確認してください。';
+      conflict.textContent = scriptMessage('history_scripts_values_conflict_please_review_them_15', '値が食い違っています。内容を確認してください。');
       card.appendChild(conflict);
       var choices = document.createElement('fieldset');
       choices.className = 'credit-review-conflict-choices';
       var legend = document.createElement('legend');
-      legend.textContent = '確定する候補を選択';
+      legend.textContent = scriptMessage('history_scripts_select_a_candidate_to_confirm_16', '確定する候補を選択');
       choices.appendChild(legend);
       candidates.forEach(function (value, index) {
         var label = document.createElement('label');
@@ -135,7 +141,7 @@
       noneInput.checked = options.hasConflictSelection && options.conflictSelection === '';
       noneInput.disabled = !!options.busy;
       var noneText = document.createElement('span');
-      noneText.textContent = 'どれも選ばない';
+      noneText.textContent = scriptMessage('history_scripts_select_none_17', 'どれも選ばない');
       noneLabel.append(noneInput, noneText);
       choices.appendChild(noneLabel);
       card.appendChild(choices);
@@ -148,11 +154,11 @@
     if (canAdopt || canReject || canResolve || canUndo) {
       var actions = document.createElement('div');
       actions.className = 'credit-review-actions';
-      if (canAdopt) actions.appendChild(createActionButton('採用', 'adopt', item, options.busy));
-      if (canReject) actions.appendChild(createActionButton('却下', 'reject', item, options.busy));
-      if (canResolve) actions.appendChild(createActionButton('選択を確定', 'resolve', item,
+      if (canAdopt) actions.appendChild(createActionButton(scriptMessage('history_scripts_adopt_18', '採用'), 'adopt', item, options.busy));
+      if (canReject) actions.appendChild(createActionButton(scriptMessage('history_scripts_reject_19', '却下'), 'reject', item, options.busy));
+      if (canResolve) actions.appendChild(createActionButton(scriptMessage('history_scripts_confirm_selection_20', '選択を確定'), 'resolve', item,
         options.busy || !options.hasConflictSelection));
-      if (canUndo) actions.appendChild(createActionButton('元に戻す', 'undo', item, options.busy));
+      if (canUndo) actions.appendChild(createActionButton(scriptMessage('history_scripts_undo_21', '元に戻す'), 'undo', item, options.busy));
       card.appendChild(actions);
     }
     if (message && message.text) {
@@ -297,7 +303,7 @@
 
   CreditReviewController.prototype.sendMutation = function (payload) {
     if (typeof this.env.saveCreditRole !== 'function') {
-      return Promise.reject(new Error('保存機能を利用できません。'));
+      return Promise.reject(new Error(scriptMessage('history_scripts_saving_is_unavailable_22', '保存機能を利用できません。')));
     }
     return Promise.resolve(this.env.saveCreditRole(payload));
   };
@@ -333,7 +339,7 @@
     var record = this.recordsByVideoId.get(String(videoId));
     var expectedSource = root.CreditTarget.effectiveRoleSource(record, role);
     this.busy.add(key);
-    this.messages.set(key, { text: '保存しています。', tone: '' });
+    this.messages.set(key, { text: scriptMessage('history_scripts_saving_23', '保存しています。'), tone: '' });
     this.render();
     try {
       var result = await this.sendMutation({
@@ -342,18 +348,18 @@
         adoptCandidate: true,
       });
       if (!result || result.updated !== true) {
-        this.messages.set(key, { text: label + 'の保存に失敗しました。データは変更されていません。', tone: 'error' });
+        this.messages.set(key, { text: scriptMessage('history_scripts_review_save_failed', label + 'の保存に失敗しました。データは変更されていません。', [label]), tone: 'error' });
         return result || { error: 'save_failed' };
       }
       this.applySavedState(record, role, result.post, null, false);
       this.undoActions.set(key, { kind: 'adopt', previous: result.previous, post: result.post });
       this.lastUndoKey = key;
       this.conflictSelections.delete(key);
-      this.messages.set(key, { text: label + 'しました。', tone: 'success' });
+      this.messages.set(key, { text: scriptMessage('history_scripts_review_saved', label + 'しました。', [label]), tone: 'success' });
       this.refreshReviewList();
       return result;
     } catch (_error) {
-      this.messages.set(key, { text: label + 'の保存に失敗しました。データは変更されていません。', tone: 'error' });
+      this.messages.set(key, { text: scriptMessage('history_scripts_review_save_failed', label + 'の保存に失敗しました。データは変更されていません。', [label]), tone: 'error' });
       return { error: 'save_failed' };
     } finally {
       this.busy.delete(key);
@@ -370,7 +376,7 @@
     if (!item || !record || (item.state !== 'auto_candidate' && item.state !== 'needs_review') || !value) {
       return { error: 'not_adoptable' };
     }
-    return this.commitCandidate(videoId, role, value, '採用');
+    return this.commitCandidate(videoId, role, value, scriptMessage('history_scripts_adopt_18', '採用'));
   };
 
   CreditReviewController.prototype.reject = async function (videoId, role) {
@@ -384,7 +390,7 @@
     var signature = candidateSignature(item);
     if (!signature || signature === '[]') return { error: 'not_rejectable' };
     this.busy.add(key);
-    this.messages.set(key, { text: '却下を保存しています。', tone: '' });
+    this.messages.set(key, { text: scriptMessage('history_scripts_saving_rejection_25', '却下を保存しています。'), tone: '' });
     this.render();
     try {
       var result = await this.sendMutation({
@@ -394,17 +400,17 @@
         rejectCandidate: signature,
       });
       if (!result || result.updated !== true) {
-        this.messages.set(key, { text: '却下の保存に失敗しました。候補は表示されたままです。', tone: 'error' });
+        this.messages.set(key, { text: scriptMessage('history_scripts_could_not_save_the_rejection_the_candidate_is_still__26', '却下の保存に失敗しました。候補は表示されたままです。'), tone: 'error' });
         return result || { error: 'save_failed' };
       }
       this.applySavedRejection(record, role, result.post && result.post.rejection);
       this.undoActions.set(key, { kind: 'reject', previous: result.previous, post: result.post });
       this.lastUndoKey = key;
-      this.messages.set(key, { text: '却下しました。', tone: 'success' });
+      this.messages.set(key, { text: scriptMessage('history_scripts_rejected_27', '却下しました。'), tone: 'success' });
       this.refreshReviewList();
       return result;
     } catch (_error) {
-      this.messages.set(key, { text: '却下の保存に失敗しました。候補は表示されたままです。', tone: 'error' });
+      this.messages.set(key, { text: scriptMessage('history_scripts_could_not_save_the_rejection_the_candidate_is_still__26', '却下の保存に失敗しました。候補は表示されたままです。'), tone: 'error' });
       return { error: 'save_failed' };
     } finally {
       this.busy.delete(key);
@@ -433,12 +439,12 @@
     }
     var value = this.conflictSelections.get(key);
     if (value === '') {
-      this.messages.set(key, { text: '変更せず、そのまま残しました。', tone: '' });
+      this.messages.set(key, { text: scriptMessage('history_scripts_kept_without_changes_28', '変更せず、そのまま残しました。'), tone: '' });
       this.render();
       return { unchanged: true };
     }
     if (uniqueCandidateValues(item.candidates).indexOf(value) === -1) return { error: 'invalid_selection' };
-    return this.commitCandidate(videoId, role, value, '確定');
+    return this.commitCandidate(videoId, role, value, scriptMessage('history_scripts_confirm_24', '確定'));
   };
 
   CreditReviewController.prototype.undo = async function (videoId, role) {
@@ -448,7 +454,7 @@
     if (!action || !record || this.busy.has(key)) return { error: 'no_undo' };
     var restoreRoleSource = action.previous.sourcePresent ? action.previous.source : null;
     this.busy.add(key);
-    this.messages.set(key, { text: '元に戻しています。', tone: '' });
+    this.messages.set(key, { text: scriptMessage('history_scripts_undoing_29', '元に戻しています。'), tone: '' });
     this.render();
     try {
       var payload = {
@@ -463,7 +469,7 @@
       }
       var result = await this.sendMutation(payload);
       if (!result || result.updated !== true) {
-        this.messages.set(key, { text: '取り消しの保存に失敗しました。現在の状態は変わっていません。', tone: 'error' });
+        this.messages.set(key, { text: scriptMessage('history_scripts_could_not_save_the_undo_nothing_has_changed_30', '取り消しの保存に失敗しました。現在の状態は変わっていません。'), tone: 'error' });
         return result || { error: 'save_failed' };
       }
       if (action.kind === 'reject') {
@@ -473,11 +479,11 @@
       }
       this.undoActions.delete(key);
       if (this.lastUndoKey === key) this.lastUndoKey = '';
-      this.messages.set(key, { text: '元に戻しました。', tone: 'success' });
+      this.messages.set(key, { text: scriptMessage('history_scripts_undone_31', '元に戻しました。'), tone: 'success' });
       this.refreshReviewList();
       return result;
     } catch (_error) {
-      this.messages.set(key, { text: '取り消しの保存に失敗しました。現在の状態は変わっていません。', tone: 'error' });
+      this.messages.set(key, { text: scriptMessage('history_scripts_could_not_save_the_undo_nothing_has_changed_30', '取り消しの保存に失敗しました。現在の状態は変わっていません。'), tone: 'error' });
       return { error: 'save_failed' };
     } finally {
       this.busy.delete(key);
@@ -569,13 +575,13 @@
     if (!items.length) {
       var omittedByLimit = this.filterState !== 'all' && this.reviewList.truncated
         && this.reviewList.counts[this.filterState] > 0;
-      this.empty.textContent = omittedByLimit ? '表示上限内に該当なし' : '該当なし';
+      this.empty.textContent = omittedByLimit ? scriptMessage('history_scripts_no_matches_within_the_display_limit_32', '表示上限内に該当なし') : scriptMessage('history_scripts_no_matches_33', '該当なし');
     }
     if (this.summary) {
       var globalSummary = this.reviewList.truncated
-        ? this.reviewList.totalCount + '件中' + this.reviewList.displayedCount + '件を表示'
-        : '全' + this.reviewList.totalCount + '件';
-      var filterSummary = this.filterState === 'all' ? '' : ' / ' + STATE_LABELS[this.filterState] + ' ' + items.length + '件';
+        ? scriptMessage('history_scripts_review_shown', this.reviewList.totalCount + '件中' + this.reviewList.displayedCount + '件を表示', [this.reviewList.totalCount, this.reviewList.displayedCount])
+        : scriptMessage('history_scripts_review_total', '全' + this.reviewList.totalCount + '件', [this.reviewList.totalCount]);
+      var filterSummary = this.filterState === 'all' ? '' : scriptMessage('history_scripts_review_filter', ' / ' + STATE_LABELS[this.filterState] + ' ' + items.length + '件', [STATE_LABELS[this.filterState], items.length]);
       this.summary.textContent = globalSummary + filterSummary;
     }
     if (this.feedback) {
@@ -586,9 +592,9 @@
         var videoId = this.lastUndoKey.slice(0, separator);
         var role = this.lastUndoKey.slice(separator + 1);
         var notice = document.createElement('span');
-        notice.textContent = text(ROLE_LABELS[role], role)
-          + (latest.kind === 'reject' ? 'を却下しました。' : 'を採用しました。');
-        this.feedback.append(notice, createActionButton('元に戻す', 'undo', {
+        notice.textContent = scriptMessage('history_scripts_review_notice', text(ROLE_LABELS[role], role)
+          + (latest.kind === 'reject' ? 'を却下しました。' : 'を採用しました。'), [text(ROLE_LABELS[role], role), latest.kind === 'reject' ? scriptMessage('history_scripts_review_rejected', 'を却下しました。') : scriptMessage('history_scripts_review_adopted', 'を採用しました。')]);
+        this.feedback.append(notice, createActionButton(scriptMessage('history_scripts_undo_21', '元に戻す'), 'undo', {
           videoId: videoId, role: role,
         }, this.busy.has(this.lastUndoKey)));
         this.feedback.hidden = false;

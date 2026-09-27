@@ -1,6 +1,12 @@
 // Trends panel: cumulative total + daily new chart.
 // Reads from `allData` (loaded by history.js).
 (() => {
+  // Resolve on use: this script can load before history.js and also runs standalone.
+  function scriptMessage(key, fallback, substitutions = []) {
+    return typeof historyMessage === 'function'
+      ? historyMessage(key, fallback, substitutions) : fallback;
+  }
+
   let chartTotal = null;
   let chartDaily = null;
   let currentRange = 30; // days, or 'all'
@@ -101,8 +107,8 @@
       if (fw && fw >= todayStart) todayNew++;
       else if (wa >= todayStart) todayRewatched++;
     }
-    document.getElementById('trAllTime').textContent = total.toLocaleString();
-    document.getElementById('trThisMonth').textContent = monthNew.toLocaleString();
+    document.getElementById('trAllTime').textContent = total.toLocaleString(typeof historyUILanguage === 'function' ? historyUILanguage() : 'ja');
+    document.getElementById('trThisMonth').textContent = monthNew.toLocaleString(typeof historyUILanguage === 'function' ? historyUILanguage() : 'ja');
     document.getElementById('trToday').textContent = `${todayNew}/${todayRewatched}`;
   }
 
@@ -123,7 +129,7 @@
         },
         y: {
           beginAtZero: false,
-          ticks: { color: muted, callback: v => v.toLocaleString() },
+          ticks: { color: muted, callback: v => v.toLocaleString(typeof historyUILanguage === 'function' ? historyUILanguage() : 'ja') },
           grid: { color: border, drawTicks: false },
         },
       },
@@ -166,7 +172,7 @@
       dailyOpts.plugins.tooltip.callbacks = {
         label: (ctx) => {
           const real = original[ctx.dataIndex];
-          return clippedIdx.has(ctx.dataIndex) ? `${real.toLocaleString()} (圧縮表示)` : real.toLocaleString();
+          return clippedIdx.has(ctx.dataIndex) ? scriptMessage('history_scripts_1_compressed_249', `${real.toLocaleString(typeof historyUILanguage === 'function' ? historyUILanguage() : 'ja')} (圧縮表示)`, [real.toLocaleString(typeof historyUILanguage === 'function' ? historyUILanguage() : 'ja')]) : real.toLocaleString(typeof historyUILanguage === 'function' ? historyUILanguage() : 'ja');
         },
       };
     }
@@ -185,7 +191,7 @@
           const bar = meta.data[i];
           if (!bar) continue;
           const real = original[i];
-          ctx.fillText(`↑${real.toLocaleString()}`, bar.x, y.top + 10);
+          ctx.fillText(`↑${real.toLocaleString(typeof historyUILanguage === 'function' ? historyUILanguage() : 'ja')}`, bar.x, y.top + 10);
         }
         ctx.restore();
       },

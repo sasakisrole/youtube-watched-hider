@@ -1,5 +1,11 @@
 (() => {
   'use strict';
+  // Resolve on use: this script can load before history.js and also runs standalone.
+  function scriptMessage(key, fallback, substitutions = []) {
+    return typeof historyMessage === 'function'
+      ? historyMessage(key, fallback, substitutions) : fallback;
+  }
+
 
   const core = globalThis.YWHOfficialSearchFilterCore ||
     (typeof require === 'function'
@@ -64,8 +70,8 @@
           : aggregate.channelName,
         creditRate,
         evidence: topic
-          ? 'YouTube の「- Topic」チャンネル名'
-          : `クレジット付き ${aggregate.credited}/${aggregate.plays} 件`,
+          ? scriptMessage('history_scripts_youtube_topic_channel_name_34', 'YouTube の「- Topic」チャンネル名')
+          : scriptMessage('history_scripts_with_credits_1_2_videos_246', `クレジット付き ${aggregate.credited}/${aggregate.plays} 件`, [aggregate.credited, aggregate.plays]),
       });
     }
 
@@ -213,8 +219,8 @@
         'p',
         'az-official-empty',
         hiddenCount || repairCount
-          ? `未登録の候補はありません（要修復 ${repairCount} 件、登録済み ${summary?.registeredCount || 0} 件・除外 ${summary?.excludedCount || 0} 件は非表示）。`
-          : '現在の集計には公式プロファイル候補がありません。'
+          ? scriptMessage('history_scripts_no_unregistered_candidates_repair_needed_1_hidden_2__247', `未登録の候補はありません（要修復 ${repairCount} 件、登録済み ${summary?.registeredCount || 0} 件・除外 ${summary?.excludedCount || 0} 件は非表示）。`, [repairCount, summary?.registeredCount || 0, summary?.excludedCount || 0])
+          : scriptMessage('history_scripts_no_official_profile_candidates_in_the_current_data_35', '現在の集計には公式プロファイル候補がありません。')
       );
       return 0;
     }
@@ -229,28 +235,28 @@
         summary,
         'span',
         'az-official-badge',
-        candidate.kind === 'topic' ? 'Topic候補' : '公式候補'
+        candidate.kind === 'topic' ? scriptMessage('history_scripts_topic_candidate_36', 'Topic候補') : scriptMessage('history_scripts_official_candidate_37', '公式候補')
       );
       if (candidate.needsRepair === true) {
         appendText(
           summary,
           'span',
           'az-official-badge',
-          '要修復: 旧形式のチャンネルIDです'
+          scriptMessage('history_scripts_repair_needed_legacy_channel_id_38', '要修復: 旧形式のチャンネルIDです')
         );
       }
       appendText(
         summary,
         'span',
         'az-official-evidence',
-        `${candidate.evidence}・再生 ${candidate.plays} 件`
+        scriptMessage('history_scripts_1_plays_2_248', `${candidate.evidence}・再生 ${candidate.plays} 件`, [candidate.evidence, candidate.plays])
       );
       row.appendChild(summary);
 
       const button = container.ownerDocument.createElement('button');
       button.type = 'button';
       button.className = 'sort-btn';
-      button.textContent = '登録内容を確認';
+      button.textContent = scriptMessage('history_scripts_review_registration_39', '登録内容を確認');
       button.dataset.officialReview = candidate.channelName;
       button.addEventListener('click', () => onReview?.(candidate));
       row.appendChild(button);
@@ -259,8 +265,8 @@
         const exclude = container.ownerDocument.createElement('button');
         exclude.type = 'button';
         exclude.className = 'sort-btn';
-        exclude.textContent = '候補から外す';
-        exclude.title = '複数アーティストが混ざるチャンネルなど、候補に出したくないものを隠します（あとで戻せます）';
+        exclude.textContent = scriptMessage('history_scripts_exclude_candidate_40', '候補から外す');
+        exclude.title = scriptMessage('history_scripts_hide_unwanted_candidates_such_as_channels_with_multi_41', '複数アーティストが混ざるチャンネルなど、候補に出したくないものを隠します（あとで戻せます）');
         exclude.dataset.officialExclude = candidate.channelName;
         exclude.addEventListener('click', () => onExclude(candidate));
         row.appendChild(exclude);

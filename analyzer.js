@@ -2,6 +2,7 @@
 // Reads from allData (loaded by history.js) and renders music taste analysis.
 
 (function () {
+
   const STOP = new Set([
     'する','した','して','さん','こと','もの','ため','これ','それ','あれ',
     'です','ます','ない','ある','いる','から','まで','より',
@@ -60,15 +61,15 @@
     const h = Math.floor(sec / 3600);
     const m = Math.floor((sec % 3600) / 60);
     const s = sec % 60;
-    if (h > 0) return `${h}時間${m}分`;
-    if (m > 0) return `${m}分`;
-    return `${s}秒`;
+    if (h > 0) return (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_1h_2m_181', `${h}時間${m}分`, [h, m]);
+    if (m > 0) return (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_1m_182', `${m}分`, [m]);
+    return (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_1s_183', `${s}秒`, [s]);
   }
 
   function formatDurationStat(stat) {
     if (!stat || !stat.known) return '—';
     const main = formatDurationMain(stat.totalSec);
-    return stat.unknown ? `${main}（うち ${stat.unknown}件 不明）` : main;
+    return stat.unknown ? (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_1_2_unknown_184', `${main}（うち ${stat.unknown}件 不明）`, [main, stat.unknown]) : main;
   }
 
   function sortByCountThenName(a, b) {
@@ -140,9 +141,9 @@
       appendCell(tr, name);
       appendCell(tr, stat.count);
       const links = appendCell(tr, '');
-      appendLink(links, `https://www.youtube.com/results?search_query=${qTopic}&sp=EgIQAQ==`, 'Topic検索');
+      appendLink(links, `https://www.youtube.com/results?search_query=${qTopic}&sp=EgIQAQ==`, (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_search_topic_channels_114', 'Topic検索'));
       appendLink(links, `https://www.youtube.com/results?search_query=${qn}`, 'YT');
-      appendLink(links, `https://www.google.com/search?q=${qn}+similar+artists`, '類似');
+      appendLink(links, `https://www.google.com/search?q=${qn}+similar+artists`, (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_similar_artists_115', '類似'));
       frag.appendChild(tr);
     });
     tbody.appendChild(frag);
@@ -262,7 +263,7 @@
     // v.count は動画の本数（再生回数ではない）。変数名を Plays にすると読む側が取り違える。
     const totalVideos = [...cm.values()].reduce((s, v) => s + v.count, 0);
     document.getElementById('azCreditStats').textContent =
-      `${totalPeople.toLocaleString()}人 / ${totalVideos.toLocaleString()}本`;
+      (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_1_people_2_videos_185', `${totalPeople.toLocaleString(typeof historyUILanguage === 'function' ? historyUILanguage() : 'ja')}人 / ${totalVideos.toLocaleString(typeof historyUILanguage === 'function' ? historyUILanguage() : 'ja')}本`, [totalPeople.toLocaleString(typeof historyUILanguage === 'function' ? historyUILanguage() : 'ja'), totalVideos.toLocaleString(typeof historyUILanguage === 'function' ? historyUILanguage() : 'ja')]);
 
     const tbody = document.querySelector('#azCreditsTable tbody');
     tbody.textContent = '';
@@ -404,11 +405,11 @@
     const message = document.getElementById('azCopyMsg');
     if (button) {
       button.disabled = stale;
-      button.title = stale ? '高評価データを再読込中です' : '';
+      button.title = stale ? (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_reloading_liked_videos_116', '高評価データを再読込中です') : '';
     }
     if (message) {
-      if (stale) message.textContent = '高評価データを再読込中のため、コピーできません';
-      else if (message.textContent === '高評価データを再読込中のため、コピーできません') message.textContent = '';
+      if (stale) message.textContent = (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_cannot_copy_while_liked_videos_are_reloading_117', '高評価データを再読込中のため、コピーできません');
+      else if (message.textContent === (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_cannot_copy_while_liked_videos_are_reloading_117', '高評価データを再読込中のため、コピーできません')) message.textContent = '';
     }
   }
 
@@ -447,8 +448,8 @@
 
   function renderLikedPanel() {
     const ch = buildLikedArtistCount();
-    document.getElementById('azLikedTotal').textContent = likedRecords.length.toLocaleString();
-    document.getElementById('azLikedArtists').textContent = ch.size.toLocaleString();
+    document.getElementById('azLikedTotal').textContent = likedRecords.length.toLocaleString(typeof historyUILanguage === 'function' ? historyUILanguage() : 'ja');
+    document.getElementById('azLikedArtists').textContent = ch.size.toLocaleString(typeof historyUILanguage === 'function' ? historyUILanguage() : 'ja');
 
     const tbody = document.querySelector('#azLikedTable tbody');
     tbody.textContent = '';
@@ -470,30 +471,30 @@
       const el = document.getElementById('azLikedAccount');
       // L1: clear the partial danger color when there is no meta at all, so a
       // previously-partial state doesn't leave '未同期' rendered in red.
-      if (!meta) { el.textContent = '未同期'; el.classList.remove('liked-partial'); } else {
-        const when = new Date(meta.lastSyncedAt || 0).toLocaleString();
+      if (!meta) { el.textContent = (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_not_synced_118', '未同期'); el.classList.remove('liked-partial'); } else {
+        const when = new Date(meta.lastSyncedAt || 0).toLocaleString(typeof historyUILanguage === 'function' ? historyUILanguage() : 'ja');
         const acc = displayAccountName(meta.ownerHandle || meta.ownerName || meta.accountId || '(unknown)');
-        let line = `アカウント: ${acc} / 最終同期: ${when} / ${(meta.count || 0).toLocaleString()}件`;
+        let line = (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_account_1_last_synced_2_videos_3_186', `アカウント: ${acc} / 最終同期: ${when} / ${(meta.count || 0).toLocaleString(typeof historyUILanguage === 'function' ? historyUILanguage() : 'ja')}件`, [acc, when, (meta.count || 0).toLocaleString(typeof historyUILanguage === 'function' ? historyUILanguage() : 'ja')]);
         // M1: persist the partial-sync warning across reloads. v1.42.5 saved
         // partial/hasMore/lastError to likedSyncMeta but only surfaced it in the
         // transient post-sync toast, so reopening the analyzer hid the warning
         // and the user could trust incomplete liked data. Show it on the meta row.
         if (meta.partial) {
-          line += ' / ⚠️ 部分同期（全件取得できていません・再同期推奨）';
+          line += (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_partial_sync_some_videos_are_missing_sync_again_119', ' / ⚠️ 部分同期（全件取得できていません・再同期推奨）');
           if (meta.lastError) line += ` [${meta.lastError}]`;
         }
         // v1.42.10 (M1): a save made while the account could not be identified must not
         // look identical to a normal, fully-identified sync — surface the confidence so
         // the user knows a different account's likes could have merged in.
         if (meta.identityConfidence === 'unknown-confirmed') {
-          line += ' / ⚠️ アカウント未識別のまま保存（確認済・別アカウント混入に注意）';
+          line += (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_saved_without_identifying_the_account_confirmed_may__120', ' / ⚠️ アカウント未識別のまま保存（確認済・別アカウント混入に注意）');
         } else if (meta.identityConfidence === 'name-only') {
           // v1.42.11 (M2): identity is a bare display name (no channelId/handle) — weak.
           // A different account sharing the display name could merge in undetected, so
           // this must not read like a normal, fully-identified sync.
-          line += ' / ⚠️ 表示名のみで識別（同名の別アカウント混入に注意・再同期で強い識別が付けば解消）';
+          line += (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_identified_by_display_name_only_may_include_a_namesa_121', ' / ⚠️ 表示名のみで識別（同名の別アカウント混入に注意・再同期で強い識別が付けば解消）');
         } else if (meta.identityConfidence === 'browse-recovered') {
-          line += ' / ℹ️ アカウントはブラウズ応答から復元';
+          line += (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_account_recovered_from_the_browse_response_122', ' / ℹ️ アカウントはブラウズ応答から復元');
         }
         el.textContent = line;
         el.classList.toggle('liked-partial', !!meta.partial
@@ -520,12 +521,12 @@
     const notes = [];
     if (!meta) return notes;
     if (meta.partial) {
-      notes.push('⚠️ 注記: 高評価データは**部分同期**です（全件取得できていません）。以下の集計は不完全な可能性があるため、参考程度に扱ってください。');
+      notes.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_note_liked_videos_are_partially_synced_some_videos_a_123', '⚠️ 注記: 高評価データは**部分同期**です（全件取得できていません）。以下の集計は不完全な可能性があるため、参考程度に扱ってください。'));
     }
     if (meta.identityConfidence === 'unknown-confirmed') {
-      notes.push('⚠️ 注記: 高評価データは**アカウント未識別のまま保存**されています（別アカウントの高評価が混入している可能性があります）。集計の帰属が不確実なため、参考程度に扱ってください。');
+      notes.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_note_liked_videos_were_saved_without_identifying_the_124', '⚠️ 注記: 高評価データは**アカウント未識別のまま保存**されています（別アカウントの高評価が混入している可能性があります）。集計の帰属が不確実なため、参考程度に扱ってください。'));
     } else if (meta.identityConfidence === 'name-only') {
-      notes.push('⚠️ 注記: 高評価データのアカウント識別が**表示名のみ（弱識別）**です。同名の別アカウントの高評価が混入している可能性があるため、参考程度に扱ってください。');
+      notes.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_note_the_liked_video_account_is_identified_only_by_d_125', '⚠️ 注記: 高評価データのアカウント識別が**表示名のみ（弱識別）**です。同名の別アカウントの高評価が混入している可能性があるため、参考程度に扱ってください。'));
     }
     return notes;
   }
@@ -599,36 +600,36 @@
     const arrangers = topCredits(data, 'arranger', 'all', 10);
 
     const lines = [];
-    lines.push('あなたは音楽キュレーターです。');
-    lines.push('以下は私のYouTube視聴履歴から抽出した音楽嗜好データです。');
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_you_are_a_music_curator_126', 'あなたは音楽キュレーターです。'));
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_the_following_music_preference_data_was_extracted_fr_127', '以下は私のYouTube視聴履歴から抽出した音楽嗜好データです。'));
     lines.push('');
-    lines.push('## 用語注釈');
-    lines.push('- **Topic** = YouTubeが自動生成するアーティスト公式チャンネル（純粋な楽曲再生指標）');
-    lines.push('- **自編曲率** = その作曲家の楽曲のうち、作曲者と編曲者が同一人物だった曲の割合（高い＝独立性が高い／低い＝外部編曲家との協業が多い）');
-    lines.push('- **クレジット率** = そのチャンネルの動画でクレジット情報（作曲・作詞・編曲）が取得できた割合（高い＝楽曲制作主体の音楽チャンネルである可能性が高い）');
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_terms_128', '## 用語注釈'));
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_topic_an_artist_channel_automatically_generated_by_y_129', '- **Topic** = YouTubeが自動生成するアーティスト公式チャンネル（純粋な楽曲再生指標）'));
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_self_arrangement_rate_the_share_of_a_composer_s_song_130', '- **自編曲率** = その作曲家の楽曲のうち、作曲者と編曲者が同一人物だった曲の割合（高い＝独立性が高い／低い＝外部編曲家との協業が多い）'));
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_credit_coverage_the_share_of_a_channel_s_videos_with_131', '- **クレジット率** = そのチャンネルの動画でクレジット情報（作曲・作詞・編曲）が取得できた割合（高い＝楽曲制作主体の音楽チャンネルである可能性が高い）'));
     lines.push('');
-    lines.push('## 再生数Top40アーティスト（YouTube Topicチャンネル由来）');
-    topic.forEach(([k, v], i) => lines.push(`${i + 1}. ${window.CreditTarget.stripTopicChannelSuffix(k)} (${v.count}回)`));
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_top_40_artists_by_plays_youtube_topic_channels_132', '## 再生数Top40アーティスト（YouTube Topicチャンネル由来）'));
+    topic.forEach(([k, v], i) => lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_1_2_3_plays_187', `${i + 1}. ${window.CreditTarget.stripTopicChannelSuffix(k)} (${v.count}回)`, [i + 1, window.CreditTarget.stripTopicChannelSuffix(k), v.count])));
     lines.push('');
     if (topicRecent.length) {
-      lines.push('## 直近の傾向 Top15（視聴期間の後半1/3）');
-      topicRecent.forEach(([k, v], i) => lines.push(`${i + 1}. ${window.CreditTarget.stripTopicChannelSuffix(k)} (${v}回)`));
+      lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_top_15_recent_trends_final_third_of_the_viewing_peri_133', '## 直近の傾向 Top15（視聴期間の後半1/3）'));
+      topicRecent.forEach(([k, v], i) => lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_1_2_3_plays_188', `${i + 1}. ${window.CreditTarget.stripTopicChannelSuffix(k)} (${v}回)`, [i + 1, window.CreditTarget.stripTopicChannelSuffix(k), v])));
       lines.push('');
     }
-    lines.push('## よく聴いた作曲家 Top20（クレジット集計）');
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_top_20_composers_from_credits_134', '## よく聴いた作曲家 Top20（クレジット集計）'));
     composers.forEach(([name, v], i) => {
       const rate = v.count ? Math.round(v.self / v.count * 100) : 0;
-      const selfTag = v.self ? `, 自編曲率${rate}%` : '';
-      lines.push(`${i + 1}. ${name} (${v.count}回${selfTag})`);
+      const selfTag = v.self ? (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_self_arrangement_rate_1_189', `, 自編曲率${rate}%`, [rate]) : '';
+      lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_1_2_3_plays_4_190', `${i + 1}. ${name} (${v.count}回${selfTag})`, [i + 1, name, v.count, selfTag]));
     });
     lines.push('');
-    lines.push('## よく聴いた編曲家 Top10');
-    arrangers.forEach(([name, v], i) => lines.push(`${i + 1}. ${name} (${v.count}回)`));
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_top_10_arrangers_135', '## よく聴いた編曲家 Top10'));
+    arrangers.forEach(([name, v], i) => lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_1_2_3_plays_191', `${i + 1}. ${name} (${v.count}回)`, [i + 1, name, v.count])));
     lines.push('');
     const liked = topLikedArtists(30);
     const promptNotes = likedPromptNotes(likedMeta);
     if (liked.length || promptNotes.length) {
-      lines.push('## 高評価Top30アーティスト（YouTubeで高評価した動画のチャンネル別集計）');
+      lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_top_30_artists_by_likes_liked_youtube_videos_grouped_136', '## 高評価Top30アーティスト（YouTubeで高評価した動画のチャンネル別集計）'));
       // M1 / v1.42.12 (M2): warn in-prompt when the liked data is a partial sync OR was
       // saved under a weak identity (name-only / unknown-confirmed), so the model (and
       // reader) knows the ranking may be incomplete or account-ambiguous rather than
@@ -638,51 +639,51 @@
         const metaCount = likedMeta && typeof likedMeta.count === 'number'
           && Number.isFinite(likedMeta.count) ? likedMeta.count : null;
         lines.push(metaCount === 0
-          ? '高評価動画は同期メタ情報上0件です。'
-          : `⚠️ 高評価動画一覧はまだ読み込まれていません${metaCount === null ? '' : `（同期メタ情報では${metaCount.toLocaleString()}件）`}。`);
+          ? (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_sync_metadata_reports_no_liked_videos_137', '高評価動画は同期メタ情報上0件です。')
+          : (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_liked_not_loaded', `⚠️ 高評価動画一覧はまだ読み込まれていません${metaCount === null ? '' : (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_sync_metadata_1_videos_192', `（同期メタ情報では${metaCount.toLocaleString(typeof historyUILanguage === 'function' ? historyUILanguage() : 'ja')}件）`, [metaCount.toLocaleString(typeof historyUILanguage === 'function' ? historyUILanguage() : 'ja')])}。`, [metaCount === null ? '' : (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_sync_metadata_1_videos_192', `（同期メタ情報では${metaCount.toLocaleString(typeof historyUILanguage === 'function' ? historyUILanguage() : 'ja')}件）`, [metaCount.toLocaleString(typeof historyUILanguage === 'function' ? historyUILanguage() : 'ja')])]));
       }
-      liked.forEach(([k, v], i) => lines.push(`${i + 1}. ${window.CreditTarget.stripTopicChannelSuffix(k)} (${v}回)`));
+      liked.forEach(([k, v], i) => lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_1_2_3_plays_188', `${i + 1}. ${window.CreditTarget.stripTopicChannelSuffix(k)} (${v}回)`, [i + 1, window.CreditTarget.stripTopicChannelSuffix(k), v])));
       lines.push('');
     }
     if (musicGeneral.length) {
-      lines.push('## 音楽系の一般チャンネル Top15（クレジット紐づき率40%以上）');
+      lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_top_15_general_music_channels_at_least_40_credit_cov_138', '## 音楽系の一般チャンネル Top15（クレジット紐づき率40%以上）'));
       musicGeneral.forEach((x, i) => {
         const pct = Math.round(x.rate * 100);
-        lines.push(`${i + 1}. ${x.name} (${x.plays}回, クレジット率${pct}%)`);
+        lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_1_2_3_plays_credit_coverage_4_193', `${i + 1}. ${x.name} (${x.plays}回, クレジット率${pct}%)`, [i + 1, x.name, x.plays, pct]));
       });
       lines.push('');
     }
     lines.push('---');
     lines.push('');
-    lines.push('## タスク');
-    lines.push('上記データを分析し、まだ聴いていない「次に聴くべきアーティスト/作曲家」を **10名** 推薦してください。');
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_task_139', '## タスク'));
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_analyze_this_data_and_recommend_10_artists_or_compos_140', '上記データを分析し、まだ聴いていない「次に聴くべきアーティスト/作曲家」を **10名** 推薦してください。'));
     lines.push('');
-    lines.push('## 多様性要件（必須）');
-    lines.push('- 上記リストに既出の人物・チャンネルは**除外**（既に聴いています）');
-    lines.push('- 10名のうち**最低3名**は作曲家・編曲家など裏方クレジット系の人物を含める');
-    lines.push('- 10名のうち**最低2名**は既存リストと別ジャンル・別シーンからの越境推薦（隣接領域から1歩外）');
-    lines.push('- 「直近の傾向」（視聴期間後半1/3）を主軸に置きつつ、Top40の長期嗜好も考慮');
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_diversity_requirements_mandatory_141', '## 多様性要件（必須）'));
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_exclude_people_and_channels_already_listed_above_i_a_142', '- 上記リストに既出の人物・チャンネルは**除外**（既に聴いています）'));
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_include_at_least_3_behind_the_scenes_creators_such_a_143', '- 10名のうち**最低3名**は作曲家・編曲家など裏方クレジット系の人物を含める'));
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_include_at_least_2_recommendations_from_different_ge_144', '- 10名のうち**最低2名**は既存リストと別ジャンル・別シーンからの越境推薦（隣接領域から1歩外）'));
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_prioritize_recent_trends_the_final_third_of_the_view_145', '- 「直近の傾向」（視聴期間後半1/3）を主軸に置きつつ、Top40の長期嗜好も考慮'));
     lines.push('');
-    lines.push('## 推薦の根拠（各推薦に必ず1つ以上明示）');
-    lines.push('- 共通する作曲家・編曲家・レーベル・所属事務所');
-    lines.push('- 楽曲構造・編曲手法・コード進行の共通点');
-    lines.push('- 活動コミュニティ・コラボ関係・出自');
-    lines.push('- 歌詞テーマ・世界観・サウンドの方向性');
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_reasons_give_at_least_one_for_each_recommendation_146', '## 推薦の根拠（各推薦に必ず1つ以上明示）'));
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_shared_composers_arrangers_labels_or_agencies_147', '- 共通する作曲家・編曲家・レーベル・所属事務所'));
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_similar_song_structures_arrangement_techniques_or_ch_148', '- 楽曲構造・編曲手法・コード進行の共通点'));
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_communities_collaborations_or_origins_149', '- 活動コミュニティ・コラボ関係・出自'));
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_lyrical_themes_artistic_worlds_or_sound_150', '- 歌詞テーマ・世界観・サウンドの方向性'));
     lines.push('');
-    lines.push('※「人気だから」「なんとなく似ている」だけの推薦は不可。上記4観点のどれに該当するかを具体的に書いてください。');
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_do_not_recommend_someone_just_because_they_are_popul_151', '※「人気だから」「なんとなく似ている」だけの推薦は不可。上記4観点のどれに該当するかを具体的に書いてください。'));
     lines.push('');
-    lines.push('## ハルシネーション対策');
-    lines.push('- 楽曲名・人物の存在に確信が持てない場合は推薦から除外してください');
-    lines.push('- 不確かな10名より、確度の高い7〜8名のほうが望ましい');
-    lines.push('- 検索URLは `https://www.youtube.com/results?search_query=...` 形式で実在検索可能なものに');
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_avoiding_hallucinations_152', '## ハルシネーション対策'));
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_exclude_recommendations_if_you_are_unsure_the_person_153', '- 楽曲名・人物の存在に確信が持てない場合は推薦から除外してください'));
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_prefer_7_8_reliable_recommendations_over_10_uncertai_154', '- 不確かな10名より、確度の高い7〜8名のほうが望ましい'));
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_use_working_search_urls_in_the_form_https_www_youtub_155', '- 検索URLは `https://www.youtube.com/results?search_query=...` 形式で実在検索可能なものに'));
     lines.push('');
-    lines.push('## 出力形式（各推薦ごとに以下のMarkdown構造で）');
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_output_format_use_this_markdown_structure_for_each_r_156', '## 出力形式（各推薦ごとに以下のMarkdown構造で）'));
     lines.push('');
-    lines.push('### 1. アーティスト/作曲家名');
-    lines.push('- **代表曲**: 1〜2曲');
-    lines.push('- **既存お気に入りとの関連性**: （上記4観点のどれに該当するか明記）');
-    lines.push('- **YouTube検索URL**: https://www.youtube.com/results?search_query=...');
-    lines.push('- **確度**: 高 / 中 / 低（データから演繹可能なら高、飛躍があれば低）');
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_1_artist_composer_name_157', '### 1. アーティスト/作曲家名'));
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_notable_songs_1_2_songs_158', '- **代表曲**: 1〜2曲'));
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_connection_to_my_favorites_specify_which_of_the_four_159', '- **既存お気に入りとの関連性**: （上記4観点のどれに該当するか明記）'));
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_youtube_search_url_https_www_youtube_com_results_sea_160', '- **YouTube検索URL**: https://www.youtube.com/results?search_query=...'));
+    lines.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_confidence_high_medium_low_high_if_supported_by_the__161', '- **確度**: 高 / 中 / 低（データから演繹可能なら高、飛躍があれば低）'));
     document.getElementById('azPromptText').textContent = lines.join('\n');
   }
 
@@ -721,7 +722,7 @@
     document.getElementById('azOfficialConfirmed').checked = false;
     document.getElementById('azOfficialBindQuery').checked = false;
     document.getElementById('azOfficialBindQueryText').textContent =
-      `検索語「${candidate.profileName}」にも紐づける`;
+      (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_also_bind_to_the_search_query_1_194', `検索語「${candidate.profileName}」にも紐づける`, [candidate.profileName]);
 
     const sample = document.getElementById('azOfficialSample');
     sample.href = candidate.sampleVideoId
@@ -729,21 +730,21 @@
       : `https://www.youtube.com/results?search_query=${encodeURIComponent(candidate.channelName)}`;
     const target = document.getElementById('azOfficialTarget');
     target.removeAttribute('href');
-    setOfficialRegistrationStatus('候補元動画からチャンネルURLを取得しています…');
+    setOfficialRegistrationStatus((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_retrieving_the_channel_url_from_the_candidate_video_162', '候補元動画からチャンネルURLを取得しています…'));
 
     try {
       const channel = await api.resolveCandidateChannel(candidate);
       if (currentOfficialCandidate !== candidate) return;
-      if (!channel) throw new Error('チャンネルURLを取得できませんでした');
+      if (!channel) throw new Error((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_could_not_retrieve_the_channel_url_163', 'チャンネルURLを取得できませんでした'));
       currentOfficialChannelName = channel.displayName || candidate.channelName;
       const url = `https://www.youtube.com${channel.canonicalPath}`;
       document.getElementById('azOfficialChannelUrl').value = url;
       target.href = url;
-      setOfficialRegistrationStatus('リンク先を開き、本人の公式またはTopicチャンネルか確認してください。');
+      setOfficialRegistrationStatus((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_open_the_link_and_check_that_it_is_the_artist_s_offi_164', 'リンク先を開き、本人の公式またはTopicチャンネルか確認してください。'));
     } catch (error) {
       if (currentOfficialCandidate !== candidate) return;
       setOfficialRegistrationStatus(
-        `自動取得できませんでした。確認したチャンネルURLを入力してください（${error.message}）。`,
+        (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_could_not_retrieve_automatically_enter_a_verified_ch_195', `自動取得できませんでした。確認したチャンネルURLを入力してください（${error.message}）。`, [error.message]),
         true
       );
     }
@@ -794,11 +795,11 @@
 
       const note = document.createElement('span');
       const pieces = [];
-      if (registered) pieces.push(`登録済み ${registered} 件`);
+      if (registered) pieces.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_registered_1_196', `登録済み ${registered} 件`, [registered]));
       if (excluded.length) {
-        pieces.push(`除外 ${excluded.length} 件（${excluded.map((c) => c.channelName).join('、')}）`);
+        pieces.push((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_excluded_1_2_197', `除外 ${excluded.length} 件（${excluded.map((c) => c.channelName).join('、')}）`, [excluded.length, excluded.map((c) => c.channelName).join('、')]));
       }
-      note.textContent = `非表示: ${pieces.join(' / ')}`;
+      note.textContent = (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_hidden_1_198', `非表示: ${pieces.join(' / ')}`, [pieces.join(' / ')]);
       footer.appendChild(note);
 
       if (excluded.length) {
@@ -806,17 +807,17 @@
         restore.type = 'button';
         restore.className = 'sort-btn';
         restore.id = 'azOfficialRestore';
-        restore.textContent = '除外をすべて戻す';
+        restore.textContent = (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_restore_all_exclusions_165', '除外をすべて戻す');
         restore.addEventListener('click', async () => {
           restore.disabled = true;
           try {
             for (const candidate of excluded) {
               await store.updateCandidateExclusion(candidate.channelName, false);
             }
-            setOfficialRegistrationStatus('除外を戻しました。');
+            setOfficialRegistrationStatus((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_exclusions_restored_166', '除外を戻しました。'));
             await paint();
           } catch (error) {
-            setOfficialRegistrationStatus(`除外を戻せませんでした: ${error.message}`, true);
+            setOfficialRegistrationStatus((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_could_not_restore_exclusions_1_199', `除外を戻せませんでした: ${error.message}`, [error.message]), true);
             restore.disabled = false;
           }
         });
@@ -828,17 +829,17 @@
       try {
         const result = await store.updateCandidateExclusion(candidate.channelName, true);
         if (!result.saved && result.reason !== 'unchanged') {
-          throw new Error(result.reason || '保存できませんでした');
+          throw new Error(result.reason || (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_could_not_save_110', '保存できませんでした'));
         }
         if (currentOfficialCandidate === candidate) {
           const review = document.getElementById('azOfficialReview');
           if (review) review.hidden = true;
           currentOfficialCandidate = null;
         }
-        setOfficialRegistrationStatus(`「${candidate.channelName}」を候補から外しました。`);
+        setOfficialRegistrationStatus((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_excluded_1_from_candidates_200', `「${candidate.channelName}」を候補から外しました。`, [candidate.channelName]));
         await paint();
       } catch (error) {
-        setOfficialRegistrationStatus(`候補から外せませんでした: ${error.message}`, true);
+        setOfficialRegistrationStatus((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_could_not_exclude_the_candidate_1_201', `候補から外せませんでした: ${error.message}`, [error.message]), true);
       }
     }
 
@@ -857,7 +858,7 @@
       if (!confirmed || !confirmed.checked) return;
       confirmed.checked = false;
       setOfficialRegistrationStatus(
-        '入力を変更したので確認を取り消しました。リンク先を確認し直してからチェックしてください。',
+        (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_your_input_changed_so_confirmation_was_cleared_check_167', '入力を変更したので確認を取り消しました。リンク先を確認し直してからチェックしてください。'),
         true
       );
     }
@@ -866,7 +867,7 @@
 
     saveButton.onclick = async () => {
       if (!currentOfficialCandidate) {
-        setOfficialRegistrationStatus('先に候補を選んでください。', true);
+        setOfficialRegistrationStatus((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_select_a_candidate_first_168', '先に候補を選んでください。'), true);
         return;
       }
       const profileName = document.getElementById('azOfficialProfileName').value.trim();
@@ -875,29 +876,29 @@
         currentOfficialChannelName || currentOfficialCandidate.channelName
       );
       if (!profileName || !channel) {
-        setOfficialRegistrationStatus('プロフィール名とYouTubeチャンネルURLを確認してください。', true);
+        setOfficialRegistrationStatus((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_check_the_profile_name_and_youtube_channel_url_169', 'プロフィール名とYouTubeチャンネルURLを確認してください。'), true);
         return;
       }
       if (!document.getElementById('azOfficialConfirmed').checked) {
-        setOfficialRegistrationStatus('リンク先を確認し、確認欄をチェックしてください。', true);
+        setOfficialRegistrationStatus((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_check_the_link_then_select_the_confirmation_checkbox_170', 'リンク先を確認し、確認欄をチェックしてください。'), true);
         return;
       }
       const bindQuery = document.getElementById('azOfficialBindQuery').checked;
       const query = String(currentOfficialCandidate.profileName || '').trim();
       const approved = window.confirm(
-        `次の内容を公式プロファイルとして登録しますか？\n` +
-        `プロフィール: ${profileName}\n` +
-        `チャンネル: ${channel.displayName}\n` +
+        (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_register_the_following_official_profile_202', `次の内容を公式プロファイルとして登録しますか？\n`) +
+        (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_profile_1_203', `プロフィール: ${profileName}\n`, [profileName]) +
+        (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_channel_1_204', `チャンネル: ${channel.displayName}\n`, [channel.displayName]) +
         `URL: https://www.youtube.com${channel.canonicalPath}` +
-        (bindQuery ? `\n検索語「${query}」にも紐づける` : '')
+        (bindQuery ? (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_also_bind_to_the_search_query_1_205', `\n検索語「${query}」にも紐づける`, [query]) : '')
       );
       if (!approved) {
-        setOfficialRegistrationStatus('登録をキャンセルしました。');
+        setOfficialRegistrationStatus((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_registration_cancelled_171', '登録をキャンセルしました。'));
         return;
       }
 
       saveButton.disabled = true;
-      setOfficialRegistrationStatus('保存中です…');
+      setOfficialRegistrationStatus((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_saving_172', '保存中です…'));
       try {
         const result = await store.registerConfirmed({
           profileName,
@@ -912,7 +913,7 @@
         });
         if (!result.saved && result.reason === 'channel-id-repair-failed') {
           setOfficialRegistrationStatus(
-            'チャンネルIDを復元できませんでした。候補チャンネルのURLが正しいか確認してください。',
+            (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_could_not_restore_the_channel_id_check_the_candidate_173', 'チャンネルIDを復元できませんでした。候補チャンネルのURLが正しいか確認してください。'),
             true
           );
           return;
@@ -923,11 +924,11 @@
           const review = document.getElementById('azOfficialReview');
           if (review) review.hidden = true;
           currentOfficialCandidate = null;
-          setOfficialRegistrationStatus('このチャンネルは登録済みです（重複登録は行いませんでした）。');
+          setOfficialRegistrationStatus((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_this_channel_is_already_registered_no_duplicate_was__174', 'このチャンネルは登録済みです（重複登録は行いませんでした）。'));
           await paint();
           return;
         }
-        if (!result.saved) throw new Error(result.reason || '保存できませんでした');
+        if (!result.saved) throw new Error(result.reason || (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_could_not_save_110', '保存できませんでした'));
         document.getElementById('azOfficialConfirmed').checked = false;
         document.getElementById('azOfficialBindQuery').checked = false;
         const review = document.getElementById('azOfficialReview');
@@ -935,12 +936,12 @@
         currentOfficialCandidate = null;
         setOfficialRegistrationStatus(
           result.reason === 'channel-id-repaired'
-            ? '旧形式のチャンネルIDを正しい形式へ復元しました。'
-            : 'プロフィールとチャンネルを登録しました。'
+            ? (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_restored_the_legacy_channel_id_to_the_correct_format_175', '旧形式のチャンネルIDを正しい形式へ復元しました。')
+            : (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_profile_and_channel_registered_176', 'プロフィールとチャンネルを登録しました。')
         );
         await paint();
       } catch (error) {
-        setOfficialRegistrationStatus(`保存できませんでした: ${error.message}`, true);
+        setOfficialRegistrationStatus((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_could_not_save_1_206', `保存できませんでした: ${error.message}`, [error.message]), true);
       } finally {
         saveButton.disabled = false;
       }
@@ -961,10 +962,10 @@
     const topicCh = [...chCount.entries()].filter(([k]) => window.CreditTarget.isTopicChannelName(k));
     const musicPlays = topicCh.reduce((s, [, v]) => s + v.count, 0);
 
-    document.getElementById('azTotal').textContent = data.length.toLocaleString();
-    document.getElementById('azCh').textContent = chCount.size.toLocaleString();
-    document.getElementById('azArtist').textContent = topicCh.length.toLocaleString();
-    document.getElementById('azMusic').textContent = musicPlays.toLocaleString();
+    document.getElementById('azTotal').textContent = data.length.toLocaleString(typeof historyUILanguage === 'function' ? historyUILanguage() : 'ja');
+    document.getElementById('azCh').textContent = chCount.size.toLocaleString(typeof historyUILanguage === 'function' ? historyUILanguage() : 'ja');
+    document.getElementById('azArtist').textContent = topicCh.length.toLocaleString(typeof historyUILanguage === 'function' ? historyUILanguage() : 'ja');
+    document.getElementById('azMusic').textContent = musicPlays.toLocaleString(typeof historyUILanguage === 'function' ? historyUILanguage() : 'ja');
 
     renderOfficialProfileCandidates(data);
     renderArtists(chCount);
@@ -1035,7 +1036,7 @@
           confirmUnknownAccount: !!opts.confirmUnknownAccount,
         }, res);
       });
-      msg.textContent = '同期中...（全件取得まで数十秒〜2分かかる場合があります）';
+      msg.textContent = (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_syncing_retrieving_all_videos_may_take_up_to_two_min_177', '同期中...（全件取得まで数十秒〜2分かかる場合があります）');
       syncLikedBtn.disabled = true;
       try {
         // H1/M1: account identity guards. The owner may be unidentifiable
@@ -1044,34 +1045,35 @@
         // an unidentified save can't silently approve a known→unknown account change.
         const confirmGuard = (kind, r) => {
           if (kind === 'account-unknown') {
-            return window.confirm('アカウントを識別できませんでした（YouTubeに未ログイン、またはページ構造の変更の可能性）。\nこのまま高評価データを保存しますか？\n※別アカウントのデータと混ざる恐れがあります。');
+            return window.confirm((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_could_not_identify_the_account_you_may_be_signed_out_178', 'アカウントを識別できませんでした（YouTubeに未ログイン、またはページ構造の変更の可能性）。\nこのまま高評価データを保存しますか？\n※別アカウントのデータと混ざる恐れがあります。'));
           }
           // account-changed
           const prev = displayAccountName((r.previous && (r.previous.ownerHandle || r.previous.ownerName)) || r.previous?.accountId || '(unknown)');
           const cur = displayAccountName(r.current?.ownerHandle || r.current?.ownerName || r.current?.accountId || '(unknown)');
-          return window.confirm(`アカウントが変更されています:\n旧: ${prev}\n新: ${cur}\nこのまま新アカウントの高評価を追加しますか？\n（旧アカウントのデータは保持されます。クリアしたい場合は別途「Clear」操作を追加予定）`);
+          return window.confirm((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_the_account_has_changed_previous_1_current_2_add_lik_207', `アカウントが変更されています:\n旧: ${prev}\n新: ${cur}\nこのまま新アカウントの高評価を追加しますか？\n（旧アカウントのデータは保持されます。クリアしたい場合は別途「Clear」操作を追加予定）`, [prev, cur]));
         };
         const { cancelled, resp } = await resolveLikedSync({ doSync, confirm: confirmGuard });
         if (cancelled) {
-          msg.textContent = 'キャンセルしました';
+          msg.textContent = (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_cancelled_179', 'キャンセルしました');
           return;
         }
         if (!resp || !resp.success) {
           const r = resp && resp.reason ? resp.reason : 'unknown';
           const errDetail = resp && resp.errors && resp.errors.length
             ? ` [${resp.errors.join(' / ')}]` : '';
-          msg.textContent = `同期失敗: ${r}${errDetail}（YouTubeタブを開いて再試行してください）`;
+          msg.textContent = (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_sync_failed_1_2_open_a_youtube_tab_and_try_again_208', `同期失敗: ${r}${errDetail}（YouTubeタブを開いて再試行してください）`, [r, errDetail]);
           if (resp && resp.errors && resp.errors.length) console.warn('[liked-sync errors]', resp.errors);
           if (resp && resp.diagnostics) console.info('[liked-sync diagnostics]', resp.diagnostics);
           return;
         }
-        const errTag = resp.errors && resp.errors.length ? ` / 警告${resp.errors.length}件` : '';
+        const errTag = resp.errors && resp.errors.length ? (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_warnings_1_209', ` / 警告${resp.errors.length}件`, [resp.errors.length]) : '';
         // M1: pagination stopped before exhausting the playlist — surface it as a
         // partial sync so the user knows to re-sync rather than trusting the count.
         if (resp.partial) {
-          msg.textContent = `⚠️ 部分同期: 取得${resp.fetched}件 / 新規${resp.added}件 / ${resp.pages || 1}ページ${errTag}（全件を取得できていません。時間をおいて再同期してください）`;
+          msg.textContent = (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_partial_sync_retrieved_1_new_2_pages_3_4_some_videos_210', `⚠️ 部分同期: 取得${resp.fetched}件 / 新規${resp.added}件 / ${resp.pages || 1}ページ${errTag}（全件を取得できていません。時間をおいて再同期してください）`, [resp.fetched, resp.added, resp.pages || 1, errTag]);
         } else {
           msg.textContent = `同期完了: 取得${resp.fetched}件 / 新規${resp.added}件 / ${resp.pages || 1}ページ${errTag}`;
+          msg.textContent = (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_sync_complete_retrieved_1_new_2_pages_3_4_211', msg.textContent, [resp.fetched, resp.added, resp.pages || 1, errTag]);
         }
         if (resp.errors && resp.errors.length) console.warn('[liked-sync errors]', resp.errors);
         if (resp.diagnostics) console.info('[liked-sync diagnostics]', resp.diagnostics);
@@ -1080,7 +1082,7 @@
         // both responses have actually arrived.
         await reloadLikedAfterSync();
       } catch (e) {
-        msg.textContent = '同期エラー: ' + e.message;
+        msg.textContent = (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_sync_error', '同期エラー: ' + e.message, [e.message]);
       } finally {
         syncLikedBtn.disabled = false;
       }
@@ -1093,10 +1095,10 @@
     try {
       await navigator.clipboard.writeText(text);
       const msg = document.getElementById('azCopyMsg');
-      msg.textContent = 'コピーしました';
+      msg.textContent = (typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_copied_180', 'コピーしました');
       setTimeout(() => { msg.textContent = ''; }, 2000);
     } catch (e) {
-      alert('コピー失敗: ' + e.message);
+      alert((typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback)('history_scripts_copy_error', 'コピー失敗: ' + e.message, [e.message]));
     }
   });
 

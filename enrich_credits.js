@@ -3,6 +3,12 @@
 (function () {
   'use strict';
 
+  // Resolve lazily because history.js is loaded after this script.
+  function scriptMessage(key, fallback, substitutions = []) {
+    return typeof historyMessage === 'function'
+      ? historyMessage(key, fallback, substitutions) : fallback;
+  }
+
   const AUTO_SIM_THRESHOLD = 0.95;
   const REVIEW_SIM_THRESHOLD = 0.85;
   const RENDER_CHUNK_SIZE = 50;
@@ -38,13 +44,13 @@
   }
 
   const CREDIT_ROLES = ['composer', 'lyricist', 'arranger'];
-  const CREDIT_ROLE_LABELS = Object.freeze({ composer: '作曲', lyricist: '作詞', arranger: '編曲' });
+  const CREDIT_ROLE_LABELS = Object.freeze({ get composer() { return scriptMessage('history_scripts_composer_6', '作曲'); }, get lyricist() { return scriptMessage('history_scripts_lyricist_7', '作詞'); }, get arranger() { return scriptMessage('history_scripts_arranger_8', '編曲'); } });
   const CREDIT_ROLE_SEARCH_LABELS = Object.freeze({ composer: '作曲者', lyricist: '作詞者', arranger: '編曲者' });
   const CREDIT_SOURCE_LABELS = Object.freeze({
-    topic: 'Topic 概要欄', general: '一般動画の概要欄',
-    'enrich:rule': '固定ルール', 'enrich:same-song': '同一楽曲の別動画',
-    'enrich:mb': 'MusicBrainz', manual: '手動入力',
-    '': '由来なし',
+    get topic() { return scriptMessage('history_scripts_topic_description_42', 'Topic 概要欄'); }, get general() { return scriptMessage('history_scripts_video_description_43', '一般動画の概要欄'); },
+    get 'enrich:rule'() { return scriptMessage('history_scripts_fixed_rule_44', '固定ルール'); }, get 'enrich:same-song'() { return scriptMessage('history_scripts_another_video_of_the_same_song_45', '同一楽曲の別動画'); },
+    'enrich:mb': 'MusicBrainz', get manual() { return scriptMessage('history_scripts_manual_entry_46', '手動入力'); },
+    get ''() { return scriptMessage('history_scripts_no_source_47', '由来なし'); },
   });
 
   // Role-unit gap detection (HANDOFF §3.1 / DESIGN B-1). Replaces the old
@@ -106,11 +112,11 @@
     const processCount = getLimitedVideoCount(videoCount, limit);
     const { minMinutes, maxMinutes } = estimateEnrichmentMinutes(processCount, rateLimitMs, minimumRequestCount);
     const maxRequests = processCount * ENRICH_REQUESTS_PER_VIDEO_MAX;
-    return `${videoCount}動画 / ${channelCount}チャンネルを固定ルールとMusicBrainzで照合します。`
-      + ` 処理予定 ${processCount}件、推定所要時間 約${minMinutes}〜${maxMinutes}分`
-      + `（最大 約${maxRequests} 回の通信）。`
+    return scriptMessage('history_scripts_match_1_videos_2_channels_against_fixed_rules_and_mu_212', `${videoCount}動画 / ${channelCount}チャンネルを固定ルールとMusicBrainzで照合します。`, [videoCount, channelCount])
+      + scriptMessage('history_scripts_processing_1_items_estimated_time_about_2_3_minutes_213', ` 処理予定 ${processCount}件、推定所要時間 約${minMinutes}〜${maxMinutes}分`, [processCount, minMinutes, maxMinutes])
+      + scriptMessage('history_scripts_up_to_about_1_requests_214', `（最大 約${maxRequests} 回の通信）。`, [maxRequests])
       + (sameSongCount
-        ? ` 同一楽曲の別動画から ${sameSongCount}件を通信なしで転記します。`
+        ? scriptMessage('history_scripts_copy_1_items_from_other_videos_of_the_same_song_with_215', ` 同一楽曲の別動画から ${sameSongCount}件を通信なしで転記します。`, [sameSongCount])
         : '');
   }
 
@@ -173,14 +179,14 @@
     const text = typeof value === 'string' ? value.trim() : '';
     if (!text) return allowBlank
       ? { valid: true, reason: '', hint: '' }
-      : { valid: false, reason: '名前が空です。', hint: '作曲者・作詞者・編曲者の名前を入力してください。' };
-    if (Array.from(text).length > 60) return { valid: false, reason: '名前が長すぎます。', hint: '60文字以内の名前に短くしてください。' };
-    if (/(?:https?:)?\/\/|(?:^|\s)www\.|(?:[a-z0-9-]+\.)+(?:com|net|org|jp|co|io|tv|me)(?:\/|$)/iu.test(text)) return { valid: false, reason: 'URLやドメインは保存できません。', hint: 'リンクではなく人物・グループ名だけを入力してください。' };
-    if (/^@[\p{L}\p{N}_.-]+$/u.test(text)) return { valid: false, reason: 'ハンドル名だけでは保存できません。', hint: '@を除いた正式な名前を入力してください。' };
-    if (/copyright\s+control|all\s+rights\s+reserved/iu.test(text)) return { valid: false, reason: '権利管理用の仮名は保存できません。', hint: 'クレジットに記載された実名を確認してください。' };
-    if (/(?:作詞(?:家|者)?|作曲(?:家|者)?|編曲(?:家|者)?|lyrics?(?:\s+by)?|compos(?:ed\s+by|er)|arrang(?:ed\s+by|er))\s*[:：]?/iu.test(text)) return { valid: false, reason: '役割ラベルを含む値は保存できません。', hint: '「作曲:」などを除き、名前だけを入力してください。' };
+      : { valid: false, reason: scriptMessage('history_scripts_name_is_empty_48', '名前が空です。'), hint: scriptMessage('history_scripts_enter_a_composer_lyricist_or_arranger_name_49', '作曲者・作詞者・編曲者の名前を入力してください。') };
+    if (Array.from(text).length > 60) return { valid: false, reason: scriptMessage('history_scripts_name_is_too_long_50', '名前が長すぎます。'), hint: scriptMessage('history_scripts_use_no_more_than_60_characters_51', '60文字以内の名前に短くしてください。') };
+    if (/(?:https?:)?\/\/|(?:^|\s)www\.|(?:[a-z0-9-]+\.)+(?:com|net|org|jp|co|io|tv|me)(?:\/|$)/iu.test(text)) return { valid: false, reason: scriptMessage('history_scripts_urls_and_domains_cannot_be_saved_52', 'URLやドメインは保存できません。'), hint: scriptMessage('history_scripts_enter_only_a_person_or_group_name_without_links_53', 'リンクではなく人物・グループ名だけを入力してください。') };
+    if (/^@[\p{L}\p{N}_.-]+$/u.test(text)) return { valid: false, reason: scriptMessage('history_scripts_a_handle_alone_cannot_be_saved_54', 'ハンドル名だけでは保存できません。'), hint: scriptMessage('history_scripts_enter_the_full_name_without_55', '@を除いた正式な名前を入力してください。') };
+    if (/copyright\s+control|all\s+rights\s+reserved/iu.test(text)) return { valid: false, reason: scriptMessage('history_scripts_rights_management_placeholders_cannot_be_saved_56', '権利管理用の仮名は保存できません。'), hint: scriptMessage('history_scripts_check_the_actual_name_in_the_credits_57', 'クレジットに記載された実名を確認してください。') };
+    if (/(?:作詞(?:家|者)?|作曲(?:家|者)?|編曲(?:家|者)?|lyrics?(?:\s+by)?|compos(?:ed\s+by|er)|arrang(?:ed\s+by|er))\s*[:：]?/iu.test(text)) return { valid: false, reason: scriptMessage('history_scripts_values_containing_role_labels_cannot_be_saved_58', '役割ラベルを含む値は保存できません。'), hint: scriptMessage('history_scripts_remove_role_labels_such_as_composer_and_enter_only_t_59', '「作曲:」などを除き、名前だけを入力してください。') };
     const api = window.CreditTarget;
-    if (!api || typeof api.isValidCreditValue !== 'function' || !api.isValidCreditValue(value)) return { valid: false, reason: 'この値は保存できません。', hint: '記号や制御文字を除き、名前だけを入力してください。' };
+    if (!api || typeof api.isValidCreditValue !== 'function' || !api.isValidCreditValue(value)) return { valid: false, reason: scriptMessage('history_scripts_this_value_cannot_be_saved_60', 'この値は保存できません。'), hint: scriptMessage('history_scripts_enter_only_the_name_without_symbols_or_control_chara_61', '記号や制御文字を除き、名前だけを入力してください。') };
     return { valid: true, reason: '', hint: '' };
   }
 
@@ -312,9 +318,9 @@
 
   function roleEntries(candidate) {
     const roles = [];
-    if (candidate.composer) roles.push({ key: 'composer', label: '作曲', value: candidate.composer });
-    if (candidate.lyricist) roles.push({ key: 'lyricist', label: '作詞', value: candidate.lyricist });
-    if (candidate.arranger) roles.push({ key: 'arranger', label: '編曲', value: candidate.arranger });
+    if (candidate.composer) roles.push({ key: 'composer', label: scriptMessage('history_scripts_composer_6', '作曲'), value: candidate.composer });
+    if (candidate.lyricist) roles.push({ key: 'lyricist', label: scriptMessage('history_scripts_lyricist_7', '作詞'), value: candidate.lyricist });
+    if (candidate.arranger) roles.push({ key: 'arranger', label: scriptMessage('history_scripts_arranger_8', '編曲'), value: candidate.arranger });
     return roles;
   }
 
@@ -664,7 +670,7 @@
     abort() {
       if (!this.generating) return;
       this.abortRequested = true;
-      this.setMessage('中止要求を受け付けました。現在の取得が終わり次第停止します。');
+      this.setMessage(scriptMessage('history_scripts_cancellation_requested_stopping_after_the_current_re_62', '中止要求を受け付けました。現在の取得が終わり次第停止します。'));
       this.updateButtons();
     }
 
@@ -685,8 +691,8 @@
         this.manualViewTab.tabIndex = manual ? 0 : -1;
       }
       if (this.subtitleEl) this.subtitleEl.textContent = manual
-        ? '不足している作曲・作詞・編曲を確認し、役割ごとに保存します。'
-        : '未割当 creditsRaw を固定ルール、同一楽曲の別動画、MusicBrainz の順に照合します。';
+        ? scriptMessage('history_scripts_review_missing_composers_lyricists_and_arrangers_and_63', '不足している作曲・作詞・編曲を確認し、役割ごとに保存します。')
+        : scriptMessage('history_scripts_match_unassigned_creditsraw_against_fixed_rules_othe_64', '未割当 creditsRaw を固定ルール、同一楽曲の別動画、MusicBrainz の順に照合します。');
       if (manual) this.renderManualView();
       else this.renderAll();
       const focusTarget = manual ? this.manualViewTab : this.autoViewTab;
@@ -699,8 +705,8 @@
       this.renderedRows = 0;
       this.errors = [];
       this.fetchCache.mb.clear();
-      this.updateProgress('待機中', 0);
-      this.setMessage('候補生成を開始してください。');
+      this.updateProgress(scriptMessage('history_scripts_waiting_65', '待機中'), 0);
+      this.setMessage(scriptMessage('history_scripts_start_generating_candidates_66', '候補生成を開始してください。'));
       this.renderAll();
     }
 
@@ -798,13 +804,13 @@
       if (hasRestoreRoleSource) payload.restoreRoleSource = options.restoreRoleSource;
 
       this.manualBusy.add(key);
-      this.setManualRoleMessage(record, role, '保存しています。', '');
+      this.setManualRoleMessage(record, role, scriptMessage('history_scripts_saving_23', '保存しています。'), '');
       this.renderManualView();
       try {
         const response = await this.sendManualMutation(payload);
         if (!response || response.success !== true) {
-          const detail = response && response.error ? response.error : 'DB通信に失敗しました。';
-          this.setManualRoleMessage(record, role, `保存できませんでした: ${detail}`, 'error');
+          const detail = response && response.error ? response.error : scriptMessage('history_scripts_database_request_failed_67', 'DB通信に失敗しました。');
+          this.setManualRoleMessage(record, role, scriptMessage('history_scripts_could_not_save_1_216', `保存できませんでした: ${detail}`, [detail]), 'error');
           return { error: 'transport' };
         }
 
@@ -815,7 +821,7 @@
           if (options.isUndo) this.manualUndoActions.delete(key);
           else this.manualUndoActions.set(key, { previous: result.previous, post: result.post });
           this.manualEditing.delete(key);
-          this.setManualRoleMessage(record, role, options.isUndo ? '元に戻しました。' : '保存しました。', 'success');
+          this.setManualRoleMessage(record, role, options.isUndo ? scriptMessage('history_scripts_undone_31', '元に戻しました。') : scriptMessage('history_scripts_saved_68', '保存しました。'), 'success');
           await this.reloadManualData();
           return result;
         }
@@ -829,22 +835,22 @@
             else delete sources[role];
             record.creditRoleSources = sources;
           }
-          this.setManualRoleMessage(record, role, '他の更新が反映されました。最新値を確認して再試行してください。', 'error');
+          this.setManualRoleMessage(record, role, scriptMessage('history_scripts_another_update_was_applied_check_the_latest_values_a_69', '他の更新が反映されました。最新値を確認して再試行してください。'), 'error');
           await this.reloadManualData();
           return result;
         }
 
         const errorLabels = {
-          invalid_value: '入力値を保存できません。名前だけを入力してください。',
-          not_manual: '自動取得された値はこの画面から変更できません。',
-          bad_role: '対象の役割が不正です。',
-          not_found: '動画が見つかりません。データを再読み込みしてください。',
+          invalid_value: scriptMessage('history_scripts_cannot_save_this_value_enter_only_a_name_70', '入力値を保存できません。名前だけを入力してください。'),
+          not_manual: scriptMessage('history_scripts_automatically_retrieved_values_cannot_be_changed_her_71', '自動取得された値はこの画面から変更できません。'),
+          bad_role: scriptMessage('history_scripts_invalid_role_72', '対象の役割が不正です。'),
+          not_found: scriptMessage('history_scripts_video_not_found_reload_the_data_73', '動画が見つかりません。データを再読み込みしてください。'),
         };
         this.setManualRoleMessage(record, role,
-          errorLabels[result.error] || '更新されませんでした。最新値を確認して再試行してください。', 'error');
+          errorLabels[result.error] || scriptMessage('history_scripts_nothing_was_updated_check_the_latest_values_and_try__74', '更新されませんでした。最新値を確認して再試行してください。'), 'error');
         return result;
       } catch (error) {
-        this.setManualRoleMessage(record, role, `保存できませんでした: ${error.message}`, 'error');
+        this.setManualRoleMessage(record, role, scriptMessage('history_scripts_could_not_save_1_206', `保存できませんでした: ${error.message}`, [error.message]), 'error');
         return { error: 'transport' };
       } finally {
         this.manualBusy.delete(key);
@@ -869,9 +875,9 @@
         if (typeof navigator === 'undefined' || !navigator.clipboard
           || typeof navigator.clipboard.writeText !== 'function') throw new Error('clipboard unavailable');
         await navigator.clipboard.writeText(query);
-        this.setManualRoleMessage(record, role, '検索語をコピーしました。', 'success');
+        this.setManualRoleMessage(record, role, scriptMessage('history_scripts_search_query_copied_75', '検索語をコピーしました。'), 'success');
       } catch (_error) {
-        this.setManualRoleMessage(record, role, '検索語をコピーできませんでした。ブラウザの権限を確認してください。', 'error');
+        this.setManualRoleMessage(record, role, scriptMessage('history_scripts_could_not_copy_the_search_query_check_browser_permis_76', '検索語をコピーできませんでした。ブラウザの権限を確認してください。'), 'error');
       }
       this.renderManualView();
       return query;
@@ -924,15 +930,15 @@
       const rest = rows.length - shown.length;
       if (this.manualCountEl) {
         this.manualCountEl.textContent = rest > 0
-          ? `対象 ${rows.length}件 / 不足 ${missingCount}役割（${shown.length}件を表示中）`
-          : `対象 ${rows.length}件 / 不足 ${missingCount}役割`;
+          ? scriptMessage('history_scripts_items_1_missing_roles_2_showing_3_217', `対象 ${rows.length}件 / 不足 ${missingCount}役割（${shown.length}件を表示中）`, [rows.length, missingCount, shown.length])
+          : scriptMessage('history_scripts_items_1_missing_roles_2_218', `対象 ${rows.length}件 / 不足 ${missingCount}役割`, [rows.length, missingCount]);
       }
       if (this.manualStatusEl) {
         this.manualStatusEl.textContent = !rows.length
-          ? '条件に一致する手動確認対象はありません。'
+          ? scriptMessage('history_scripts_no_items_match_the_manual_review_filters_77', '条件に一致する手動確認対象はありません。')
           : (rest > 0
-            ? `下へスクロールすると続きを読み込みます（残り ${rest}件）。検索で絞り込むこともできます。`
-            : '検索語のコピーはクリップボードだけを使用します。');
+            ? scriptMessage('history_scripts_scroll_down_to_load_more_1_remaining_or_narrow_the_r_219', `下へスクロールすると続きを読み込みます（残り ${rest}件）。検索で絞り込むこともできます。`, [rest])
+            : scriptMessage('history_scripts_copying_a_search_query_only_uses_the_clipboard_78', '検索語のコピーはクリップボードだけを使用します。'));
       }
     }
 
@@ -953,7 +959,7 @@
       titleWrap.appendChild(title);
       const channel = document.createElement('span');
       channel.className = 'manual-video-channel';
-      channel.textContent = record.channel || 'チャンネル名なし';
+      channel.textContent = record.channel || scriptMessage('history_scripts_no_channel_name_79', 'チャンネル名なし');
       titleWrap.appendChild(channel);
       header.appendChild(titleWrap);
       const videoId = document.createElement('code');
@@ -971,7 +977,7 @@
       if (missing.length) {
         const heading = document.createElement('h3');
         heading.className = 'manual-missing-heading';
-        heading.textContent = '不足している役割';
+        heading.textContent = scriptMessage('history_scripts_missing_roles_80', '不足している役割');
         card.appendChild(heading);
         const list = document.createElement('div');
         list.className = 'manual-missing-list';
@@ -993,7 +999,7 @@
       item.appendChild(label);
       const value = document.createElement('span');
       value.className = 'manual-current-value';
-      value.textContent = isBlank(record[role]) ? '未入力' : record[role];
+      value.textContent = isBlank(record[role]) ? scriptMessage('history_scripts_empty_81', '未入力') : record[role];
       item.appendChild(value);
       const sourceEl = document.createElement('span');
       sourceEl.className = 'manual-source-label';
@@ -1003,22 +1009,22 @@
       const actions = document.createElement('div');
       actions.className = 'manual-current-actions';
       if (source === 'manual') {
-        const edit = this.createManualButton('修正', 'edit', ['M12 20h9', 'M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z']);
-        edit.setAttribute('aria-label', `${CREDIT_ROLE_LABELS[role]}を修正`);
+        const edit = this.createManualButton(scriptMessage('history_scripts_edit_82', '修正'), 'edit', ['M12 20h9', 'M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z']);
+        edit.setAttribute('aria-label', scriptMessage('history_scripts_edit_1_220', `${CREDIT_ROLE_LABELS[role]}を修正`, [CREDIT_ROLE_LABELS[role]]));
         edit.addEventListener('click', () => {
           this.manualEditing.add(key);
           this.renderManualView();
         });
         actions.appendChild(edit);
-        const cancel = this.createManualButton('手動入力を取り消す', 'cancel', ['M3 6h18', 'M8 6V4h8v2', 'M19 6l-1 14H6L5 6'], 'manual-danger-btn');
-        cancel.setAttribute('aria-label', `${CREDIT_ROLE_LABELS[role]}の手動入力を取り消す`);
+        const cancel = this.createManualButton(scriptMessage('history_scripts_remove_manual_entry_83', '手動入力を取り消す'), 'cancel', ['M3 6h18', 'M8 6V4h8v2', 'M19 6l-1 14H6L5 6'], 'manual-danger-btn');
+        cancel.setAttribute('aria-label', scriptMessage('history_scripts_remove_manual_1_entry_221', `${CREDIT_ROLE_LABELS[role]}の手動入力を取り消す`, [CREDIT_ROLE_LABELS[role]]));
         cancel.disabled = this.manualBusy.has(key);
         cancel.addEventListener('click', () => this.performManualMutation(record, role, '', { allowBlank: true }));
         actions.appendChild(cancel);
       }
       if (this.manualUndoActions.has(key)) {
-        const undo = this.createManualButton('元に戻す', 'undo', ['M9 14 4 9l5-5', 'M4 9h9a7 7 0 0 1 7 7v1']);
-        undo.setAttribute('aria-label', `${CREDIT_ROLE_LABELS[role]}の直前の操作を元に戻す`);
+        const undo = this.createManualButton(scriptMessage('history_scripts_undo_21', '元に戻す'), 'undo', ['M9 14 4 9l5-5', 'M4 9h9a7 7 0 0 1 7 7v1']);
+        undo.setAttribute('aria-label', scriptMessage('history_scripts_undo_the_last_1_action_222', `${CREDIT_ROLE_LABELS[role]}の直前の操作を元に戻す`, [CREDIT_ROLE_LABELS[role]]));
         undo.disabled = this.manualBusy.has(key);
         undo.addEventListener('click', () => this.undoManualMutation(record, role));
         actions.appendChild(undo);
@@ -1053,8 +1059,8 @@
       roleLabel.textContent = CREDIT_ROLE_LABELS[role];
       form.appendChild(roleLabel);
 
-      const copy = this.createManualButton('検索語をコピー', 'copy', ['M8 8h11v11H8z', 'M5 16H4V5h11v1']);
-      copy.setAttribute('aria-label', `${CREDIT_ROLE_SEARCH_LABELS[role]}の検索語をコピー`);
+      const copy = this.createManualButton(scriptMessage('history_scripts_copy_search_query_84', '検索語をコピー'), 'copy', ['M8 8h11v11H8z', 'M5 16H4V5h11v1']);
+      copy.setAttribute('aria-label', scriptMessage('history_scripts_copy_search_query_for_1_223', `${CREDIT_ROLE_SEARCH_LABELS[role]}の検索語をコピー`, [scriptMessage('history_scripts_search_role_' + role, CREDIT_ROLE_SEARCH_LABELS[role])]));
       copy.addEventListener('click', () => this.copyManualSearchQuery(record, role));
       form.appendChild(copy);
 
@@ -1063,7 +1069,7 @@
       inputWrap.className = 'manual-input-wrap';
       const label = document.createElement('label');
       label.setAttribute('for', inputId);
-      label.textContent = `${CREDIT_ROLE_LABELS[role]}の名前`;
+      label.textContent = scriptMessage('history_scripts_1_name_224', `${CREDIT_ROLE_LABELS[role]}の名前`, [CREDIT_ROLE_LABELS[role]]);
       inputWrap.appendChild(label);
       const input = document.createElement('input');
       input.type = 'text';
@@ -1080,15 +1086,15 @@
       inputWrap.appendChild(validationEl);
       form.appendChild(inputWrap);
 
-      const save = this.createManualButton(editing ? '修正を保存' : 'この役割を保存', editing ? 'save-edit' : 'save', ['M5 4h12l2 2v14H5z', 'M8 4v6h8V4', 'M8 17h8']);
-      save.setAttribute('aria-label', `${CREDIT_ROLE_LABELS[role]}の入力値を保存`);
+      const save = this.createManualButton(editing ? scriptMessage('history_scripts_save_changes_85', '修正を保存') : scriptMessage('history_scripts_save_this_role_86', 'この役割を保存'), editing ? 'save-edit' : 'save', ['M5 4h12l2 2v14H5z', 'M8 4v6h8V4', 'M8 17h8']);
+      save.setAttribute('aria-label', scriptMessage('history_scripts_save_1_entry_225', `${CREDIT_ROLE_LABELS[role]}の入力値を保存`, [CREDIT_ROLE_LABELS[role]]));
       form.appendChild(save);
 
       const updateValidation = () => {
         const validation = validateManualCreditInput(input.value);
         input.setAttribute('aria-invalid', validation.valid ? 'false' : 'true');
         validationEl.classList.toggle('error', !validation.valid);
-        validationEl.textContent = validation.valid ? '保存できる形式です。' : `${validation.reason} ${validation.hint}`;
+        validationEl.textContent = validation.valid ? scriptMessage('history_scripts_valid_format_87', '保存できる形式です。') : `${validation.reason} ${validation.hint}`;
         save.disabled = !validation.valid || this.manualBusy.has(key);
         return validation;
       };
@@ -1099,8 +1105,8 @@
       });
 
       if (editing) {
-        const close = this.createManualButton('編集を閉じる', 'close-edit', ['M18 6 6 18', 'm6 6 12 12']);
-        close.setAttribute('aria-label', `${CREDIT_ROLE_LABELS[role]}の編集欄を閉じる`);
+        const close = this.createManualButton(scriptMessage('history_scripts_close_editor_88', '編集を閉じる'), 'close-edit', ['M18 6 6 18', 'm6 6 12 12']);
+        close.setAttribute('aria-label', scriptMessage('history_scripts_close_1_editor_226', `${CREDIT_ROLE_LABELS[role]}の編集欄を閉じる`, [CREDIT_ROLE_LABELS[role]]));
         close.addEventListener('click', () => {
           this.manualEditing.delete(key);
           this.renderManualView();
@@ -1155,7 +1161,7 @@
 
       const title = document.createElement('strong');
       title.id = 'enrichPreCountTitle';
-      title.textContent = '候補生成の確認';
+      title.textContent = scriptMessage('history_scripts_confirm_candidate_generation_89', '候補生成の確認');
       panel.appendChild(title);
 
       const description = document.createElement('p');
@@ -1173,18 +1179,18 @@
 
       const limitLabel = document.createElement('label');
       limitLabel.setAttribute('for', 'enrichPreCountLimitMode');
-      limitLabel.textContent = '処理件数:';
+      limitLabel.textContent = scriptMessage('history_scripts_items_to_process_90', '処理件数:');
 
       const limitMode = document.createElement('select');
       limitMode.id = 'enrichPreCountLimitMode';
       limitMode.dataset.enrichPrecountLimitMode = 'true';
-      limitMode.setAttribute('aria-label', '処理件数の指定方法');
+      limitMode.setAttribute('aria-label', scriptMessage('history_scripts_how_to_limit_items_91', '処理件数の指定方法'));
       const allOption = document.createElement('option');
       allOption.value = 'all';
-      allOption.textContent = '全件';
+      allOption.textContent = scriptMessage('history_scripts_all_items_92', '全件');
       const limitedOption = document.createElement('option');
       limitedOption.value = 'limited';
-      limitedOption.textContent = '上位N件';
+      limitedOption.textContent = scriptMessage('history_scripts_top_n_items_93', '上位N件');
       limitMode.appendChild(allOption);
       limitMode.appendChild(limitedOption);
       limitMode.value = 'all';
@@ -1192,7 +1198,7 @@
       const limitInput = document.createElement('input');
       limitInput.type = 'number';
       limitInput.dataset.enrichPrecountLimit = 'true';
-      limitInput.setAttribute('aria-label', '処理する上位件数');
+      limitInput.setAttribute('aria-label', scriptMessage('history_scripts_number_of_top_items_to_process_94', '処理する上位件数'));
       limitInput.min = '1';
       limitInput.max = String(preCount.videoCount);
       limitInput.step = '1';
@@ -1217,7 +1223,7 @@
       cooldownInput.checked = false;
       cooldownLabel.appendChild(cooldownInput);
       const cooldownText = document.createElement('span');
-      cooldownText.textContent = 'MusicBrainz のクールダウンを無視して再照会する';
+      cooldownText.textContent = scriptMessage('history_scripts_query_musicbrainz_again_ignoring_the_cooldown_95', 'MusicBrainz のクールダウンを無視して再照会する');
       cooldownLabel.appendChild(cooldownText);
       panel.appendChild(cooldownLabel);
 
@@ -1230,8 +1236,8 @@
       start.type = 'button';
       start.className = 'sort-btn enrich-primary';
       start.dataset.enrichPrecountAction = 'start';
-      start.setAttribute('aria-label', '候補生成を開始');
-      start.textContent = '開始';
+      start.setAttribute('aria-label', scriptMessage('history_scripts_start_generating_candidates_96', '候補生成を開始'));
+      start.textContent = scriptMessage('history_scripts_start_97', '開始');
       start.style.minHeight = '44px';
       start.style.minWidth = '88px';
 
@@ -1239,8 +1245,8 @@
       cancel.type = 'button';
       cancel.className = 'sort-btn';
       cancel.dataset.enrichPrecountAction = 'cancel';
-      cancel.setAttribute('aria-label', '候補生成をキャンセル');
-      cancel.textContent = 'キャンセル';
+      cancel.setAttribute('aria-label', scriptMessage('history_scripts_cancel_candidate_generation_98', '候補生成をキャンセル'));
+      cancel.textContent = scriptMessage('history_scripts_cancel_99', 'キャンセル');
       cancel.style.minHeight = '44px';
       cancel.style.minWidth = '88px';
 
@@ -1375,7 +1381,7 @@
       const sameSongCandidates = collectSameSongDonorCandidates(records, sameSongDonorIndex);
       if (!allGroups.size && !sameSongCandidates.length) {
         this.resetSession();
-        this.setMessage('補完できる対象がありません。動画を追加してから再度お試しください。', 'success');
+        this.setMessage(scriptMessage('history_scripts_nothing_to_enrich_add_videos_and_try_again_100', '補完できる対象がありません。動画を追加してから再度お試しください。'), 'success');
         return;
       }
 
@@ -1388,7 +1394,7 @@
       try {
         const config = await sendRuntimeMessage({ type: 'getEnrichCreditsConfig' });
         if (!config || !config.success || !(Number(config.rateLimitMs) > 0)) {
-          throw new Error('通信間隔を取得できません');
+          throw new Error(scriptMessage('history_scripts_could_not_get_the_request_interval_101', '通信間隔を取得できません'));
         }
         const loadRulesForEstimate = rules ? null : () => {
           rulesLoadAttempt = this.loadRules()
@@ -1412,7 +1418,7 @@
           sameSongCandidates.length,
         );
       } catch (error) {
-        this.setMessage(`候補生成の事前確認に失敗しました: ${error.message}`, 'error');
+        this.setMessage(scriptMessage('history_scripts_candidate_preflight_failed_1_227', `候補生成の事前確認に失敗しました: ${error.message}`, [error.message]), 'error');
       } finally {
         this.confirmingGeneration = false;
         this.updateButtons();
@@ -1420,9 +1426,9 @@
       if (!confirmation) return;
       const groups = limitEnrichmentGroups(allGroups, confirmation.limit);
 
-      const beginOk = !this.env.beginMaintenance || this.env.beginMaintenance('生成中…（中止）', true);
+      const beginOk = !this.env.beginMaintenance || this.env.beginMaintenance(scriptMessage('history_scripts_generating_cancel_102', '生成中…（中止）'), true);
       if (!beginOk) {
-        this.setMessage('他のメンテナンス処理が実行中です。', 'error');
+        this.setMessage(scriptMessage('history_scripts_another_maintenance_task_is_running_103', '他のメンテナンス処理が実行中です。'), 'error');
         return;
       }
 
@@ -1433,7 +1439,7 @@
       this.abortRequested = false;
       this.generating = true;
       this.updateButtons();
-      this.setMessage(`${groups.size}チャンネルを照合します。`);
+      this.setMessage(scriptMessage('history_scripts_matching_1_channels_228', `${groups.size}チャンネルを照合します。`, [groups.size]));
 
       try {
         if (!Array.isArray(rules)) {
@@ -1482,7 +1488,7 @@
           if (this.abortRequested) break;
           const progressLabel = `${i + 1}/${entries.length}ch: ${channel}`;
           this.updateProgress(progressLabel, i / entries.length);
-          if (this.env.updateMaintenance) this.env.updateMaintenance('生成中…（中止）', true);
+          if (this.env.updateMaintenance) this.env.updateMaintenance(scriptMessage('history_scripts_generating_cancel_102', '生成中…（中止）'), true);
 
           // Source 3: MusicBrainz per still-missing video (no channel-level gate —
           // one success elsewhere no longer starves the other videos, HANDOFF §3.3).
@@ -1494,7 +1500,7 @@
             // Per-video progress: a single large channel is one MusicBrainz call
             // per second, so channel-level progress looks frozen for minutes.
             this.updateProgress(
-              `${progressLabel} — ${j + 1}/${pending.length}曲: ${truncateProgressTitle(state.video.title)}`,
+              scriptMessage('history_scripts_1_song_2_3_4_229', `${progressLabel} — ${j + 1}/${pending.length}曲: ${truncateProgressTitle(state.video.title)}`, [progressLabel, j + 1, pending.length, truncateProgressTitle(state.video.title)]),
               (i + j / pending.length) / entries.length,
             );
             const title = state.video.title || '';
@@ -1526,7 +1532,7 @@
                   ignoreCooldown: confirmation.ignoreCooldown === true,
                 });
               } catch (recordError) {
-                this.errors.push(`${channel}: MusicBrainz 記録 ${recordError.message}`);
+                this.errors.push(scriptMessage('history_scripts_1_musicbrainz_record_2_230', `${channel}: MusicBrainz 記録 ${recordError.message}`, [channel, recordError.message]));
               }
               this.errors.push(`${channel}: MusicBrainz ${error.message}`);
               continue;
@@ -1543,7 +1549,7 @@
                 ignoreCooldown: confirmation.ignoreCooldown === true,
               });
             } catch (error) {
-              this.errors.push(`${channel}: MusicBrainz 記録 ${error.message}`);
+              this.errors.push(scriptMessage('history_scripts_1_musicbrainz_record_2_231', `${channel}: MusicBrainz 記録 ${error.message}`, [channel, error.message]));
             }
             try {
               const m = mb && mb.candidate;
@@ -1562,19 +1568,19 @@
               });
               applyCandidate(state, candidate);
             } catch (error) {
-              this.errors.push(`${channel}: MusicBrainz 候補 ${error.message}`);
+              this.errors.push(scriptMessage('history_scripts_1_musicbrainz_candidate_2_232', `${channel}: MusicBrainz 候補 ${error.message}`, [channel, error.message]));
             }
           }
           this.renderAll();
         }
 
-        this.updateProgress(this.abortRequested ? '中止しました' : '候補生成完了', 1);
+        this.updateProgress(this.abortRequested ? scriptMessage('history_scripts_cancelled_104', '中止しました') : scriptMessage('history_scripts_candidate_generation_complete_105', '候補生成完了'), 1);
         const candidates = this.getAllCandidates().length;
         const selected = this.getSelectedCandidates().length;
-        const suffix = this.errors.length ? ` / エラー ${this.errors.length}件` : '';
-        this.setMessage(`候補 ${candidates}件、確定予定 ${selected}件を生成しました${suffix}。`, this.errors.length ? undefined : 'success');
+        const suffix = this.errors.length ? scriptMessage('history_scripts_errors_1_233', ` / エラー ${this.errors.length}件`, [this.errors.length]) : '';
+        this.setMessage(scriptMessage('history_scripts_generated_1_candidates_2_selected_3_234', `候補 ${candidates}件、確定予定 ${selected}件を生成しました${suffix}。`, [candidates, selected, suffix]), this.errors.length ? undefined : 'success');
       } catch (error) {
-        this.setMessage(`候補生成に失敗しました: ${error.message}`, 'error');
+        this.setMessage(scriptMessage('history_scripts_candidate_generation_failed_1_235', `候補生成に失敗しました: ${error.message}`, [error.message]), 'error');
       } finally {
         this.generating = false;
         this.abortRequested = false;
@@ -1633,7 +1639,7 @@
       this.modal.querySelectorAll('[data-enrich-sort]').forEach((header) => {
         const active = header.dataset.enrichSort === this.sortKey;
         header.dataset.sortActive = active ? 'true' : 'false';
-        header.title = active ? `クリックで${this.sortDir === 'asc' ? '降順' : '昇順'}に並べ替え` : 'クリックで並べ替え';
+        header.title = active ? scriptMessage('history_scripts_click_to_sort_1_236', `クリックで${this.sortDir === 'asc' ? '降順' : '昇順'}に並べ替え`, [this.sortDir === 'asc' ? scriptMessage('history_scripts_descending_107', '降順') : scriptMessage('history_scripts_ascending_108', '昇順')]) : scriptMessage('history_scripts_click_to_sort_106', 'クリックで並べ替え');
       });
     }
 
@@ -1768,8 +1774,8 @@
       const reject = document.createElement('button');
       reject.type = 'button';
       reject.className = 'sort-btn';
-      reject.textContent = '却下';
-      reject.setAttribute('aria-label', `${candidate.title || candidate.videoId} の候補を却下`);
+      reject.textContent = scriptMessage('history_scripts_reject_19', '却下');
+      reject.setAttribute('aria-label', scriptMessage('history_scripts_reject_candidate_for_1_237', `${candidate.title || candidate.videoId} の候補を却下`, [candidate.title || candidate.videoId]));
       reject.disabled = this.rejecting.has(candidate.id);
       reject.addEventListener('click', () => { void this.rejectCandidate(candidate); });
       rejectCell.appendChild(reject);
@@ -1785,7 +1791,7 @@
       const record = (this.getRecords() || [])
         .find((entry) => entry && String(entry.videoId) === String(candidate.videoId));
       if (!record) {
-        this.setMessage('この動画の記録が見つからないため却下できません。', 'error');
+        this.setMessage(scriptMessage('history_scripts_cannot_reject_video_record_not_found_109', 'この動画の記録が見つからないため却下できません。'), 'error');
         return;
       }
       this.rejecting.add(candidate.id);
@@ -1806,8 +1812,8 @@
             rejectCandidate: signature,
           });
           if (!response || response.success !== true || (response.result || {}).updated !== true) {
-            const detail = (response && response.error) || '保存できませんでした';
-            this.setMessage(`却下を保存できませんでした（${detail}）。候補は残しています。`, 'error');
+            const detail = (response && response.error) || scriptMessage('history_scripts_could_not_save_110', '保存できませんでした');
+            this.setMessage(scriptMessage('history_scripts_could_not_save_rejection_1_the_candidate_was_kept_238', `却下を保存できませんでした（${detail}）。候補は残しています。`, [detail]), 'error');
             return;
           }
           const rejections = record.creditReviewRejections
@@ -1818,9 +1824,9 @@
           record.creditReviewRejections = rejections;
         }
         this.removeCandidate(candidate);
-        this.setMessage('候補を却下しました。次回の候補生成でも出てきません。', 'success');
+        this.setMessage(scriptMessage('history_scripts_candidate_rejected_it_will_be_excluded_from_future_g_111', '候補を却下しました。次回の候補生成でも出てきません。'), 'success');
       } catch (error) {
-        this.setMessage(`却下を保存できませんでした: ${error.message}`, 'error');
+        this.setMessage(scriptMessage('history_scripts_could_not_save_rejection_1_239', `却下を保存できませんでした: ${error.message}`, [error.message]), 'error');
       } finally {
         this.rejecting.delete(candidate.id);
         this.renderAll();
@@ -1843,7 +1849,7 @@
     updateTotals() {
       const all = this.getAllCandidates();
       const selected = all.filter((candidate) => candidate.selected);
-      if (this.totalEl) this.totalEl.textContent = `確定予定 ${selected.length}件 / 候補 ${all.length}件`;
+      if (this.totalEl) this.totalEl.textContent = scriptMessage('history_scripts_selected_1_candidates_2_240', `確定予定 ${selected.length}件 / 候補 ${all.length}件`, [selected.length, all.length]);
     }
 
     selectedPlan() {
@@ -1914,17 +1920,17 @@
       if (this.committing || this.generating) return;
       const selected = this.getSelectedCandidates();
       if (!selected.length) return;
-      if (!confirm(`${selected.length}件の動画にcomposer/lyricist/arrangerを書き込みます。既存値が空のフィールドのみ上書きされます。続行しますか？`)) {
+      if (!confirm(scriptMessage('history_scripts_write_composer_lyricist_arranger_credits_to_1_videos_241', `${selected.length}件の動画にcomposer/lyricist/arrangerを書き込みます。既存値が空のフィールドのみ上書きされます。続行しますか？`, [selected.length]))) {
         return;
       }
 
       this.committing = true;
       this.updateButtons();
-      this.setMessage('書き戻し中です。');
-      const beginOk = !this.env.beginMaintenance || this.env.beginMaintenance('書き戻し中…', false);
+      this.setMessage(scriptMessage('history_scripts_writing_credits_112', '書き戻し中です。'));
+      const beginOk = !this.env.beginMaintenance || this.env.beginMaintenance(scriptMessage('history_scripts_writing_credits_113', '書き戻し中…'), false);
       if (!beginOk) {
         this.committing = false;
-        this.setMessage('他のメンテナンス処理が実行中です。', 'error');
+        this.setMessage(scriptMessage('history_scripts_another_maintenance_task_is_running_103', '他のメンテナンス処理が実行中です。'), 'error');
         this.updateButtons();
         return;
       }
@@ -1943,17 +1949,17 @@
           const didUpdate = await this.updateCredits(candidate, freshRecord);
           if (didUpdate) updated++;
           else skipped++;
-          this.updateProgress(`書き戻し ${i + 1}/${selected.length}`, (i + 1) / selected.length);
+          this.updateProgress(scriptMessage('history_scripts_writing_1_2_242', `書き戻し ${i + 1}/${selected.length}`, [i + 1, selected.length]), (i + 1) / selected.length);
         }
-        this.setMessage(`${updated}件を更新しました。スキップ ${skipped}件。`, 'success');
-        if (this.env.notify) this.env.notify(`${updated}件を更新しました`);
+        this.setMessage(scriptMessage('history_scripts_updated_1_items_skipped_2_243', `${updated}件を更新しました。スキップ ${skipped}件。`, [updated, skipped]), 'success');
+        if (this.env.notify) this.env.notify(scriptMessage('history_scripts_updated_1_items_244', `${updated}件を更新しました`, [updated]));
         if (this.env.reloadData) setTimeout(() => this.env.reloadData(), 300);
         setTimeout(() => {
           this.resetSession();
           this.close();
         }, 500);
       } catch (error) {
-        this.setMessage(`書き戻しに失敗しました: ${error.message}`, 'error');
+        this.setMessage(scriptMessage('history_scripts_could_not_write_credits_1_245', `書き戻しに失敗しました: ${error.message}`, [error.message]), 'error');
       } finally {
         this.committing = false;
         if (beginOk && this.env.endMaintenance) this.env.endMaintenance();
