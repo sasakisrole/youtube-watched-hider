@@ -87,12 +87,22 @@ function sortData(data, mode) {
 }
 
 // 絞り込み中に母数が見えなくなるので、全体の件数を横に添える
+function historyMessage(key, fallback, substitutions = []) {
+  if (typeof chrome === 'undefined' || !chrome.i18n?.getMessage) return fallback;
+  return chrome.i18n.getMessage(key, substitutions.map(String)) || fallback;
+}
+
+function historyUILanguage() {
+  return typeof chrome !== 'undefined' && chrome.i18n?.getUILanguage
+    ? chrome.i18n.getUILanguage() : 'ja';
+}
+
 function updateTotalCount() {
   totalCountEl.textContent = sortedCache.length.toLocaleString();
   if (!totalCountOfEl) return;
   totalCountOfEl.textContent = sortedCache.length === allData.length
     ? ''
-    : `（全${allData.length.toLocaleString()}件）`;
+    : historyMessage(allData.length === 1 ? 'history_total_one' : 'history_total_many', `（全${allData.length.toLocaleString()}件）`, [allData.length.toLocaleString()]);
 }
 
 // 履歴の1件削除。押した瞬間には消さず、猶予の間だけ画面から隠しておいて、
@@ -107,7 +117,7 @@ function renderUndoToast() {
     undoToast.hidden = true;
     return;
   }
-  undoToastText.textContent = `${pendingDeletes.length}件を履歴から削除しました`;
+  undoToastText.textContent = historyMessage(pendingDeletes.length === 1 ? 'history_removed_one' : 'history_removed_many', `${pendingDeletes.length}件を履歴から削除しました`, [pendingDeletes.length]);
   undoToast.hidden = false;
 }
 
@@ -133,7 +143,7 @@ function commitDelete(entry) {
     if (chrome.runtime.lastError || !res || !res.success) {
       // 消せていないのに画面から消えたままだと、次に開いたとき黙って戻っている
       restoreDelete(entry);
-      showJobMessage(`履歴から削除できませんでした: ${entry.video.title || entry.video.videoId}`, { state: 'error' });
+      showJobMessage(historyMessage('history_delete_error', `履歴から削除できませんでした: ${entry.video.title || entry.video.videoId}`, [entry.video.title || entry.video.videoId]), { state: 'error' });
       return;
     }
     entry.row.remove();
@@ -191,8 +201,8 @@ function buildVideoRow(video) {
     badge.className = 'badge badge-yt';
     badge.textContent = 'YT';
     badge.title = video.source === 'seekbar'
-      ? 'シークバーの動きから視聴を検出'
-      : 'YouTubeの履歴から取り込み';
+      ? historyMessage('history_source_seekbar', 'シークバーの動きから視聴を検出')
+      : historyMessage('history_source_history', 'YouTubeの履歴から取り込み');
     a.appendChild(badge);
   }
 
@@ -236,7 +246,7 @@ function buildVideoRow(video) {
   const delBtn = document.createElement('button');
   delBtn.className = 'delete-btn';
   delBtn.textContent = '\u00d7';
-  delBtn.title = '履歴から削除（削除後5秒は元に戻せます）';
+  delBtn.title = historyMessage('history_delete_title', '履歴から削除（削除後5秒は元に戻せます）');
   delBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     deleteVideo(video, row);
@@ -299,7 +309,7 @@ function render() {
     content.textContent = '';
     const empty = document.createElement('div');
     empty.className = 'empty';
-    empty.textContent = '該当する動画はありません。検索語や絞り込みを外してみてください。';
+    empty.textContent = historyMessage('history_empty', '該当する動画はありません。検索語や絞り込みを外してみてください。');
     content.appendChild(empty);
     return;
   }
@@ -381,19 +391,21 @@ function renderJob(job, recent = recentJobs) {
   if (jobRecentList) {
     jobRecentList.textContent = '';
     const stateLabels = {
-      done: '完了',
-      aborted: '中止',
-      interrupted: '中断',
-      error: '失敗',
+      done: historyMessage('history_state_done', '完了'),
+      aborted: historyMessage('history_state_aborted', '中止'),
+      interrupted: historyMessage('history_state_interrupted', '中断'),
+      error: historyMessage('history_state_error', '失敗'),
     };
     recentJobs.forEach(item => {
       if (!item) return;
       const li = document.createElement('li');
       const timestamp = Number(item.endedAt || item.updatedAt || item.startedAt) || 0;
       const when = timestamp
-        ? new Date(timestamp).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-        : '日時不明';
-      li.textContent = `${when} ${item.label || item.kind || '処理'} — ${stateLabels[item.state] || item.state || '結果不明'}`;
+        ? new Date(timestamp).toLocaleString(historyUILanguage(), { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : historyMessage('history_unknown_date', '日時不明');
+      const label = item.label || item.kind || historyMessage('history_job_fallback', '処理');
+      const state = stateLabels[item.state] || item.state || historyMessage('history_unknown_result', '結果不明');
+      li.textContent = historyMessage('history_job_entry', `${when} ${label} — ${state}`, [when, label, state]);
       jobRecentList.appendChild(li);
     });
   }
@@ -1596,7 +1608,7 @@ function loadData() {
       content.textContent = '';
       const empty = document.createElement('div');
       empty.className = 'empty';
-      empty.textContent = 'データを読み込めませんでした。拡張機能を再読み込みしてから、開き直してください。';
+      empty.textContent = historyMessage('history_load_timeout', 'データを読み込めませんでした。拡張機能を再読み込みしてから、開き直してください。');
       content.appendChild(empty);
     }
   }, 5000);
@@ -1611,7 +1623,7 @@ function loadData() {
         content.textContent = '';
         const errDiv = document.createElement('div');
         errDiv.className = 'empty';
-        errDiv.textContent = 'Error: ' + chrome.runtime.lastError.message;
+        errDiv.textContent = historyMessage('history_load_error', 'Error: ' + chrome.runtime.lastError.message, [chrome.runtime.lastError.message]);
         content.appendChild(errDiv);
         return;
       }
@@ -1623,11 +1635,11 @@ function loadData() {
         errDiv.style.padding = '24px';
         errDiv.style.lineHeight = '1.6';
         errDiv.style.whiteSpace = 'pre-line';
-        errDiv.textContent = 'DB読み込みエラー: ' + (data.message || 'unknown') +
+        errDiv.textContent = historyMessage('history_db_error', 'DB読み込みエラー: ' + (data.message || 'unknown') +
           '\n\n復旧手順:\n' +
           '1. すべてのYouTubeタブを閉じる（リロードではなく閉じる）\n' +
           '2. chrome://extensions で拡張をリロード\n' +
-          '3. 新しくYouTubeを開いてからこの画面を再読込';
+          '3. 新しくYouTubeを開いてからこの画面を再読込', [data.message || 'unknown']);
         content.appendChild(errDiv);
         return;
       }
@@ -1646,7 +1658,7 @@ function loadData() {
     content.textContent = '';
     const errDiv = document.createElement('div');
     errDiv.className = 'empty';
-    errDiv.textContent = 'Error: ' + e.message;
+    errDiv.textContent = historyMessage('history_load_error', 'Error: ' + e.message, [e.message]);
     content.appendChild(errDiv);
   }
 }

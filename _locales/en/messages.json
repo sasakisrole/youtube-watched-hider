@@ -1156,6 +1156,66 @@
   "officialActiveProfileLabel": {
     "message": "Active profile"
   },
+  "history_total_one": {
+    "message": "(of $1 video)"
+  },
+  "history_total_many": {
+    "message": "(of $1 videos)"
+  },
+  "history_removed_one": {
+    "message": "Removed $1 video from history"
+  },
+  "history_removed_many": {
+    "message": "Removed $1 videos from history"
+  },
+  "history_delete_error": {
+    "message": "Could not remove from history: $1"
+  },
+  "history_source_seekbar": {
+    "message": "Watched detected from seek bar activity"
+  },
+  "history_source_history": {
+    "message": "Imported from YouTube watch history"
+  },
+  "history_delete_title": {
+    "message": "Remove from history (you can undo for 5 seconds)"
+  },
+  "history_empty": {
+    "message": "No matching videos. Try clearing your search or filters."
+  },
+  "history_state_done": {
+    "message": "Completed"
+  },
+  "history_state_aborted": {
+    "message": "Cancelled"
+  },
+  "history_state_interrupted": {
+    "message": "Interrupted"
+  },
+  "history_state_error": {
+    "message": "Failed"
+  },
+  "history_unknown_date": {
+    "message": "Unknown date"
+  },
+  "history_job_fallback": {
+    "message": "Task"
+  },
+  "history_unknown_result": {
+    "message": "Unknown result"
+  },
+  "history_job_entry": {
+    "message": "$1 $2 — $3"
+  },
+  "history_load_timeout": {
+    "message": "Could not load the data. Reload the extension, then reopen this page."
+  },
+  "history_load_error": {
+    "message": "Error: $1"
+  },
+  "history_db_error": {
+    "message": "Database read error: $1\n\nRecovery steps:\n1. Close all YouTube tabs (close them instead of reloading)\n2. Reload the extension at chrome://extensions\n3. Open YouTube in a new tab, then reload this page"
+  },
   "extensionDescription": {
     "message": "Hide videos you've already watched from YouTube recommendations, search results, and related videos",
     "description": "Chrome Web Store / extensions page summary (max 132 chars)"
