@@ -1544,6 +1544,238 @@
   "history_enrich_topic_label": {
     "message": "Topic動画のクレジット補完"
   },
+  "history_repair_checking": {
+    "message": "確認中…"
+  },
+  "history_repair_preview": {
+    "message": "クレジットの不正値を確認中…"
+  },
+  "history_repair_label": {
+    "message": "クレジットの不正値を修復"
+  },
+  "history_repair_preview_changed": {
+    "message": "別の下見が開始されたため、もう一度確認してください。"
+  },
+  "history_repair_none": {
+    "message": "修復対象はありません"
+  },
+  "history_repair_confirm": {
+    "message": "クレジットの不正値 $value1$件（$value2$動画）を修復します。\n内訳: 作曲 $value3$件 / 作詞 $value4$件 / 編曲 $value5$件\n\n不正値を空欄へ戻し、補完対象に復帰させます。元の値は記録に残ります。続行しますか？",
+    "placeholders": {
+      "value1": {
+        "content": "$1"
+      },
+      "value2": {
+        "content": "$2"
+      },
+      "value3": {
+        "content": "$3"
+      },
+      "value4": {
+        "content": "$4"
+      },
+      "value5": {
+        "content": "$5"
+      }
+    }
+  },
+  "history_repair_canceled": {
+    "message": "クレジットの不正値修復をキャンセルしました"
+  },
+  "history_repair_running_button": {
+    "message": "修復中…"
+  },
+  "history_repair_running": {
+    "message": "クレジットの不正値を修復中…"
+  },
+  "history_repair_mismatch": {
+    "message": "下見情報が無効になったか対象が変わったため、修復しませんでした。もう一度確認してください。"
+  },
+  "history_repair_result": {
+    "message": "クレジットの不正値を修復しました: $value1$件（$value2$動画）\n自己点検: 残存不正値 $value3$件 / 記録 $value4$件 / 正常値の巻き込み $value5$件 / 復元可能 $value6$件\nこの自己点検では、判定基準そのものは検証していません。",
+    "placeholders": {
+      "value1": {
+        "content": "$1"
+      },
+      "value2": {
+        "content": "$2"
+      },
+      "value3": {
+        "content": "$3"
+      },
+      "value4": {
+        "content": "$4"
+      },
+      "value5": {
+        "content": "$5"
+      },
+      "value6": {
+        "content": "$6"
+      }
+    }
+  },
+  "history_repair_failed": {
+    "message": "クレジットの不正値修復に失敗しました: $value1$",
+    "placeholders": {
+      "value1": {
+        "content": "$1"
+      }
+    }
+  },
+  "history_restore_preview": {
+    "message": "元に戻せるクレジットを確認中…"
+  },
+  "history_restore_label": {
+    "message": "修復を元に戻す"
+  },
+  "history_restore_none_skipped": {
+    "message": "元に戻せるクレジットはありません（現在値が入っているため $value1$件スキップ）",
+    "placeholders": {
+      "value1": {
+        "content": "$1"
+      }
+    }
+  },
+  "history_restore_none": {
+    "message": "元に戻せるクレジットはありません"
+  },
+  "history_restore_confirm": {
+    "message": "修復前のクレジット $value1$件（$value2$動画）を元に戻します。\n内訳: 作曲 $value3$件 / 作詞 $value4$件 / 編曲 $value5$件\n現在値が入っているため上書きしない役割: $value6$件\n\n続行しますか？",
+    "placeholders": {
+      "value1": {
+        "content": "$1"
+      },
+      "value2": {
+        "content": "$2"
+      },
+      "value3": {
+        "content": "$3"
+      },
+      "value4": {
+        "content": "$4"
+      },
+      "value5": {
+        "content": "$5"
+      },
+      "value6": {
+        "content": "$6"
+      }
+    }
+  },
+  "history_restore_canceled": {
+    "message": "クレジット修復の取り消しをキャンセルしました"
+  },
+  "history_restore_running_button": {
+    "message": "復元中…"
+  },
+  "history_restore_running": {
+    "message": "修復前のクレジットを復元中…"
+  },
+  "history_restore_mismatch": {
+    "message": "下見情報が無効になったか復元対象が変わったため、復元しませんでした。もう一度確認してください。"
+  },
+  "history_restore_result": {
+    "message": "修復前のクレジットを復元しました: $value1$件（$value2$動画） / 上書きせずスキップ $value3$件",
+    "placeholders": {
+      "value1": {
+        "content": "$1"
+      },
+      "value2": {
+        "content": "$2"
+      },
+      "value3": {
+        "content": "$3"
+      }
+    }
+  },
+  "history_restore_failed": {
+    "message": "クレジット修復の取り消しに失敗しました: $value1$",
+    "placeholders": {
+      "value1": {
+        "content": "$1"
+      }
+    }
+  },
+  "history_repair_external_label": {
+    "message": "クレジット補完（外部DB）"
+  },
+  "history_repair_force_label": {
+    "message": "強制上書き補正（表示中の全件）"
+  },
+  "history_duration_confirm_one": {
+    "message": "動画時間補完: $value1$件の動画時間をwatchページから補完します。続行しますか？\n\n※YouTubeタブを1つ以上開いたままにしてください（Cookie経由でfetchするため）。ライブ動画は -1 として記録します。",
+    "placeholders": {
+      "value1": {
+        "content": "$1"
+      }
+    }
+  },
+  "history_duration_confirm_many": {
+    "message": "動画時間補完: $value1$件の動画時間をwatchページから補完します。続行しますか？\n\n※YouTubeタブを1つ以上開いたままにしてください（Cookie経由でfetchするため）。ライブ動画は -1 として記録します。",
+    "placeholders": {
+      "value1": {
+        "content": "$1"
+      }
+    }
+  },
+  "history_duration_progress": {
+    "message": "処理中... 残り$value1$/$value2$（更新$value3$ / ライブ$value4$ / 取得失敗$value5$）",
+    "placeholders": {
+      "value1": {
+        "content": "$1"
+      },
+      "value2": {
+        "content": "$2"
+      },
+      "value3": {
+        "content": "$3"
+      },
+      "value4": {
+        "content": "$4"
+      },
+      "value5": {
+        "content": "$5"
+      }
+    }
+  },
+  "history_duration_label": {
+    "message": "動画の長さを補完"
+  },
+  "history_duration_done": {
+    "message": "動画の長さを補完しました"
+  },
+  "history_duration_stopped": {
+    "message": "動画の長さの補完を自動停止しました（Googleのbot検知 / 時間を空けて再実行）"
+  },
+  "history_duration_aborted": {
+    "message": "動画の長さの補完を中止しました"
+  },
+  "history_duration_result": {
+    "message": "$value1$: 更新$value2$ / ライブ$value3$ / 取得失敗$value4$ / 処理$value5$/$value6$$value7$",
+    "placeholders": {
+      "value1": {
+        "content": "$1"
+      },
+      "value2": {
+        "content": "$2"
+      },
+      "value3": {
+        "content": "$3"
+      },
+      "value4": {
+        "content": "$4"
+      },
+      "value5": {
+        "content": "$5"
+      },
+      "value6": {
+        "content": "$6"
+      },
+      "value7": {
+        "content": "$7"
+      }
+    }
+  },
   "extensionDescription": {
     "message": "YouTubeのおすすめ・検索結果・関連動画から視聴済みの動画を非表示にします",
     "description": "Chrome Web Store / extensions page summary (max 132 chars)"

@@ -1294,45 +1294,47 @@ function sendHistoryDbRpc(op, payload = {}) {
 const repairCreditsBtn = document.getElementById('repairCredits');
 if (repairCreditsBtn) {
   repairCreditsBtn.addEventListener('click', async () => {
-    if (!beginMaintenance('repairCredits', { activeText: '確認中…' })) {
-      showJobMessage('他のメンテナンス処理が実行中', { state: 'error' });
+    if (!beginMaintenance('repairCredits', { activeText: historyMessage('history_repair_checking', '確認中…') })) {
+      showJobMessage(historyMessage('history_enrich_busy', '他のメンテナンス処理が実行中'), { state: 'error' });
       return;
     }
 
     try {
-      showJobMessage('クレジットの不正値を確認中…', {
-        kind: 'repairCredits', label: 'クレジットの不正値を修復', state: 'running',
+      showJobMessage(historyMessage('history_repair_preview', 'クレジットの不正値を確認中…'), {
+        kind: 'repairCredits', label: historyMessage('history_repair_label', 'クレジットの不正値を修復'), state: 'running',
       });
       const preview = await sendHistoryDbRpc('REPAIR_INVALID_CREDITS', { dryRun: true });
       if (preview.mismatch) {
-        showJobMessage('別の下見が開始されたため、もう一度確認してください。', {
-          kind: 'repairCredits', label: 'クレジットの不正値を修復', state: 'error',
+        showJobMessage(historyMessage('history_repair_preview_changed', '別の下見が開始されたため、もう一度確認してください。'), {
+          kind: 'repairCredits', label: historyMessage('history_repair_label', 'クレジットの不正値を修復'), state: 'error',
         });
         return;
       }
       if (preview.values === 0) {
-        showJobMessage('修復対象はありません', {
-          kind: 'repairCredits', label: 'クレジットの不正値を修復', state: 'done',
+        showJobMessage(historyMessage('history_repair_none', '修復対象はありません'), {
+          kind: 'repairCredits', label: historyMessage('history_repair_label', 'クレジットの不正値を修復'), state: 'done',
         });
         return;
       }
 
       const byRole = preview.byRole || {};
       const confirmed = confirm(
+        historyMessage('history_repair_confirm',
         `クレジットの不正値 ${preview.values.toLocaleString()}件（${preview.videos.toLocaleString()}動画）を修復します。\n`
         + `内訳: 作曲 ${Number(byRole.composer || 0).toLocaleString()}件 / 作詞 ${Number(byRole.lyricist || 0).toLocaleString()}件 / 編曲 ${Number(byRole.arranger || 0).toLocaleString()}件\n\n`
-        + '不正値を空欄へ戻し、補完対象に復帰させます。元の値は記録に残ります。続行しますか？'
+        + '不正値を空欄へ戻し、補完対象に復帰させます。元の値は記録に残ります。続行しますか？',
+        [preview.values, preview.videos, Number(byRole.composer || 0), Number(byRole.lyricist || 0), Number(byRole.arranger || 0)].map(n => n.toLocaleString(historyUILanguage())))
       );
       if (!confirmed) {
-        showJobMessage('クレジットの不正値修復をキャンセルしました', {
-          kind: 'repairCredits', label: 'クレジットの不正値を修復', state: 'aborted',
+        showJobMessage(historyMessage('history_repair_canceled', 'クレジットの不正値修復をキャンセルしました'), {
+          kind: 'repairCredits', label: historyMessage('history_repair_label', 'クレジットの不正値を修復'), state: 'aborted',
         });
         return;
       }
 
-      updateRunningMaintenance('repairCredits', { activeText: '修復中…' });
-      showJobMessage('クレジットの不正値を修復中…', {
-        kind: 'repairCredits', label: 'クレジットの不正値を修復', state: 'running',
+      updateRunningMaintenance('repairCredits', { activeText: historyMessage('history_repair_running_button', '修復中…') });
+      showJobMessage(historyMessage('history_repair_running', 'クレジットの不正値を修復中…'), {
+        kind: 'repairCredits', label: historyMessage('history_repair_label', 'クレジットの不正値を修復'), state: 'running',
       });
       const applied = await sendHistoryDbRpc('REPAIR_INVALID_CREDITS', {
         dryRun: false,
@@ -1341,8 +1343,8 @@ if (repairCreditsBtn) {
       });
       if (applied.mismatch) {
         showJobMessage(
-          '下見情報が無効になったか対象が変わったため、修復しませんでした。もう一度確認してください。',
-          { kind: 'repairCredits', label: 'クレジットの不正値を修復', state: 'error' }
+          historyMessage('history_repair_mismatch', '下見情報が無効になったか対象が変わったため、修復しませんでした。もう一度確認してください。'),
+          { kind: 'repairCredits', label: historyMessage('history_repair_label', 'クレジットの不正値を修復'), state: 'error' }
         );
         return;
       }
@@ -1353,18 +1355,20 @@ if (repairCreditsBtn) {
         && verified.loggedStillValid === 0
         && verified.restorable === verified.loggedTotal;
       showJobMessage(
+        historyMessage('history_repair_result',
         `クレジットの不正値を修復しました: ${applied.values.toLocaleString()}件（${applied.videos.toLocaleString()}動画）\n`
         + `自己点検: 残存不正値 ${verified.remainingInvalid.toLocaleString()}件 / 記録 ${verified.loggedTotal.toLocaleString()}件 / 正常値の巻き込み ${verified.loggedStillValid.toLocaleString()}件 / 復元可能 ${verified.restorable.toLocaleString()}件\n`
         + 'この自己点検では、判定基準そのものは検証していません。',
+        [applied.values, applied.videos, verified.remainingInvalid, verified.loggedTotal, verified.loggedStillValid, verified.restorable].map(n => n.toLocaleString(historyUILanguage()))),
         {
-          kind: 'repairCredits', label: 'クレジットの不正値を修復', state: verificationOk ? 'done' : 'error',
+          kind: 'repairCredits', label: historyMessage('history_repair_label', 'クレジットの不正値を修復'), state: verificationOk ? 'done' : 'error',
           total: applied.values, processed: applied.values, counters: applied.byRole,
         }
       );
       setTimeout(loadData, 300);
     } catch (error) {
-      showJobMessage(`クレジットの不正値修復に失敗しました: ${error.message}`, {
-        kind: 'repairCredits', label: 'クレジットの不正値を修復', state: 'error', error: error.message,
+      showJobMessage(historyMessage('history_repair_failed', `クレジットの不正値修復に失敗しました: ${error.message}`, [error.message]), {
+        kind: 'repairCredits', label: historyMessage('history_repair_label', 'クレジットの不正値を修復'), state: 'error', error: error.message,
       });
     } finally {
       endMaintenance('repairCredits');
@@ -1375,19 +1379,19 @@ if (repairCreditsBtn) {
 const restoreCreditsBtn = document.getElementById('restoreCredits');
 if (restoreCreditsBtn) {
   restoreCreditsBtn.addEventListener('click', async () => {
-    if (!beginMaintenance('restoreCredits', { activeText: '確認中…' })) {
-      showJobMessage('他のメンテナンス処理が実行中', { state: 'error' });
+    if (!beginMaintenance('restoreCredits', { activeText: historyMessage('history_repair_checking', '確認中…') })) {
+      showJobMessage(historyMessage('history_enrich_busy', '他のメンテナンス処理が実行中'), { state: 'error' });
       return;
     }
 
     try {
-      showJobMessage('元に戻せるクレジットを確認中…', {
-        kind: 'restoreCredits', label: '修復を元に戻す', state: 'running',
+      showJobMessage(historyMessage('history_restore_preview', '元に戻せるクレジットを確認中…'), {
+        kind: 'restoreCredits', label: historyMessage('history_restore_label', '修復を元に戻す'), state: 'running',
       });
       const preview = await sendHistoryDbRpc('RESTORE_REPAIRED_CREDITS', { dryRun: true });
       if (preview.mismatch) {
-        showJobMessage('別の下見が開始されたため、もう一度確認してください。', {
-          kind: 'restoreCredits', label: '修復を元に戻す', state: 'error',
+        showJobMessage(historyMessage('history_repair_preview_changed', '別の下見が開始されたため、もう一度確認してください。'), {
+          kind: 'restoreCredits', label: historyMessage('history_restore_label', '修復を元に戻す'), state: 'error',
         });
         return;
       }
@@ -1395,29 +1399,31 @@ if (restoreCreditsBtn) {
         const skipped = Number(preview.skipped) || 0;
         showJobMessage(
           skipped
-            ? `元に戻せるクレジットはありません（現在値が入っているため ${skipped.toLocaleString()}件スキップ）`
-            : '元に戻せるクレジットはありません',
-          { kind: 'restoreCredits', label: '修復を元に戻す', state: 'done' }
+            ? historyMessage('history_restore_none_skipped', `元に戻せるクレジットはありません（現在値が入っているため ${skipped.toLocaleString()}件スキップ）`, [skipped.toLocaleString(historyUILanguage())])
+            : historyMessage('history_restore_none', '元に戻せるクレジットはありません'),
+          { kind: 'restoreCredits', label: historyMessage('history_restore_label', '修復を元に戻す'), state: 'done' }
         );
         return;
       }
 
       const byRole = preview.byRole || {};
       const confirmed = confirm(
+        historyMessage('history_restore_confirm',
         `修復前のクレジット ${preview.values.toLocaleString()}件（${preview.videos.toLocaleString()}動画）を元に戻します。\n`
         + `内訳: 作曲 ${Number(byRole.composer || 0).toLocaleString()}件 / 作詞 ${Number(byRole.lyricist || 0).toLocaleString()}件 / 編曲 ${Number(byRole.arranger || 0).toLocaleString()}件\n`
-        + `現在値が入っているため上書きしない役割: ${Number(preview.skipped || 0).toLocaleString()}件\n\n続行しますか？`
+        + `現在値が入っているため上書きしない役割: ${Number(preview.skipped || 0).toLocaleString()}件\n\n続行しますか？`,
+        [preview.values, preview.videos, Number(byRole.composer || 0), Number(byRole.lyricist || 0), Number(byRole.arranger || 0), Number(preview.skipped || 0)].map(n => n.toLocaleString(historyUILanguage())))
       );
       if (!confirmed) {
-        showJobMessage('クレジット修復の取り消しをキャンセルしました', {
-          kind: 'restoreCredits', label: '修復を元に戻す', state: 'aborted',
+        showJobMessage(historyMessage('history_restore_canceled', 'クレジット修復の取り消しをキャンセルしました'), {
+          kind: 'restoreCredits', label: historyMessage('history_restore_label', '修復を元に戻す'), state: 'aborted',
         });
         return;
       }
 
-      updateRunningMaintenance('restoreCredits', { activeText: '復元中…' });
-      showJobMessage('修復前のクレジットを復元中…', {
-        kind: 'restoreCredits', label: '修復を元に戻す', state: 'running',
+      updateRunningMaintenance('restoreCredits', { activeText: historyMessage('history_restore_running_button', '復元中…') });
+      showJobMessage(historyMessage('history_restore_running', '修復前のクレジットを復元中…'), {
+        kind: 'restoreCredits', label: historyMessage('history_restore_label', '修復を元に戻す'), state: 'running',
       });
       const restored = await sendHistoryDbRpc('RESTORE_REPAIRED_CREDITS', {
         dryRun: false,
@@ -1426,23 +1432,24 @@ if (restoreCreditsBtn) {
       });
       if (restored.mismatch) {
         showJobMessage(
-          '下見情報が無効になったか復元対象が変わったため、復元しませんでした。もう一度確認してください。',
-          { kind: 'restoreCredits', label: '修復を元に戻す', state: 'error' }
+          historyMessage('history_restore_mismatch', '下見情報が無効になったか復元対象が変わったため、復元しませんでした。もう一度確認してください。'),
+          { kind: 'restoreCredits', label: historyMessage('history_restore_label', '修復を元に戻す'), state: 'error' }
         );
         return;
       }
       await saveCreditRepairLastRun('restore', restored);
       showJobMessage(
-        `修復前のクレジットを復元しました: ${restored.values.toLocaleString()}件（${restored.videos.toLocaleString()}動画） / 上書きせずスキップ ${Number(restored.skipped || 0).toLocaleString()}件`,
+        historyMessage('history_restore_result', `修復前のクレジットを復元しました: ${restored.values.toLocaleString()}件（${restored.videos.toLocaleString()}動画） / 上書きせずスキップ ${Number(restored.skipped || 0).toLocaleString()}件`,
+          [restored.values, restored.videos, Number(restored.skipped || 0)].map(n => n.toLocaleString(historyUILanguage()))),
         {
-          kind: 'restoreCredits', label: '修復を元に戻す', state: 'done',
+          kind: 'restoreCredits', label: historyMessage('history_restore_label', '修復を元に戻す'), state: 'done',
           total: restored.values, processed: restored.values, counters: restored.byRole,
         }
       );
       setTimeout(loadData, 300);
     } catch (error) {
-      showJobMessage(`クレジット修復の取り消しに失敗しました: ${error.message}`, {
-        kind: 'restoreCredits', label: '修復を元に戻す', state: 'error', error: error.message,
+      showJobMessage(historyMessage('history_restore_failed', `クレジット修復の取り消しに失敗しました: ${error.message}`, [error.message]), {
+        kind: 'restoreCredits', label: historyMessage('history_restore_label', '修復を元に戻す'), state: 'error', error: error.message,
       });
     } finally {
       endMaintenance('restoreCredits');
@@ -1455,7 +1462,7 @@ let enrichCreditsController = null;
 if (enrichCreditsBtn && window.EnrichCredits) {
   enrichCreditsController = window.EnrichCredits.create({
     getRecords: () => allData,
-    notify: (message) => { showJobMessage(message, { label: 'クレジット補完（外部DB）' }); },
+    notify: (message) => { showJobMessage(message, { label: historyMessage('history_repair_external_label', 'クレジット補完（外部DB）') }); },
     reloadData: () => loadData(),
     beginMaintenance: (activeText, allowAbort) => beginMaintenance('enrichCredits', { activeText, allowAbort }),
     updateMaintenance: (activeText, allowAbort) => updateRunningMaintenance('enrichCredits', { activeText, allowAbort }),
@@ -1464,7 +1471,7 @@ if (enrichCreditsBtn && window.EnrichCredits) {
 
   enrichCreditsBtn.addEventListener('click', () => {
     if (hasRunningMaintenance() && runningMaintenance !== 'enrichCredits') {
-      showJobMessage('他のメンテナンス処理が実行中', { state: 'error' });
+      showJobMessage(historyMessage('history_enrich_busy', '他のメンテナンス処理が実行中'), { state: 'error' });
       return;
     }
     enrichCreditsController.open();
@@ -1490,23 +1497,23 @@ if (creditReviewBtn && window.CreditReview) {
 let activeDurationsPort = null;
 function runFixDurations(videoIds) {
   if (!videoIds.length) {
-    showJobMessage('対象なし');
+    showJobMessage(historyMessage('history_enrich_none', '対象なし'));
     return;
   }
-  if (!confirm(`動画時間補完: ${videoIds.length}件の動画時間をwatchページから補完します。続行しますか？\n\n※YouTubeタブを1つ以上開いたままにしてください（Cookie経由でfetchするため）。ライブ動画は -1 として記録します。`)) {
+  if (!confirm(historyMessage(videoIds.length === 1 ? 'history_duration_confirm_one' : 'history_duration_confirm_many', `動画時間補完: ${videoIds.length}件の動画時間をwatchページから補完します。続行しますか？\n\n※YouTubeタブを1つ以上開いたままにしてください（Cookie経由でfetchするため）。ライブ動画は -1 として記録します。`, [videoIds.length]))) {
     return;
   }
 
-  if (!beginMaintenance('fixDurations', { activeText: '実行中…（中止）', allowAbort: true })) {
-    showJobMessage('他のメンテナンス処理が実行中', { state: 'error' });
+  if (!beginMaintenance('fixDurations', { activeText: historyMessage('history_enrich_running_abort', '実行中…（中止）'), allowAbort: true })) {
+    showJobMessage(historyMessage('history_enrich_busy', '他のメンテナンス処理が実行中'), { state: 'error' });
     return;
   }
 
   const total = videoIds.length;
   let remaining = total;
   const btn = document.getElementById('fixDurations');
-  showJobMessage(`処理中... 残り${remaining}/${total}（更新0 / ライブ0 / 取得失敗0）`, {
-    kind: 'fixDurations', label: '動画の長さを補完', state: 'running',
+  showJobMessage(historyMessage('history_duration_progress', `処理中... 残り${remaining}/${total}（更新0 / ライブ0 / 取得失敗0）`, [remaining, total, 0, 0, 0]), {
+    kind: 'fixDurations', label: historyMessage('history_duration_label', '動画の長さを補完'), state: 'running',
     total, processed: 0, counters: { updated: 0, live: 0, fetchFailed: 0 }, abortable: true,
   });
   if (btn) {
@@ -1534,8 +1541,8 @@ function runFixDurations(videoIds) {
         rec.durationSec = null;
         rec.durationFetchFailed = msg.reason;
       }
-      showJobMessage(`処理中... 残り${remaining}/${total}（更新${msg.updated} / ライブ${msg.live} / 取得失敗${msg.fetchFailed}）`, {
-        kind: 'fixDurations', label: '動画の長さを補完', state: 'running',
+      showJobMessage(historyMessage('history_duration_progress', `処理中... 残り${remaining}/${total}（更新${msg.updated} / ライブ${msg.live} / 取得失敗${msg.fetchFailed}）`, [remaining, total, msg.updated, msg.live, msg.fetchFailed]), {
+        kind: 'fixDurations', label: historyMessage('history_duration_label', '動画の長さを補完'), state: 'running',
         total, processed: msg.processed,
         counters: { updated: msg.updated, live: msg.live, fetchFailed: msg.fetchFailed }, abortable: true,
       });
@@ -1545,11 +1552,11 @@ function runFixDurations(videoIds) {
       const reasons = msg.failReasons && Object.keys(msg.failReasons).length
         ? ` [${Object.entries(msg.failReasons).map(([k, v]) => `${k}:${v}`).join(', ')}]`
         : '';
-      let prefix = '動画の長さを補完しました';
-      if (msg.autoStopped) prefix = '動画の長さの補完を自動停止しました（Googleのbot検知 / 時間を空けて再実行）';
-      else if (msg.aborted) prefix = '動画の長さの補完を中止しました';
-      showJobMessage(`${prefix}: 更新${msg.updated} / ライブ${msg.live} / 取得失敗${msg.fetchFailed} / 処理${msg.processed || 0}/${msg.total}${reasons}`, {
-        kind: 'fixDurations', label: '動画の長さを補完', state: msg.aborted ? 'aborted' : 'done',
+      let prefix = historyMessage('history_duration_done', '動画の長さを補完しました');
+      if (msg.autoStopped) prefix = historyMessage('history_duration_stopped', '動画の長さの補完を自動停止しました（Googleのbot検知 / 時間を空けて再実行）');
+      else if (msg.aborted) prefix = historyMessage('history_duration_aborted', '動画の長さの補完を中止しました');
+      showJobMessage(historyMessage('history_duration_result', `${prefix}: 更新${msg.updated} / ライブ${msg.live} / 取得失敗${msg.fetchFailed} / 処理${msg.processed || 0}/${msg.total}${reasons}`, [prefix, msg.updated, msg.live, msg.fetchFailed, msg.processed || 0, msg.total, reasons]), {
+        kind: 'fixDurations', label: historyMessage('history_duration_label', '動画の長さを補完'), state: msg.aborted ? 'aborted' : 'done',
         total: msg.total, processed: msg.processed || 0,
         counters: { updated: msg.updated, live: msg.live, fetchFailed: msg.fetchFailed },
       });
@@ -1558,8 +1565,8 @@ function runFixDurations(videoIds) {
       return;
     }
     if (msg.type === 'ERROR') {
-      showJobMessage(`失敗: ${msg.error || 'unknown'}`, {
-        kind: 'fixDurations', label: '動画の長さを補完', state: 'error', error: msg.error,
+      showJobMessage(historyMessage('history_enrich_failed', `失敗: ${msg.error || 'unknown'}`, [msg.error || 'unknown']), {
+        kind: 'fixDurations', label: historyMessage('history_duration_label', '動画の長さを補完'), state: 'error', error: msg.error,
       });
       finish();
     }
@@ -1572,14 +1579,14 @@ if (fixDurationsBtn) {
   fixDurationsBtn.addEventListener('click', () => {
     if (fixDurationsBtn.dataset.mode === 'abort' && activeDurationsPort) {
       try { activeDurationsPort.postMessage({ type: 'ABORT' }); } catch (_e) {}
-      showJobMessage('中止中...', {
-        kind: 'fixDurations', label: '動画の長さを補完', state: 'running', abortable: true,
+      showJobMessage(historyMessage('history_enrich_aborting_status', '中止中...'), {
+        kind: 'fixDurations', label: historyMessage('history_duration_label', '動画の長さを補完'), state: 'running', abortable: true,
       });
-      updateRunningMaintenance('fixDurations', { activeText: '中止中…', allowAbort: true });
+      updateRunningMaintenance('fixDurations', { activeText: historyMessage('history_enrich_aborting_button', '中止中…'), allowAbort: true });
       return;
     }
     if (hasRunningMaintenance()) {
-      showJobMessage('他のメンテナンス処理が実行中', { state: 'error' });
+      showJobMessage(historyMessage('history_enrich_busy', '他のメンテナンス処理が実行中'), { state: 'error' });
       return;
     }
     const targets = allData
@@ -1593,12 +1600,12 @@ const fixForceBtn = document.getElementById('fixChannelsForce');
 if (fixForceBtn) {
   fixForceBtn.addEventListener('click', () => {
     if (hasRunningMaintenance()) {
-      showJobMessage('他のメンテナンス処理が実行中', { state: 'error' });
+      showJobMessage(historyMessage('history_enrich_busy', '他のメンテナンス処理が実行中'), { state: 'error' });
       return;
     }
     // Force-overwrite for currently visible (filtered+sorted) entries
     const targets = sortedCache.map(v => v.videoId);
-    runFix(targets, true, '強制上書き補正（表示中の全件）');
+    runFix(targets, true, historyMessage('history_repair_force_label', '強制上書き補正（表示中の全件）'));
   });
 }
 

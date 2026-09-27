@@ -1544,6 +1544,238 @@
   "history_enrich_topic_label": {
     "message": "Fill in credits for Topic videos"
   },
+  "history_repair_checking": {
+    "message": "Checking…"
+  },
+  "history_repair_preview": {
+    "message": "Checking invalid credit values…"
+  },
+  "history_repair_label": {
+    "message": "Repair invalid credit values"
+  },
+  "history_repair_preview_changed": {
+    "message": "Another preview has started. Please check again."
+  },
+  "history_repair_none": {
+    "message": "No credit values to repair"
+  },
+  "history_repair_confirm": {
+    "message": "Repair invalid credit values: $value1$ (videos: $value2$).\nBreakdown: composer: $value3$ / lyricist: $value4$ / arranger: $value5$\n\nInvalid values will be cleared so the credits can be filled in again. The original values will remain in the log. Continue?",
+    "placeholders": {
+      "value1": {
+        "content": "$1"
+      },
+      "value2": {
+        "content": "$2"
+      },
+      "value3": {
+        "content": "$3"
+      },
+      "value4": {
+        "content": "$4"
+      },
+      "value5": {
+        "content": "$5"
+      }
+    }
+  },
+  "history_repair_canceled": {
+    "message": "Repairing invalid credit values was canceled"
+  },
+  "history_repair_running_button": {
+    "message": "Repairing…"
+  },
+  "history_repair_running": {
+    "message": "Repairing invalid credit values…"
+  },
+  "history_repair_mismatch": {
+    "message": "No repairs were made because the preview expired or the targets changed. Please check again."
+  },
+  "history_repair_result": {
+    "message": "Repaired invalid credit values: $value1$ (videos: $value2$)\nSelf-check: invalid values remaining: $value3$ / logged: $value4$ / valid values affected: $value5$ / restorable: $value6$\nThis self-check does not validate the criteria used to identify invalid values.",
+    "placeholders": {
+      "value1": {
+        "content": "$1"
+      },
+      "value2": {
+        "content": "$2"
+      },
+      "value3": {
+        "content": "$3"
+      },
+      "value4": {
+        "content": "$4"
+      },
+      "value5": {
+        "content": "$5"
+      },
+      "value6": {
+        "content": "$6"
+      }
+    }
+  },
+  "history_repair_failed": {
+    "message": "Failed to repair invalid credit values: $value1$",
+    "placeholders": {
+      "value1": {
+        "content": "$1"
+      }
+    }
+  },
+  "history_restore_preview": {
+    "message": "Checking restorable credits…"
+  },
+  "history_restore_label": {
+    "message": "Undo credit repair"
+  },
+  "history_restore_none_skipped": {
+    "message": "No credits to restore (skipped because a current value exists: $value1$)",
+    "placeholders": {
+      "value1": {
+        "content": "$1"
+      }
+    }
+  },
+  "history_restore_none": {
+    "message": "No credits to restore"
+  },
+  "history_restore_confirm": {
+    "message": "Restore credit values from before the repair: $value1$ (videos: $value2$).\nBreakdown: composer: $value3$ / lyricist: $value4$ / arranger: $value5$\nRoles that will not be overwritten because a current value exists: $value6$\n\nContinue?",
+    "placeholders": {
+      "value1": {
+        "content": "$1"
+      },
+      "value2": {
+        "content": "$2"
+      },
+      "value3": {
+        "content": "$3"
+      },
+      "value4": {
+        "content": "$4"
+      },
+      "value5": {
+        "content": "$5"
+      },
+      "value6": {
+        "content": "$6"
+      }
+    }
+  },
+  "history_restore_canceled": {
+    "message": "Undoing credit repair was canceled"
+  },
+  "history_restore_running_button": {
+    "message": "Restoring…"
+  },
+  "history_restore_running": {
+    "message": "Restoring credit values from before the repair…"
+  },
+  "history_restore_mismatch": {
+    "message": "No credits were restored because the preview expired or the restore targets changed. Please check again."
+  },
+  "history_restore_result": {
+    "message": "Restored credit values from before the repair: $value1$ (videos: $value2$) / skipped without overwriting: $value3$",
+    "placeholders": {
+      "value1": {
+        "content": "$1"
+      },
+      "value2": {
+        "content": "$2"
+      },
+      "value3": {
+        "content": "$3"
+      }
+    }
+  },
+  "history_restore_failed": {
+    "message": "Failed to undo credit repair: $value1$",
+    "placeholders": {
+      "value1": {
+        "content": "$1"
+      }
+    }
+  },
+  "history_repair_external_label": {
+    "message": "Fill in credits (external database)"
+  },
+  "history_repair_force_label": {
+    "message": "Force overwrite (all displayed videos)"
+  },
+  "history_duration_confirm_one": {
+    "message": "Fill in durations: Fetch the duration of $value1$ video from its watch page. Continue?\n\nNote: Keep at least one YouTube tab open (fetching uses cookies). Live videos are recorded as -1.",
+    "placeholders": {
+      "value1": {
+        "content": "$1"
+      }
+    }
+  },
+  "history_duration_confirm_many": {
+    "message": "Fill in durations: Fetch the durations of $value1$ videos from their watch pages. Continue?\n\nNote: Keep at least one YouTube tab open (fetching uses cookies). Live videos are recorded as -1.",
+    "placeholders": {
+      "value1": {
+        "content": "$1"
+      }
+    }
+  },
+  "history_duration_progress": {
+    "message": "Processing... $value1$/$value2$ remaining (updated: $value3$ / live: $value4$ / fetch failed: $value5$)",
+    "placeholders": {
+      "value1": {
+        "content": "$1"
+      },
+      "value2": {
+        "content": "$2"
+      },
+      "value3": {
+        "content": "$3"
+      },
+      "value4": {
+        "content": "$4"
+      },
+      "value5": {
+        "content": "$5"
+      }
+    }
+  },
+  "history_duration_label": {
+    "message": "Fill in video durations"
+  },
+  "history_duration_done": {
+    "message": "Filled in video durations"
+  },
+  "history_duration_stopped": {
+    "message": "Filling in video durations stopped automatically (Google bot detection / wait before retrying)"
+  },
+  "history_duration_aborted": {
+    "message": "Filling in video durations was canceled"
+  },
+  "history_duration_result": {
+    "message": "$value1$: Updated: $value2$ / live: $value3$ / fetch failed: $value4$ / processed: $value5$/$value6$$value7$",
+    "placeholders": {
+      "value1": {
+        "content": "$1"
+      },
+      "value2": {
+        "content": "$2"
+      },
+      "value3": {
+        "content": "$3"
+      },
+      "value4": {
+        "content": "$4"
+      },
+      "value5": {
+        "content": "$5"
+      },
+      "value6": {
+        "content": "$6"
+      },
+      "value7": {
+        "content": "$7"
+      }
+    }
+  },
   "extensionDescription": {
     "message": "Hide videos you've already watched from YouTube recommendations, search results, and related videos",
     "description": "Chrome Web Store / extensions page summary (max 132 chars)"
