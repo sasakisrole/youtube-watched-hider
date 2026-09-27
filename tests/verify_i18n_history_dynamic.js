@@ -9,6 +9,8 @@ const ja = JSON.parse(read('_locales/ja/messages.json'));
 const en = JSON.parse(read('_locales/en/messages.json'));
 const dateOptions = { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' };
 const visited = new Set();
+// B has its own DOM/port harness; include its exercised keys in the shared coverage check.
+for (const key of require('./verify_i18n_history_watch_later').visited) visited.add(key);
 
 function boot(script, locale, language = 'ja') {
   const elements = {};

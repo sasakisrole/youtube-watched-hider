@@ -1216,6 +1216,209 @@
   "history_db_error": {
     "message": "Database read error: $1\n\nRecovery steps:\n1. Close all YouTube tabs (close them instead of reloading)\n2. Reload the extension at chrome://extensions\n3. Open YouTube in a new tab, then reload this page"
   },
+  "history_wl_no_tab": {
+    "message": "Open a YouTube tab before continuing"
+  },
+  "history_wl_no_items": {
+    "message": "No videos found in Watch Later (check that you are signed in)"
+  },
+  "history_wl_db_failed": {
+    "message": "Stopped because the watched database could not be checked"
+  },
+  "history_wl_fetch_failed": {
+    "message": "Could not load the Watch Later page"
+  },
+  "history_wl_scanning": {
+    "message": "Scanning…"
+  },
+  "history_wl_busy": {
+    "message": "Another maintenance task is running"
+  },
+  "history_wl_scan_running": {
+    "message": "Scanning Watch Later…"
+  },
+  "history_wl_scan_label": {
+    "message": "Scan"
+  },
+  "history_wl_partial": {
+    "message": "Note: Some videos could not be retrieved"
+  },
+  "history_wl_no_scan": {
+    "message": "Run Scan first"
+  },
+  "history_wl_expired": {
+    "message": "The scan has expired. Run Scan again before continuing"
+  },
+  "history_wl_stale": {
+    "message": "The scan results have changed. Run Scan again"
+  },
+  "history_wl_mismatch": {
+    "message": "Stopped because the confirmed video does not match the removal target"
+  },
+  "history_wl_no_id": {
+    "message": "Stopped because the ID required for removal is missing"
+  },
+  "history_wl_session_changed": {
+    "message": "Stopped because the YouTube tab or account changed"
+  },
+  "history_wl_tab_unavailable": {
+    "message": "Stopped because the original YouTube tab was closed or is not responding"
+  },
+  "history_wl_unconfirmed": {
+    "message": "YouTube did not confirm success, so removal is uncertain. Run Scan again to check"
+  },
+  "history_wl_deleting": {
+    "message": "Removing…"
+  },
+  "history_wl_truncated": {
+    "message": " (only the first 200 candidates are shown and can be removed)"
+  },
+  "history_wl_reassigned": {
+    "message": "Stopped because removal IDs were reassigned (an unexpected change)"
+  },
+  "history_wl_rescan_failed": {
+    "message": "Stopped because a scan during removal failed"
+  },
+  "history_wl_batch_expired": {
+    "message": "Stopped because the scan expired"
+  },
+  "history_wl_batch_tab": {
+    "message": "Stopped because the YouTube tab was closed or is not responding"
+  },
+  "history_wl_batch_unconfirmed": {
+    "message": "Stopped because YouTube did not confirm success. Run Scan again to check"
+  },
+  "history_wl_no_targets": {
+    "message": "There were no videos that could be removed"
+  },
+  "history_wl_scan_lost": {
+    "message": "Stopped because the scan results were lost"
+  },
+  "history_wl_batch_label": {
+    "message": "Bulk removal"
+  },
+  "history_wl_final_scan_failed": {
+    "message": "Note: Counts are unverified because the scan after removal failed"
+  },
+  "history_wl_interrupted": {
+    "message": "Interrupted. Run Scan again to check the results"
+  },
+  "history_wl_timeout": {
+    "message": "Interrupted because there was no response. Run Scan again to check how many videos were removed"
+  },
+  "history_wl_failure": {
+    "message": "Failed: $1"
+  },
+  "history_wl_total_one": {
+    "message": "Watch Later: $1 video"
+  },
+  "history_wl_total_many": {
+    "message": "Watch Later: $1 videos"
+  },
+  "history_wl_matched_one": {
+    "message": "Watched matches: $1 video"
+  },
+  "history_wl_matched_many": {
+    "message": "Watched matches: $1 videos"
+  },
+  "history_wl_unwatched_one": {
+    "message": "Unwatched: $1 video"
+  },
+  "history_wl_unwatched_many": {
+    "message": "Unwatched: $1 videos"
+  },
+  "history_wl_indeterminate_one": {
+    "message": "Undetermined: $1 video"
+  },
+  "history_wl_indeterminate_many": {
+    "message": "Undetermined: $1 videos"
+  },
+  "history_wl_missing_id_one": {
+    "message": "Missing removal IDs: $1 video"
+  },
+  "history_wl_missing_id_many": {
+    "message": "Missing removal IDs: $1 videos"
+  },
+  "history_wl_duplicates_one": {
+    "message": "Duplicate entries: $1 video"
+  },
+  "history_wl_duplicates_many": {
+    "message": "Duplicate entries: $1 videos"
+  },
+  "history_wl_drift": {
+    "message": "Since last scan — remaining: $1 / changed removal IDs: $2"
+  },
+  "history_wl_scanned": {
+    "message": "Watch Later scan complete: $1"
+  },
+  "history_wl_confirm_one": {
+    "message": "Remove this video from Watch Later? This cannot be undone.\n\n$value1$$value2$",
+    "placeholders": {"value1":{"content":"$1"},"value2":{"content":"$2"}}
+  },
+  "history_wl_removed_single": {
+    "message": "Removed 1 video from Watch Later: $1 / Run Scan again to remove more"
+  },
+  "history_wl_panel_note_one": {
+    "message": "$1 video is recorded as watched$2. Videos will be removed from the top down. This cannot be undone."
+  },
+  "history_wl_panel_note_many": {
+    "message": "$1 videos are recorded as watched$2. Videos will be removed from the top down. This cannot be undone."
+  },
+  "history_wl_run_all_one": {
+    "message": "Remove $1 video"
+  },
+  "history_wl_run_all_many": {
+    "message": "Remove all $1 videos"
+  },
+  "history_wl_stopped": {
+    "message": "Stopped: $1"
+  },
+  "history_wl_more_one": {
+    "message": "\n… and $1 more video"
+  },
+  "history_wl_more_many": {
+    "message": "\n… and $1 more videos"
+  },
+  "history_wl_confirm_all_one": {
+    "message": "Remove the $value1$ video in the list from Watch Later? This cannot be undone.\n\n$value2$$value3$",
+    "placeholders": {"value1":{"content":"$1"},"value2":{"content":"$2"},"value3":{"content":"$3"}}
+  },
+  "history_wl_confirm_all_many": {
+    "message": "Remove all $value1$ videos in the list from Watch Later? This cannot be undone.\n\n$value2$$value3$",
+    "placeholders": {"value1":{"content":"$1"},"value2":{"content":"$2"},"value3":{"content":"$3"}}
+  },
+  "history_wl_confirm_limited_one": {
+    "message": "Remove $value1$ video from Watch Later? This cannot be undone.\n\n$value2$$value3$",
+    "placeholders": {"value1":{"content":"$1"},"value2":{"content":"$2"},"value3":{"content":"$3"}}
+  },
+  "history_wl_confirm_limited_many": {
+    "message": "Remove $value1$ videos from Watch Later? This cannot be undone.\n\n$value2$$value3$",
+    "placeholders": {"value1":{"content":"$1"},"value2":{"content":"$2"},"value3":{"content":"$3"}}
+  },
+  "history_wl_progress_title": {
+    "message": "Video $1 of $2: $3"
+  },
+  "history_wl_progress_one": {
+    "message": "Removing... $1/$2 ($1 video removed)"
+  },
+  "history_wl_progress_many": {
+    "message": "Removing... $1/$2 ($1 videos removed)"
+  },
+  "history_wl_removed_one": {
+    "message": "Removed $1 video from Watch Later"
+  },
+  "history_wl_removed_many": {
+    "message": "Removed $1 videos from Watch Later"
+  },
+  "history_wl_remaining": {
+    "message": "Remaining — Watch Later: $1 / watched matches: $2 / unwatched: $3"
+  },
+  "history_wl_changed_one": {
+    "message": "Changed removal IDs: $1 video"
+  },
+  "history_wl_changed_many": {
+    "message": "Changed removal IDs: $1 videos"
+  },
   "extensionDescription": {
     "message": "Hide videos you've already watched from YouTube recommendations, search results, and related videos",
     "description": "Chrome Web Store / extensions page summary (max 132 chars)"

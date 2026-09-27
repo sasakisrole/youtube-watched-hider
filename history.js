@@ -653,49 +653,49 @@ function describeWatchLaterFailure(res) {
   }
   const reason = (res && (res.reason || res.error)) || 'unknown';
   const known = {
-    'no-youtube-tab': 'YouTubeのタブを開いた状態で実行してください',
-    'no-items': '後で見るに動画が見つかりません（ログイン状態を確認してください）',
-    'db-check-failed': '視聴済みデータベースを確認できないため中止しました',
-    'fetch-failed': '後で見るのページを取得できませんでした',
+    'no-youtube-tab': historyMessage('history_wl_no_tab', 'YouTubeのタブを開いた状態で実行してください'),
+    'no-items': historyMessage('history_wl_no_items', '後で見るに動画が見つかりません（ログイン状態を確認してください）'),
+    'db-check-failed': historyMessage('history_wl_db_failed', '視聴済みデータベースを確認できないため中止しました'),
+    'fetch-failed': historyMessage('history_wl_fetch_failed', '後で見るのページを取得できませんでした'),
   };
-  return known[reason] || ('失敗: ' + reason);
+  return known[reason] || historyMessage('history_wl_failure', ('失敗: ' + reason), [reason]);
 }
 
 if (scanWatchLaterBtn) {
   scanWatchLaterBtn.addEventListener('click', () => {
-    if (!beginMaintenance('scanWatchLater', { activeText: '照合中…' })) {
-      showJobMessage('他のメンテナンス処理が実行中', { state: 'error' });
+    if (!beginMaintenance('scanWatchLater', { activeText: historyMessage('history_wl_scanning', '照合中…') })) {
+      showJobMessage(historyMessage('history_wl_busy', '他のメンテナンス処理が実行中'), { state: 'error' });
       return;
     }
-    showJobMessage('後で見るを照合中…', { kind: 'scanWatchLater', label: '照合', state: 'running' });
+    showJobMessage(historyMessage('history_wl_scan_running', '後で見るを照合中…'), { kind: 'scanWatchLater', label: historyMessage('history_wl_scan_label', '照合'), state: 'running' });
     chrome.runtime.sendMessage({ type: 'SCAN_WATCH_LATER' }, (res) => {
       endMaintenance('scanWatchLater');
       if (chrome.runtime.lastError) {
-        showJobMessage('失敗: ' + chrome.runtime.lastError.message, { kind: 'scanWatchLater', label: '照合', state: 'error' });
+        showJobMessage(historyMessage('history_wl_failure', '失敗: ' + chrome.runtime.lastError.message, [chrome.runtime.lastError.message]), { kind: 'scanWatchLater', label: historyMessage('history_wl_scan_label', '照合'), state: 'error' });
         return;
       }
       if (!res || !res.success) {
-        showJobMessage(describeWatchLaterFailure(res), { kind: 'scanWatchLater', label: '照合', state: 'error' });
+        showJobMessage(describeWatchLaterFailure(res), { kind: 'scanWatchLater', label: historyMessage('history_wl_scan_label', '照合'), state: 'error' });
         return;
       }
       const c = res.counts || {};
       const parts = [
-        `後で見る ${c.total || 0}件`,
-        `視聴済み一致 ${c.candidates || 0}件`,
-        `未視聴 ${c.notWatched || 0}件`,
+        historyMessage((c.total || 0) === 1 ? 'history_wl_total_one' : 'history_wl_total_many', `後で見る ${c.total || 0}件`, [(c.total || 0)]),
+        historyMessage((c.candidates || 0) === 1 ? 'history_wl_matched_one' : 'history_wl_matched_many', `視聴済み一致 ${c.candidates || 0}件`, [(c.candidates || 0)]),
+        historyMessage((c.notWatched || 0) === 1 ? 'history_wl_unwatched_one' : 'history_wl_unwatched_many', `未視聴 ${c.notWatched || 0}件`, [(c.notWatched || 0)]),
       ];
       // 判定不能・削除IDなしは0件でも黙らせない。ここを黙って落とすと「一致0件」が
       // 「本当に0件」なのか「DBを読めなかった」のか利用者から区別できなくなる。
-      if (c.indeterminate) parts.push(`判定不能 ${c.indeterminate}件`);
-      if (c.noSetVideoId) parts.push(`削除ID未取得 ${c.noSetVideoId}件`);
-      if (c.duplicateVideoId) parts.push(`重複登録 ${c.duplicateVideoId}件`);
-      if (res.partial) parts.push('※全件を取得しきれていません');
+      if (c.indeterminate) parts.push(historyMessage(c.indeterminate === 1 ? 'history_wl_indeterminate_one' : 'history_wl_indeterminate_many', `判定不能 ${c.indeterminate}件`, [c.indeterminate]));
+      if (c.noSetVideoId) parts.push(historyMessage(c.noSetVideoId === 1 ? 'history_wl_missing_id_one' : 'history_wl_missing_id_many', `削除ID未取得 ${c.noSetVideoId}件`, [c.noSetVideoId]));
+      if (c.duplicateVideoId) parts.push(historyMessage(c.duplicateVideoId === 1 ? 'history_wl_duplicates_one' : 'history_wl_duplicates_many', `重複登録 ${c.duplicateVideoId}件`, [c.duplicateVideoId]));
+      if (res.partial) parts.push(historyMessage('history_wl_partial', '※全件を取得しきれていません'));
       // Round D の設計判断用の実測値。前回の照合が残っているときだけ出る。
       // 「削除ID変化 0件」が続けば、1回の照合で複数件消せる設計にできる。
       if (res.drift && res.drift.compared) {
-        parts.push(`前回比 残存${res.drift.compared}件/削除ID変化${res.drift.changed}件`);
+        parts.push(historyMessage('history_wl_drift', `前回比 残存${res.drift.compared}件/削除ID変化${res.drift.changed}件`, [res.drift.compared, res.drift.changed]));
       }
-      showJobMessage(`後で見るを照合しました: ${parts.join(' / ')}`, { kind: 'scanWatchLater', label: '照合', state: 'done' });
+      showJobMessage(historyMessage('history_wl_scanned', `後で見るを照合しました: ${parts.join(' / ')}`, [parts.join(' / ')]), { kind: 'scanWatchLater', label: historyMessage('history_wl_scan_label', '照合'), state: 'done' });
       armWatchLaterRemoval(res);
     });
   });
@@ -721,30 +721,30 @@ function armWatchLaterRemoval(res) {
 function describeWatchLaterRemovalFailure(res) {
   const reason = (res && (res.reason || res.error)) || 'unknown';
   const known = {
-    'no-scan': '先に「照合」を実行してください',
-    'scan-expired': '照合から時間が経ちました。もう一度「照合」してから実行してください',
-    'stale-scan': '照合結果が新しくなっています。もう一度「照合」してください',
-    'confirmation-mismatch': '確認した動画と削除対象が一致しないため中止しました',
-    'no-set-video-id': '削除に必要なIDが取れていないため中止しました',
-    'sync-session-changed': 'YouTubeのタブまたはアカウントが変わったため中止しました',
-    'sync-tab-unavailable': '開始時のYouTubeタブが閉じたか応答しないため中止しました',
-    'edit-not-confirmed': 'YouTubeが成功を返さなかったため、消えたかどうか不明です。照合し直して確認してください',
+    'no-scan': historyMessage('history_wl_no_scan', '先に「照合」を実行してください'),
+    'scan-expired': historyMessage('history_wl_expired', '照合から時間が経ちました。もう一度「照合」してから実行してください'),
+    'stale-scan': historyMessage('history_wl_stale', '照合結果が新しくなっています。もう一度「照合」してください'),
+    'confirmation-mismatch': historyMessage('history_wl_mismatch', '確認した動画と削除対象が一致しないため中止しました'),
+    'no-set-video-id': historyMessage('history_wl_no_id', '削除に必要なIDが取れていないため中止しました'),
+    'sync-session-changed': historyMessage('history_wl_session_changed', 'YouTubeのタブまたはアカウントが変わったため中止しました'),
+    'sync-tab-unavailable': historyMessage('history_wl_tab_unavailable', '開始時のYouTubeタブが閉じたか応答しないため中止しました'),
+    'edit-not-confirmed': historyMessage('history_wl_unconfirmed', 'YouTubeが成功を返さなかったため、消えたかどうか不明です。照合し直して確認してください'),
   };
-  return known[reason] || ('失敗: ' + reason);
+  return known[reason] || historyMessage('history_wl_failure', ('失敗: ' + reason), [reason]);
 }
 
 if (removeOneWatchLaterBtn) {
   removeOneWatchLaterBtn.addEventListener('click', () => {
     const target = armedWatchLaterTarget;
     if (!target) {
-      showJobMessage('先に「照合」を実行してください', { state: 'error' });
+      showJobMessage(historyMessage('history_wl_no_scan', '先に「照合」を実行してください'), { state: 'error' });
       return;
     }
     const label = target.title || target.videoId;
     const by = target.channel ? `\n${target.channel}` : '';
-    if (!confirm(`次の1本を「後で見る」から削除します。取り消せません。\n\n${label}${by}`)) return;
-    if (!beginMaintenance('scanWatchLater', { activeText: '削除中…' })) {
-      showJobMessage('他のメンテナンス処理が実行中', { state: 'error' });
+    if (!confirm(historyMessage('history_wl_confirm_one', `次の1本を「後で見る」から削除します。取り消せません。\n\n${label}${by}`, [label, by]))) return;
+    if (!beginMaintenance('scanWatchLater', { activeText: historyMessage('history_wl_deleting', '削除中…') })) {
+      showJobMessage(historyMessage('history_wl_busy', '他のメンテナンス処理が実行中'), { state: 'error' });
       return;
     }
     removeOneWatchLaterBtn.disabled = true;
@@ -758,7 +758,7 @@ if (removeOneWatchLaterBtn) {
       // 二重削除を試みられるのが一番まずいので、必ず照合からやり直させる。
       armedWatchLaterTarget = null;
       if (chrome.runtime.lastError) {
-        showJobMessage('失敗: ' + chrome.runtime.lastError.message, { state: 'error' });
+        showJobMessage(historyMessage('history_wl_failure', '失敗: ' + chrome.runtime.lastError.message, [chrome.runtime.lastError.message]), { state: 'error' });
         return;
       }
       if (!res || !res.success) {
@@ -766,7 +766,7 @@ if (removeOneWatchLaterBtn) {
         return;
       }
       const removed = res.removed || {};
-      showJobMessage(`後で見るから1件だけ削除しました: ${removed.title || removed.videoId} / 残りを消すにはもう一度「照合」`, { state: 'done' });
+      showJobMessage(historyMessage('history_wl_removed_single', `後で見るから1件だけ削除しました: ${removed.title || removed.videoId} / 残りを消すにはもう一度「照合」`, [removed.title || removed.videoId]), { state: 'done' });
     });
   });
 }
@@ -825,15 +825,16 @@ function openWatchLaterPanel() {
     wlPanelList.appendChild(li);
   });
   const truncNote = armedWatchLaterBatch.truncated
-    ? '（候補が多いため先頭200件のみ表示・削除できるのもこの200件まで）'
+    ? historyMessage('history_wl_truncated', '（候補が多いため先頭200件のみ表示・削除できるのもこの200件まで）')
     : '';
   wlPanelNote.textContent =
-    `視聴済みとして記録がある${rows.length}件です${truncNote}。上から順に削除します。取り消せません。`;
+    historyMessage(rows.length === 1 ? 'history_wl_panel_note_one' : 'history_wl_panel_note_many', `視聴済みとして記録がある${rows.length}件です${truncNote}。上から順に削除します。取り消せません。`, [rows.length, truncNote]);
   wlPanelLimit.max = String(rows.length);
   wlPanelLimit.value = String(Math.min(5, rows.length));
   // 全件ボタンは件数まで文言に出す。押した後の確認ダイアログと同じ数がボタンにも見えていないと、
   // 「全件」が一覧の200件までなのか候補すべてなのか読み取れない
   if (wlPanelRunAll) wlPanelRunAll.textContent = `全${rows.length}件を削除`;
+  if (wlPanelRunAll) wlPanelRunAll.textContent = historyMessage(rows.length === 1 ? 'history_wl_run_all_one' : 'history_wl_run_all_many', wlPanelRunAll.textContent, [rows.length]);
   wlPanelStatus.textContent = '';
   wlPanelPreviousFocus = document.activeElement || null;
   wlPanel.hidden = false;
@@ -844,16 +845,16 @@ function openWatchLaterPanel() {
 
 function describeBatchStop(stopped) {
   const known = {
-    'setvideoid-reassigned': '削除IDが振り直されたため中止しました（想定外の変化です）',
-    'rescan-failed': '途中の再照合に失敗したため中止しました',
-    'scan-expired': '照合から時間が経ったため中止しました',
-    'sync-session-changed': 'YouTubeのタブまたはアカウントが変わったため中止しました',
-    'sync-tab-unavailable': 'YouTubeのタブが閉じたか応答しないため中止しました',
-    'edit-not-confirmed': 'YouTubeが成功を返さなかったため中止しました。照合し直して確認してください',
-    'no-targets': '削除できる対象がありませんでした',
-    'no-scan': '照合結果が失われたため中止しました',
+    'setvideoid-reassigned': historyMessage('history_wl_reassigned', '削除IDが振り直されたため中止しました（想定外の変化です）'),
+    'rescan-failed': historyMessage('history_wl_rescan_failed', '途中の再照合に失敗したため中止しました'),
+    'scan-expired': historyMessage('history_wl_batch_expired', '照合から時間が経ったため中止しました'),
+    'sync-session-changed': historyMessage('history_wl_session_changed', 'YouTubeのタブまたはアカウントが変わったため中止しました'),
+    'sync-tab-unavailable': historyMessage('history_wl_batch_tab', 'YouTubeのタブが閉じたか応答しないため中止しました'),
+    'edit-not-confirmed': historyMessage('history_wl_batch_unconfirmed', 'YouTubeが成功を返さなかったため中止しました。照合し直して確認してください'),
+    'no-targets': historyMessage('history_wl_no_targets', '削除できる対象がありませんでした'),
+    'no-scan': historyMessage('history_wl_scan_lost', '照合結果が失われたため中止しました'),
   };
-  return known[stopped] || ('中止: ' + stopped);
+  return known[stopped] || historyMessage('history_wl_stopped', ('中止: ' + stopped), [stopped]);
 }
 
 if (bulkRemoveWatchLaterBtn) {
@@ -891,20 +892,25 @@ function attachWheelStepper(input) {
 attachWheelStepper(wlPanelLimit);
 
 function startWatchLaterBatch(requestedLimit) {
+  // This function is also run in isolation by the existing panel checks.
+  const wlMessage = typeof historyMessage === 'function' ? historyMessage : (_key, fallback) => fallback;
   const armed = armedWatchLaterBatch;
   if (!armed) {
-    wlPanelStatus.textContent = '先に「照合」を実行してください';
+    wlPanelStatus.textContent = wlMessage('history_wl_no_scan', '先に「照合」を実行してください');
     return;
   }
   const rows = armed.rows;
   const limit = Math.max(1, Math.min(Number(requestedLimit) || 0, rows.length));
   const head = rows.slice(0, limit).map(r => r.title || r.videoId);
   const shown = head.slice(0, 5).join('\n');
-  const more = head.length > 5 ? `\n… ほか${head.length - 5}件` : '';
-  const scope = limit === rows.length ? '一覧の全' : '';
-  if (!confirm(`「後で見る」から${scope}${limit}件を削除します。取り消せません。\n\n${shown}${more}`)) return;
-  if (!beginMaintenance('scanWatchLater', { activeText: '削除中…' })) {
-    wlPanelStatus.textContent = '他のメンテナンス処理が実行中';
+  const more = head.length > 5 ? wlMessage((head.length - 5) === 1 ? 'history_wl_more_one' : 'history_wl_more_many', `\n… ほか${head.length - 5}件`, [(head.length - 5)]) : '';
+  const confirmationKey = limit === rows.length
+    ? (limit === 1 ? 'history_wl_confirm_all_one' : 'history_wl_confirm_all_many')
+    : (limit === 1 ? 'history_wl_confirm_limited_one' : 'history_wl_confirm_limited_many');
+  const fallback = `「後で見る」から${limit === rows.length ? '一覧の全' : ''}${limit}件を削除します。取り消せません。\n\n${shown}${more}`;
+  if (!confirm(wlMessage(confirmationKey, fallback, [limit, shown, more]))) return;
+  if (!beginMaintenance('scanWatchLater', { activeText: wlMessage('history_wl_deleting', '削除中…') })) {
+    wlPanelStatus.textContent = wlMessage('history_wl_busy', '他のメンテナンス処理が実行中');
     return;
   }
   // 押し直しによる二重実行を防ぐ。武装解除は完了時にまとめて行う。
@@ -914,7 +920,7 @@ function startWatchLaterBatch(requestedLimit) {
   if (wlPanelCancel) wlPanelCancel.disabled = true;
   if (bulkRemoveWatchLaterBtn) bulkRemoveWatchLaterBtn.disabled = true;
   if (removeOneWatchLaterBtn) removeOneWatchLaterBtn.disabled = true;
-  wlPanelStatus.textContent = '削除中…';
+  wlPanelStatus.textContent = wlMessage('history_wl_deleting', '削除中…');
 
   const port = chrome.runtime.connect({ name: 'watch-later-batch' });
   let settled = false;
@@ -930,7 +936,7 @@ function startWatchLaterBatch(requestedLimit) {
     armWatchLaterBatch(null, null);
     showJobMessage(text, {
       kind: 'bulkRemoveWatchLater',
-      label: 'まとめて削除',
+      label: wlMessage('history_wl_batch_label', 'まとめて削除'),
       state,
       processed,
       total,
@@ -941,15 +947,15 @@ function startWatchLaterBatch(requestedLimit) {
   };
   port.onMessage.addListener((msg) => {
     if (msg.type === 'PROGRESS') {
-      wlPanelStatus.textContent = `${msg.done} / ${msg.total} 件目: ${msg.title}`;
-      showJobMessage(`削除中... ${msg.done}/${msg.total}件（削除${msg.done}件）`, {
-        kind: 'bulkRemoveWatchLater', label: 'まとめて削除', state: 'running',
+      wlPanelStatus.textContent = wlMessage('history_wl_progress_title', `${msg.done} / ${msg.total} 件目: ${msg.title}`, [msg.done, msg.total, msg.title]);
+      showJobMessage(wlMessage(msg.done === 1 ? 'history_wl_progress_one' : 'history_wl_progress_many', `削除中... ${msg.done}/${msg.total}件（削除${msg.done}件）`, [msg.done, msg.total]), {
+        kind: 'bulkRemoveWatchLater', label: wlMessage('history_wl_batch_label', 'まとめて削除'), state: 'running',
         processed: msg.done, total: msg.total, counters: { removed: msg.done }, abortable: true,
       });
       return;
     }
     if (msg.type === 'ERROR') {
-      finish('失敗: ' + (msg.error || 'unknown'), 'error');
+      finish(wlMessage('history_wl_failure', '失敗: ' + (msg.error || 'unknown'), [msg.error || 'unknown']), 'error');
       return;
     }
     if (msg.type !== 'DONE') return;
@@ -957,16 +963,16 @@ function startWatchLaterBatch(requestedLimit) {
       finish(describeBatchStop(msg.reason), 'error');
       return;
     }
-    const parts = [`後で見るから${msg.removed.length}件をまとめて削除しました`];
+    const parts = [wlMessage(msg.removed.length === 1 ? 'history_wl_removed_one' : 'history_wl_removed_many', `後で見るから${msg.removed.length}件をまとめて削除しました`, [msg.removed.length])];
     if (msg.stopped) parts.push(describeBatchStop(msg.stopped));
     const c = msg.counts;
-    if (c) parts.push(`残り: 後で見る ${c.total}件 / 視聴済み一致 ${c.candidates}件 / 未視聴 ${c.notWatched}件`);
-    if (msg.drift && msg.drift.changed) parts.push(`削除ID変化 ${msg.drift.changed}件`);
-    if (msg.finalScanFailed) parts.push('※削除後の再照合に失敗したため、件数は未確認です');
+    if (c) parts.push(wlMessage('history_wl_remaining', `残り: 後で見る ${c.total}件 / 視聴済み一致 ${c.candidates}件 / 未視聴 ${c.notWatched}件`, [c.total, c.candidates, c.notWatched]));
+    if (msg.drift && msg.drift.changed) parts.push(wlMessage(msg.drift.changed === 1 ? 'history_wl_changed_one' : 'history_wl_changed_many', `削除ID変化 ${msg.drift.changed}件`, [msg.drift.changed]));
+    if (msg.finalScanFailed) parts.push(wlMessage('history_wl_final_scan_failed', '※削除後の再照合に失敗したため、件数は未確認です'));
     finish(parts.join(' / '), msg.aborted ? 'aborted' : 'done', msg.removed.length, msg.total || limit);
   });
   // service worker が落ちた場合、DONE が来ないまま切断される。
-  port.onDisconnect.addListener(() => finish('中断しました。照合し直して結果を確認してください', 'interrupted'));
+  port.onDisconnect.addListener(() => finish(wlMessage('history_wl_interrupted', '中断しました。照合し直して結果を確認してください'), 'interrupted'));
 
   // 応答が完全に途絶えたときに「削除中…」のまま固まらないための保険。
   // 削除が進んでいる間は PROGRESS ごとに延長するので、通常の実行では発火しない。
@@ -975,7 +981,7 @@ function startWatchLaterBatch(requestedLimit) {
   const armWatchdog = () => {
     if (watchdog) clearTimeout(watchdog);
     watchdog = setTimeout(() => {
-      finish('応答がないため中断しました。どこまで削除できたかは照合し直して確認してください', 'interrupted');
+      finish(wlMessage('history_wl_timeout', '応答がないため中断しました。どこまで削除できたかは照合し直して確認してください'), 'interrupted');
       try { port.disconnect(); } catch (_e) {}
     }, 60000);
   };
@@ -984,8 +990,8 @@ function startWatchLaterBatch(requestedLimit) {
   port.onDisconnect.addListener(clearWatchdog);
   armWatchdog();
 
-  showJobMessage(`削除中... 0/${limit}件（削除0件）`, {
-    kind: 'bulkRemoveWatchLater', label: 'まとめて削除', state: 'running',
+  showJobMessage(wlMessage('history_wl_progress_many', `削除中... 0/${limit}件（削除0件）`, [0, limit]), {
+    kind: 'bulkRemoveWatchLater', label: wlMessage('history_wl_batch_label', 'まとめて削除'), state: 'running',
     processed: 0, total: limit, counters: { removed: 0 }, abortable: true,
   });
 
