@@ -108,13 +108,13 @@ function boot({ rows, lookup, listId = 'PL1' }) {
   // 5. メニューの「[後で見る]から削除」を押さない
   async function runMenu(texts) {
     const clicked = [];
-    const items = texts.map(t => ({ textContent: t, querySelector: () => null, click() { clicked.push(t); } }));
+    const items = texts.map(t => ({ textContent: t, getClientRects: () => [{}], querySelector: () => null, click() { clicked.push(t); } }));
     const scope = {
       document: { querySelectorAll: () => items, body: { click() {} } },
       sleep: async () => {},
     };
     vm.createContext(scope);
-    vm.runInContext(fn('watchLaterOneCard'), scope);
+    vm.runInContext(fn('isShownMenuItem') + ';' + fn('watchLaterOneCard'), scope);
     const card = { querySelector: () => ({ click() {} }) };
     const res = await scope.watchLaterOneCard(card);
     return { res, clicked };

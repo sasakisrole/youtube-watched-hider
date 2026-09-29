@@ -2290,6 +2290,12 @@ window._ytWatchedHider = (() => {
     return out;
   }
 
+  // 閉じたメニューの項目は非表示のまま DOM に残る。ミニプレーヤーで再生中の曲のメニューが
+  // 先に見つかると、押した行でなく再生中の曲が毎回入る（2026-09-29 実測）。
+  function isShownMenuItem(el) {
+    return el.getClientRects().length > 0;
+  }
+
   async function seedQueueWithCurrentVideo() {
     // Click the "..." button next to the current video (below the player).
     const moreBtn = document.querySelector(
@@ -2311,6 +2317,7 @@ window._ytWatchedHider = (() => {
         'yt-list-item-view-model'
       );
       for (const c of candidates) {
+        if (!isShownMenuItem(c)) continue;
         const text = (c.textContent || '').trim();
         if (text.includes('キューに追加') || text.toLowerCase().includes('add to queue')) {
           queueItem = c;
@@ -2357,6 +2364,7 @@ window._ytWatchedHider = (() => {
         'yt-contextual-sheet-layout yt-list-item-view-model'
       );
       for (const c of candidates) {
+        if (!isShownMenuItem(c)) continue;
         const text = (c.textContent || '').trim();
         if (text.includes('キューに追加') || text.toLowerCase().includes('add to queue')) {
           queueItem = c;
@@ -2571,6 +2579,7 @@ window._ytWatchedHider = (() => {
         'yt-contextual-sheet-layout yt-list-item-view-model'
       );
       for (const c of candidates) {
+        if (!isShownMenuItem(c)) continue;
         const text = (c.textContent || '').trim();
         const lower = text.toLowerCase();
         // プレイリスト上のメニューにある「[後で見る]から削除」を押さない
