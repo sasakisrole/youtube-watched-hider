@@ -5,6 +5,12 @@
   "popup_dimWatchedHelp": {
     "message": "オンにすると視聴済みを消さずに薄く表示し、マウスを乗せると元の濃さに戻ります。"
   },
+  "popup_hidePlaylist": {
+    "message": "プレイリストで隠す"
+  },
+  "popup_hidePlaylistHelp": {
+    "message": "プレイリストのページに並ぶ動画が対象です。"
+  },
   "popup_hideChannel": {
     "message": "各チャンネルページで隠す"
   },

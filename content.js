@@ -45,6 +45,7 @@ window._ytWatchedHider = (() => {
     hideOnHome: true,
     hideOnSubscriptions: true,
     hideOnChannel: true,
+    hideOnPlaylist: true,
     hideOnSearch: true,
     hideOnRelated: true,
   };
@@ -55,7 +56,7 @@ window._ytWatchedHider = (() => {
     WATCHED_THRESHOLD = typeof value === 'number' && Number.isFinite(value) && value >= 1 && value <= 100 ? value : 95;
     watchedDisplaySettings = { ...WATCHED_DISPLAY_DEFAULTS, watchedThreshold: WATCHED_THRESHOLD };
     watchedDisplaySettings.dimWatched = settings.dimWatched === true;
-    for (const key of ['hideOnHome', 'hideOnSubscriptions', 'hideOnChannel', 'hideOnSearch', 'hideOnRelated']) {
+    for (const key of ['hideOnHome', 'hideOnSubscriptions', 'hideOnChannel', 'hideOnPlaylist', 'hideOnSearch', 'hideOnRelated']) {
       watchedDisplaySettings[key] = settings[key] !== false;
     }
   }
@@ -66,7 +67,7 @@ window._ytWatchedHider = (() => {
       return watchedDisplaySettings.hideOnChannel;
     }
     const key = { '/': 'hideOnHome', '/feed/subscriptions': 'hideOnSubscriptions',
-      '/results': 'hideOnSearch', '/watch': 'hideOnRelated' }[path];
+      '/playlist': 'hideOnPlaylist', '/results': 'hideOnSearch', '/watch': 'hideOnRelated' }[path];
     return !key || watchedDisplaySettings[key];
   }
 
@@ -619,10 +620,13 @@ window._ytWatchedHider = (() => {
   // Returns true if the card is a playlist/mix/show container, not a single video card.
   // These should never be hidden even if they contain /watch?v= links.
   function isPlaylistCard(card) {
+    // A list= parameter also occurs on ordinary videos; use collection structure instead.
+    const containers = 'ytd-grid-playlist-renderer, ytd-playlist-renderer, ytd-radio-renderer, .yt-lockup-view-model--collection';
     return !!(
-      card.querySelector('ytd-grid-playlist-renderer, ytd-playlist-renderer, ytd-radio-renderer') ||
+      card.matches?.(containers) || card.querySelector(containers) ||
+      card.querySelector('yt-collection-thumbnail-view-model') ||
       card.querySelector('[overlay-style="PLAYLIST"], [overlay-style="MIX"], [overlay-style="SHOW"]') ||
-      card.querySelector('yt-thumbnail-overlay-side-panel-renderer, #overlays .thumbnail-overlay-badge-shape[aria-label]')
+      card.querySelector('yt-thumbnail-overlay-side-panel-renderer')
     );
   }
 
@@ -1086,7 +1090,15 @@ window._ytWatchedHider = (() => {
       const cardMap = new Map(); // videoId -> [card elements]
       for (const card of cards) {
         // Skip playlist/mix cards — they contain /watch?v= links but are not single videos
-        if (isPlaylistCard(card)) continue;
+        if (isPlaylistCard(card)) {
+          // A video node may be reused for a collection after it was hidden.
+          if (card.dataset.watchedHidden === 'true' && card.dataset.shortsHidden !== 'true' && card.dataset.movieHidden !== 'true') card.style.display = '';
+          delete card.dataset.watchedHidden;
+          delete card.dataset.watchedDimmed;
+          delete card.dataset.watchedVideoId;
+          delete card.dataset.watchedCheckedId;
+          continue;
+        }
 
         const link = card.querySelector(SELECTORS.videoLink);
         if (!link) continue;
@@ -1872,7 +1884,15 @@ window._ytWatchedHider = (() => {
       const currentVid = getCurrentVideoId();
 
       for (const card of cards) {
-        if (isPlaylistCard(card)) continue;
+        if (isPlaylistCard(card)) {
+          // A video node may be reused for a collection after it was hidden.
+          if (card.dataset.watchedHidden === 'true' && card.dataset.shortsHidden !== 'true' && card.dataset.movieHidden !== 'true') card.style.display = '';
+          delete card.dataset.watchedHidden;
+          delete card.dataset.watchedDimmed;
+          delete card.dataset.watchedVideoId;
+          delete card.dataset.watchedCheckedId;
+          continue;
+        }
 
         const videoId = getCardVideoId(card);
         if (!videoId) continue;
@@ -1988,8 +2008,8 @@ window._ytWatchedHider = (() => {
   }
 
   // ===== Playlist page (unwatched only) =====
-  // プレイリストの行は隠さない。一括ボタンの対象を「未再生」に絞るためだけに判定を
-  // data 属性へ持たせる。判定不能は未再生に数えない（DBエラーを未再生と取り違えない）。
+  // 一括ボタン用の判定は、行を隠す設定とは独立して data 属性へ持たせる。
+  // 判定不能は未再生に数えない（DBエラーを未再生と取り違えない）。
   // 旧デザインは ytd-playlist-video-renderer、新デザインは一覧の yt-lockup-view-model（2026-09-27 実測）
   const PLAYLIST_ROW_SELECTOR =
     'ytd-playlist-video-list-renderer ytd-playlist-video-renderer, ' +
