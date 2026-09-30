@@ -5,14 +5,32 @@
   "popup_playlistCardsNever": {
     "message": "隠さない"
   },
-  "popup_playlistCardsSearchRelated": {
-    "message": "検索結果・関連動画でだけ隠す"
+  "popup_playlistCardsHide": {
+    "message": "隠す"
   },
-  "popup_playlistCardsEverywhere": {
-    "message": "どこでも隠す"
+  "popup_playlistCardPlaces": {
+    "message": "隠す場所"
+  },
+  "popup_playlistCardPlace_home": {
+    "message": "ホーム"
+  },
+  "popup_playlistCardPlace_search": {
+    "message": "検索結果"
+  },
+  "popup_playlistCardPlace_related": {
+    "message": "関連動画"
+  },
+  "popup_playlistCardPlace_subscriptions": {
+    "message": "登録チャンネル"
+  },
+  "popup_playlistCardPlace_channel": {
+    "message": "各チャンネルページ"
+  },
+  "popup_playlistCardPlace_playlists": {
+    "message": "再生リスト一覧"
   },
   "popup_playlistCardsHelp": {
-    "message": "プレイリスト・ミックスのカードが対象です。視聴状態やページ別のスイッチに関係なく適用され、半透明表示の設定にも対応します。"
+    "message": "プレイリスト・ミックスのカードを、選んだ場所で隠します。視聴状態やページ別のスイッチとは別の設定です。半透明表示をオンにすると、隠す代わりに薄く表示します。"
   },
   "popup_dimWatched": {
     "message": "視聴済みを半透明で表示する"

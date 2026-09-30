@@ -5,14 +5,32 @@
   "popup_playlistCardsNever": {
     "message": "Don't hide"
   },
-  "popup_playlistCardsSearchRelated": {
-    "message": "Hide only in search results and related videos"
+  "popup_playlistCardsHide": {
+    "message": "Hide"
   },
-  "popup_playlistCardsEverywhere": {
-    "message": "Hide everywhere"
+  "popup_playlistCardPlaces": {
+    "message": "Hide in"
+  },
+  "popup_playlistCardPlace_home": {
+    "message": "Home"
+  },
+  "popup_playlistCardPlace_search": {
+    "message": "Search results"
+  },
+  "popup_playlistCardPlace_related": {
+    "message": "Related videos"
+  },
+  "popup_playlistCardPlace_subscriptions": {
+    "message": "Subscriptions"
+  },
+  "popup_playlistCardPlace_channel": {
+    "message": "Channel pages"
+  },
+  "popup_playlistCardPlace_playlists": {
+    "message": "Playlists list"
   },
   "popup_playlistCardsHelp": {
-    "message": "Applies to playlist and mix cards regardless of watched status or page switches. The dim display setting also applies."
+    "message": "Hide playlist and mix cards in the selected places. This is separate from watch status and page switches. With dimming on, these cards are dimmed instead of hidden."
   },
   "popup_dimWatched": {
     "message": "Dim watched videos instead of hiding"

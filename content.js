@@ -46,6 +46,7 @@ window._ytWatchedHider = (() => {
     watchedThreshold: 95,
     dimWatched: false,
     playlistCardMode: 'never',
+    playlistCardPlaces: null,
     hideOnHome: true,
     hideOnSubscriptions: true,
     hideOnChannel: true,
@@ -60,7 +61,13 @@ window._ytWatchedHider = (() => {
     WATCHED_THRESHOLD = typeof value === 'number' && Number.isFinite(value) && value >= 1 && value <= 100 ? value : 95;
     watchedDisplaySettings = { ...WATCHED_DISPLAY_DEFAULTS, watchedThreshold: WATCHED_THRESHOLD };
     watchedDisplaySettings.dimWatched = settings.dimWatched === true;
-    watchedDisplaySettings.playlistCardMode = ['search_related', 'everywhere'].includes(settings.playlistCardMode) ? settings.playlistCardMode : 'never';
+    watchedDisplaySettings.playlistCardMode = ['hide', 'search_related', 'everywhere'].includes(settings.playlistCardMode) ? 'hide' : 'never';
+    const defaults = { home: true, search: true, related: true, subscriptions: false, channel: false, playlists: false };
+    const places = settings.playlistCardPlaces;
+    const valid = places && typeof places === 'object' && !Array.isArray(places) &&
+      Object.keys(defaults).every(key => typeof places[key] === 'boolean');
+    watchedDisplaySettings.playlistCardPlaces = Object.fromEntries(Object.entries(defaults).map(([key, value]) =>
+      [key, valid ? places[key] : settings.playlistCardMode === 'everywhere' || value]));
     for (const key of ['hideOnHome', 'hideOnSubscriptions', 'hideOnChannel', 'hideOnPlaylist', 'hideOnSearch', 'hideOnRelated']) {
       watchedDisplaySettings[key] = settings[key] !== false;
     }
@@ -86,8 +93,11 @@ window._ytWatchedHider = (() => {
     delete card.dataset.watchedCheckedId;
     const mode = watchedDisplaySettings.playlistCardMode;
     const path = location.pathname.replace(/\/+$/, '') || '/';
-    const shouldHide = mode === 'everywhere' || (mode === 'search_related' &&
-      (path === '/results' || (path === '/watch' && !!card.closest?.('#related, ytd-watch-next-secondary-results-renderer'))));
+    const place = /^\/(?:@[^/]+|(?:channel|c|user)\/[^/]+)(?:\/|$)/.test(path) ? 'channel' :
+      { '/': 'home', '/results': 'search', '/watch': 'related',
+        '/feed/subscriptions': 'subscriptions', '/feed/playlists': 'playlists' }[path];
+    const shouldHide = mode === 'hide' && watchedDisplaySettings.playlistCardPlaces?.[place] === true &&
+      (place !== 'related' || !!card.closest?.('#related, ytd-watch-next-secondary-results-renderer'));
     if (!enabled || !shouldHide) return;
     if (watchedDisplaySettings.dimWatched) {
       card.dataset.watchedDimmed = 'true';

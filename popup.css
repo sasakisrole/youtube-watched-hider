@@ -643,3 +643,8 @@ input:checked + .slider::before {
   color: var(--success);
   min-height: 16px;
 }
+
+#playlistCardPlaces .toggle input:focus-visible + .slider {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}

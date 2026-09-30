@@ -350,12 +350,22 @@ function loadHistory() {
 const watchedThresholdInput = document.getElementById('watchedThreshold');
 const watchedDisplayDefaults = {
   playlistCardMode: 'never',
+  playlistCardPlaces: null,
   watchedThreshold: 95, dimWatched: false, hideOnHome: true, hideOnSubscriptions: true, hideOnChannel: true, hideOnPlaylist: true,
   hideOnSearch: true, hideOnRelated: true, showSearchFilter: true,
 };
 const pageToggleKeys = ['hideOnHome', 'hideOnSubscriptions', 'hideOnChannel', 'hideOnPlaylist', 'hideOnSearch', 'hideOnRelated', 'showSearchFilter'];
 function normalizePlaylistCardMode(value) {
-  return ['search_related', 'everywhere'].includes(value) ? value : 'never';
+  return ['hide', 'search_related', 'everywhere'].includes(value) ? 'hide' : 'never';
+}
+const playlistCardPlaceDefaults = { home: true, search: true, related: true, subscriptions: false, channel: false, playlists: false };
+let playlistCardPlaces = { ...playlistCardPlaceDefaults };
+function normalizePlaylistCardPlaces(settings) {
+  const places = settings.playlistCardPlaces;
+  const valid = places && typeof places === 'object' && !Array.isArray(places) &&
+    Object.keys(playlistCardPlaceDefaults).every(key => typeof places[key] === 'boolean');
+  return Object.fromEntries(Object.entries(playlistCardPlaceDefaults).map(([key, value]) =>
+    [key, valid ? places[key] : settings.playlistCardMode === 'everywhere' || value]));
 }
 function normalizeWatchedThreshold(value) {
   return typeof value === 'number' && Number.isFinite(value) && value >= 1 && value <= 100 ? value : 95;
@@ -363,11 +373,17 @@ function normalizeWatchedThreshold(value) {
 chrome.storage.local.get(watchedDisplayDefaults, (settings) => {
   watchedThresholdInput.value = normalizeWatchedThreshold(settings.watchedThreshold);
   document.getElementById('dimWatched').checked = settings.dimWatched === true;
-  document.getElementById('playlistCardMode').value = normalizePlaylistCardMode(settings.playlistCardMode);
+  const mode = normalizePlaylistCardMode(settings.playlistCardMode);
+  document.getElementById('playlistCardMode').value = mode;
+  document.getElementById('playlistCardPlaces').hidden = mode !== 'hide';
+  playlistCardPlaces = normalizePlaylistCardPlaces(settings);
+  for (const key of Object.keys(playlistCardPlaceDefaults)) {
+    document.getElementById(`playlistCardPlace_${key}`).checked = playlistCardPlaces[key];
+  }
   for (const key of pageToggleKeys) document.getElementById(key).checked = settings[key] !== false;
 });
-function saveWatchedDisplaySetting(key, value) {
-  chrome.storage.local.set({ [key]: value }, () => {
+function saveWatchedDisplaySetting(key, value, extra = {}) {
+  chrome.storage.local.set({ ...extra, [key]: value }, () => {
     if (chrome.runtime.lastError) {
       showStatus(popupMessage('popupDynamicSettingsFailed', '設定を保存できませんでした'), true);
       return;
@@ -393,8 +409,16 @@ document.getElementById('dimWatched').addEventListener('change', (event) => {
 document.getElementById('playlistCardMode').addEventListener('change', (event) => {
   const value = normalizePlaylistCardMode(event.target.value);
   event.target.value = value;
-  saveWatchedDisplaySetting('playlistCardMode', value);
+  document.getElementById('playlistCardPlaces').hidden = value !== 'hide';
+  // Save the migrated places before replacing a legacy mode that supplies their defaults.
+  saveWatchedDisplaySetting('playlistCardMode', value, { playlistCardPlaces: { ...playlistCardPlaces } });
 });
+for (const key of Object.keys(playlistCardPlaceDefaults)) {
+  document.getElementById(`playlistCardPlace_${key}`).addEventListener('change', (event) => {
+    playlistCardPlaces = { ...playlistCardPlaces, [key]: event.target.checked };
+    saveWatchedDisplaySetting('playlistCardPlaces', playlistCardPlaces);
+  });
+}
 for (const key of pageToggleKeys) {
   document.getElementById(key).addEventListener('change', (event) => {
     saveWatchedDisplaySetting(key, event.target.checked);

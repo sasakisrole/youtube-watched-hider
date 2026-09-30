@@ -123,10 +123,54 @@
       </div>
       <select id="playlistCardMode" aria-labelledby="playlistCardModeLabel" aria-describedby="playlistCardModeDesc" style="width: 100%;">
         <option value="never" data-i18n="popup_playlistCardsNever">隠さない</option>
-        <option value="search_related" data-i18n="popup_playlistCardsSearchRelated">検索結果・関連動画でだけ隠す</option>
-        <option value="everywhere" data-i18n="popup_playlistCardsEverywhere">どこでも隠す</option>
+        <option value="hide" data-i18n="popup_playlistCardsHide">隠す</option>
       </select>
-      <div class="setting-desc" id="playlistCardModeDesc" data-i18n="popup_playlistCardsHelp">プレイリスト・ミックスのカードが対象です。視聴状態やページ別のスイッチに関係なく適用され、半透明表示の設定にも対応します。</div>
+      <div class="setting-desc" id="playlistCardModeDesc" data-i18n="popup_playlistCardsHelp">プレイリスト・ミックスのカードを、選んだ場所で隠します。視聴状態やページ別のスイッチとは別の設定です。半透明表示をオンにすると、隠す代わりに薄く表示します。</div>
+      <div id="playlistCardPlaces" role="group" aria-labelledby="playlistCardPlacesLabel" hidden>
+        <div class="setting-desc" id="playlistCardPlacesLabel" data-i18n="popup_playlistCardPlaces">隠す場所</div>
+        <div class="setting-item">
+          <label class="setting-label" id="playlistCardPlace_homeLabel" for="playlistCardPlace_home" data-i18n="popup_playlistCardPlace_home">ホーム</label>
+          <label class="toggle toggle-small">
+            <input type="checkbox" id="playlistCardPlace_home" checked aria-labelledby="playlistCardPlace_homeLabel">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="setting-item">
+          <label class="setting-label" id="playlistCardPlace_searchLabel" for="playlistCardPlace_search" data-i18n="popup_playlistCardPlace_search">検索結果</label>
+          <label class="toggle toggle-small">
+            <input type="checkbox" id="playlistCardPlace_search" checked aria-labelledby="playlistCardPlace_searchLabel">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="setting-item">
+          <label class="setting-label" id="playlistCardPlace_relatedLabel" for="playlistCardPlace_related" data-i18n="popup_playlistCardPlace_related">関連動画</label>
+          <label class="toggle toggle-small">
+            <input type="checkbox" id="playlistCardPlace_related" checked aria-labelledby="playlistCardPlace_relatedLabel">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="setting-item">
+          <label class="setting-label" id="playlistCardPlace_subscriptionsLabel" for="playlistCardPlace_subscriptions" data-i18n="popup_playlistCardPlace_subscriptions">登録チャンネル</label>
+          <label class="toggle toggle-small">
+            <input type="checkbox" id="playlistCardPlace_subscriptions" aria-labelledby="playlistCardPlace_subscriptionsLabel">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="setting-item">
+          <label class="setting-label" id="playlistCardPlace_channelLabel" for="playlistCardPlace_channel" data-i18n="popup_playlistCardPlace_channel">各チャンネルページ</label>
+          <label class="toggle toggle-small">
+            <input type="checkbox" id="playlistCardPlace_channel" aria-labelledby="playlistCardPlace_channelLabel">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="setting-item">
+          <label class="setting-label" id="playlistCardPlace_playlistsLabel" for="playlistCardPlace_playlists" data-i18n="popup_playlistCardPlace_playlists">再生リスト一覧</label>
+          <label class="toggle toggle-small">
+            <input type="checkbox" id="playlistCardPlace_playlists" aria-labelledby="playlistCardPlace_playlistsLabel">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
 
       <div class="setting-item">
         <span class="setting-label" id="hideShortsLabel" data-i18n="popup_hideShorts">ショート動画を隠す</span>
