@@ -34,6 +34,9 @@ window._ytWatchedHider = (() => {
     SELECTORS.videoRenderer,
     SELECTORS.compactVideo,
     SELECTORS.lockup,
+    'ytd-playlist-renderer',
+    'ytd-grid-playlist-renderer',
+    'ytd-radio-renderer',
   ].join(', ');
 
   let enabled = false; // Wait for saved settings before processing cards.
@@ -42,6 +45,7 @@ window._ytWatchedHider = (() => {
   const WATCHED_DISPLAY_DEFAULTS = {
     watchedThreshold: 95,
     dimWatched: false,
+    playlistCardMode: 'never',
     hideOnHome: true,
     hideOnSubscriptions: true,
     hideOnChannel: true,
@@ -56,6 +60,7 @@ window._ytWatchedHider = (() => {
     WATCHED_THRESHOLD = typeof value === 'number' && Number.isFinite(value) && value >= 1 && value <= 100 ? value : 95;
     watchedDisplaySettings = { ...WATCHED_DISPLAY_DEFAULTS, watchedThreshold: WATCHED_THRESHOLD };
     watchedDisplaySettings.dimWatched = settings.dimWatched === true;
+    watchedDisplaySettings.playlistCardMode = ['search_related', 'everywhere'].includes(settings.playlistCardMode) ? settings.playlistCardMode : 'never';
     for (const key of ['hideOnHome', 'hideOnSubscriptions', 'hideOnChannel', 'hideOnPlaylist', 'hideOnSearch', 'hideOnRelated']) {
       watchedDisplaySettings[key] = settings[key] !== false;
     }
@@ -69,6 +74,27 @@ window._ytWatchedHider = (() => {
     const key = { '/': 'hideOnHome', '/feed/subscriptions': 'hideOnSubscriptions',
       '/playlist': 'hideOnPlaylist', '/results': 'hideOnSearch', '/watch': 'hideOnRelated' }[path];
     return !key || watchedDisplaySettings[key];
+  }
+
+  // Collection cards have their own policy, independent of watched/page settings.
+  function applyPlaylistCardDisplay(card) {
+    // Also clear watched markers when YouTube reuses a video node for a collection.
+    if (card.dataset.watchedHidden === 'true' && card.dataset.shortsHidden !== 'true' && card.dataset.movieHidden !== 'true') card.style.display = '';
+    delete card.dataset.watchedHidden;
+    delete card.dataset.watchedDimmed;
+    delete card.dataset.watchedVideoId;
+    delete card.dataset.watchedCheckedId;
+    const mode = watchedDisplaySettings.playlistCardMode;
+    const path = location.pathname.replace(/\/+$/, '') || '/';
+    const shouldHide = mode === 'everywhere' || (mode === 'search_related' &&
+      (path === '/results' || (path === '/watch' && !!card.closest?.('#related, ytd-watch-next-secondary-results-renderer'))));
+    if (!enabled || !shouldHide) return;
+    if (watchedDisplaySettings.dimWatched) {
+      card.dataset.watchedDimmed = 'true';
+    } else {
+      card.style.display = 'none';
+      card.dataset.watchedHidden = 'true';
+    }
   }
 
   let recordWhileOff = false;
@@ -618,7 +644,7 @@ window._ytWatchedHider = (() => {
   });
 
   // Returns true if the card is a playlist/mix/show container, not a single video card.
-  // These should never be hidden even if they contain /watch?v= links.
+  // Watched state never applies, even if they contain /watch?v= links.
   function isPlaylistCard(card) {
     // A list= parameter also occurs on ordinary videos; use collection structure instead.
     const containers = 'ytd-grid-playlist-renderer, ytd-playlist-renderer, ytd-radio-renderer, .yt-lockup-view-model--collection';
@@ -1091,12 +1117,7 @@ window._ytWatchedHider = (() => {
       for (const card of cards) {
         // Skip playlist/mix cards — they contain /watch?v= links but are not single videos
         if (isPlaylistCard(card)) {
-          // A video node may be reused for a collection after it was hidden.
-          if (card.dataset.watchedHidden === 'true' && card.dataset.shortsHidden !== 'true' && card.dataset.movieHidden !== 'true') card.style.display = '';
-          delete card.dataset.watchedHidden;
-          delete card.dataset.watchedDimmed;
-          delete card.dataset.watchedVideoId;
-          delete card.dataset.watchedCheckedId;
+          applyPlaylistCardDisplay(card);
           continue;
         }
 
@@ -1885,12 +1906,7 @@ window._ytWatchedHider = (() => {
 
       for (const card of cards) {
         if (isPlaylistCard(card)) {
-          // A video node may be reused for a collection after it was hidden.
-          if (card.dataset.watchedHidden === 'true' && card.dataset.shortsHidden !== 'true' && card.dataset.movieHidden !== 'true') card.style.display = '';
-          delete card.dataset.watchedHidden;
-          delete card.dataset.watchedDimmed;
-          delete card.dataset.watchedVideoId;
-          delete card.dataset.watchedCheckedId;
+          applyPlaylistCardDisplay(card);
           continue;
         }
 

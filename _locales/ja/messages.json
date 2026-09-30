@@ -1,4 +1,19 @@
 {
+  "popup_playlistCards": {
+    "message": "プレイリストのカード"
+  },
+  "popup_playlistCardsNever": {
+    "message": "隠さない"
+  },
+  "popup_playlistCardsSearchRelated": {
+    "message": "検索結果・関連動画でだけ隠す"
+  },
+  "popup_playlistCardsEverywhere": {
+    "message": "どこでも隠す"
+  },
+  "popup_playlistCardsHelp": {
+    "message": "プレイリスト・ミックスのカードが対象です。視聴状態やページ別のスイッチに関係なく適用され、半透明表示の設定にも対応します。"
+  },
   "popup_dimWatched": {
     "message": "視聴済みを半透明で表示する"
   },
@@ -6,10 +21,10 @@
     "message": "オンにすると視聴済みを消さずに薄く表示し、マウスを乗せると元の濃さに戻ります。"
   },
   "popup_hidePlaylist": {
-    "message": "プレイリストで隠す"
+    "message": "プレイリストのページで隠す"
   },
   "popup_hidePlaylistHelp": {
-    "message": "プレイリストのページに並ぶ動画が対象です。"
+    "message": "プレイリストのページに並ぶ視聴済みの動画が対象です。"
   },
   "popup_hideChannel": {
     "message": "各チャンネルページで隠す"

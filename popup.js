@@ -349,16 +349,21 @@ function loadHistory() {
 // Watched display settings use the same local storage and tab message pattern.
 const watchedThresholdInput = document.getElementById('watchedThreshold');
 const watchedDisplayDefaults = {
+  playlistCardMode: 'never',
   watchedThreshold: 95, dimWatched: false, hideOnHome: true, hideOnSubscriptions: true, hideOnChannel: true, hideOnPlaylist: true,
   hideOnSearch: true, hideOnRelated: true, showSearchFilter: true,
 };
 const pageToggleKeys = ['hideOnHome', 'hideOnSubscriptions', 'hideOnChannel', 'hideOnPlaylist', 'hideOnSearch', 'hideOnRelated', 'showSearchFilter'];
+function normalizePlaylistCardMode(value) {
+  return ['search_related', 'everywhere'].includes(value) ? value : 'never';
+}
 function normalizeWatchedThreshold(value) {
   return typeof value === 'number' && Number.isFinite(value) && value >= 1 && value <= 100 ? value : 95;
 }
 chrome.storage.local.get(watchedDisplayDefaults, (settings) => {
   watchedThresholdInput.value = normalizeWatchedThreshold(settings.watchedThreshold);
   document.getElementById('dimWatched').checked = settings.dimWatched === true;
+  document.getElementById('playlistCardMode').value = normalizePlaylistCardMode(settings.playlistCardMode);
   for (const key of pageToggleKeys) document.getElementById(key).checked = settings[key] !== false;
 });
 function saveWatchedDisplaySetting(key, value) {
@@ -384,6 +389,11 @@ watchedThresholdInput.addEventListener('change', () => {
 });
 document.getElementById('dimWatched').addEventListener('change', (event) => {
   saveWatchedDisplaySetting('dimWatched', event.target.checked);
+});
+document.getElementById('playlistCardMode').addEventListener('change', (event) => {
+  const value = normalizePlaylistCardMode(event.target.value);
+  event.target.value = value;
+  saveWatchedDisplaySetting('playlistCardMode', value);
 });
 for (const key of pageToggleKeys) {
   document.getElementById(key).addEventListener('change', (event) => {

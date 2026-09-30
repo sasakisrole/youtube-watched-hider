@@ -96,13 +96,13 @@
       </div>
       <div class="setting-desc" data-i18n="popup_hideChannelHelp">チャンネルごとのトップや動画・ショートなどのタブが対象です。</div>
       <div class="setting-item">
-        <span class="setting-label" id="hideOnPlaylistLabel" data-i18n="popup_hidePlaylist">プレイリストで隠す</span>
+        <span class="setting-label" id="hideOnPlaylistLabel" data-i18n="popup_hidePlaylist">プレイリストのページで隠す</span>
         <label class="toggle toggle-small">
           <input type="checkbox" id="hideOnPlaylist" checked aria-labelledby="hideOnPlaylistLabel" aria-describedby="hideOnPlaylistDesc">
           <span class="slider"></span>
         </label>
       </div>
-      <div class="setting-desc" id="hideOnPlaylistDesc" data-i18n="popup_hidePlaylistHelp">プレイリストのページに並ぶ動画が対象です。</div>
+      <div class="setting-desc" id="hideOnPlaylistDesc" data-i18n="popup_hidePlaylistHelp">プレイリストのページに並ぶ視聴済みの動画が対象です。</div>
       <div class="setting-item">
         <span class="setting-label" id="hideOnSearchLabel" data-i18n="popup_hideSearch">検索結果で隠す</span>
         <label class="toggle toggle-small">
@@ -118,6 +118,15 @@
         </label>
       </div>
       <div class="setting-desc" data-i18n="popup_hideRelatedHelp">動画の視聴ページの横に出る関連動画が対象です。</div>
+      <div class="setting-item">
+        <label class="setting-label" id="playlistCardModeLabel" for="playlistCardMode" data-i18n="popup_playlistCards">プレイリストのカード</label>
+      </div>
+      <select id="playlistCardMode" aria-labelledby="playlistCardModeLabel" aria-describedby="playlistCardModeDesc" style="width: 100%;">
+        <option value="never" data-i18n="popup_playlistCardsNever">隠さない</option>
+        <option value="search_related" data-i18n="popup_playlistCardsSearchRelated">検索結果・関連動画でだけ隠す</option>
+        <option value="everywhere" data-i18n="popup_playlistCardsEverywhere">どこでも隠す</option>
+      </select>
+      <div class="setting-desc" id="playlistCardModeDesc" data-i18n="popup_playlistCardsHelp">プレイリスト・ミックスのカードが対象です。視聴状態やページ別のスイッチに関係なく適用され、半透明表示の設定にも対応します。</div>
 
       <div class="setting-item">
         <span class="setting-label" id="hideShortsLabel" data-i18n="popup_hideShorts">ショート動画を隠す</span>

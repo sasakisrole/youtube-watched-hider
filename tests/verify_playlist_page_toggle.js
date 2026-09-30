@@ -49,7 +49,7 @@ test('REQ-2 popup order accessible help and matching ja en labels', () => {
   assert(input); assert.match(input[0], /checked/); assert.match(input[0], /aria-describedby="hideOnPlaylistDesc"/);
   assert(html.indexOf('id="hideOnPlaylist"') > html.indexOf('id="hideOnChannel"'));
   assert(html.indexOf('id="hideOnPlaylistDesc"') < html.indexOf('id="hideOnSearch"'));
-  for (const [lang, label] of [['ja', 'プレイリストで隠す'], ['en', 'Hide in playlists']]) {
+  for (const [lang, label] of [['ja', 'プレイリストのページで隠す'], ['en', 'Hide in playlist pages']]) {
     const locale = JSON.parse(read(`_locales/${lang}/messages.json`));
     assert.equal(locale.popup_hidePlaylist.message, label); assert(locale.popup_hidePlaylistHelp.message);
     assert(html.includes('data-i18n="popup_hidePlaylistHelp"'));
