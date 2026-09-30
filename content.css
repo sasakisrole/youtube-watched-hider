@@ -1,0 +1,8 @@
+/* Watched cards stay interactive; removing the marker restores the page's opacity. */
+[data-watched-dimmed="true"] {
+  opacity: 0.35 !important;
+}
+
+[data-watched-dimmed="true"]:hover {
+  opacity: 1 !important;
+}

@@ -580,7 +580,7 @@ async function main() {
   check('manifest loads core and runtime after content.js with scoped CSS',
     script.js.join(',') ===
       'content.js,official_search_filter_core.js,official_profile_store.js,official_search_filter.js' &&
-    script.css.join(',') === 'official_search_filter.css' &&
+    script.css.join(',') === 'content.css,official_search_filter.css' &&
     script.matches.join(',') === '*://*.youtube.com/*');
   check('manifest adds no host permission or web-accessible resource',
     MANIFEST.host_permissions.join(',') ===

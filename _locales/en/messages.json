@@ -1,4 +1,10 @@
 {
+  "popup_dimWatched": {
+    "message": "Dim watched videos instead of hiding"
+  },
+  "popup_dimWatchedHelp": {
+    "message": "When on, watched videos stay visible but dimmed. Hover over them to restore full opacity."
+  },
   "popup_hideChannel": {
     "message": "Hide on channel pages"
   },

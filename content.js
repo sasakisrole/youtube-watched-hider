@@ -41,6 +41,7 @@ window._ytWatchedHider = (() => {
   let WATCHED_THRESHOLD = 95;
   const WATCHED_DISPLAY_DEFAULTS = {
     watchedThreshold: 95,
+    dimWatched: false,
     hideOnHome: true,
     hideOnSubscriptions: true,
     hideOnChannel: true,
@@ -53,6 +54,7 @@ window._ytWatchedHider = (() => {
     const value = settings.watchedThreshold;
     WATCHED_THRESHOLD = typeof value === 'number' && Number.isFinite(value) && value >= 1 && value <= 100 ? value : 95;
     watchedDisplaySettings = { ...WATCHED_DISPLAY_DEFAULTS, watchedThreshold: WATCHED_THRESHOLD };
+    watchedDisplaySettings.dimWatched = settings.dimWatched === true;
     for (const key of ['hideOnHome', 'hideOnSubscriptions', 'hideOnChannel', 'hideOnSearch', 'hideOnRelated']) {
       watchedDisplaySettings[key] = settings[key] !== false;
     }
@@ -336,9 +338,10 @@ window._ytWatchedHider = (() => {
     }).catch((e) => {
       forgetWatched(videoId);
       if (card.dataset.watchedCheckedId === videoId) delete card.dataset.watchedCheckedId;
-      if (card.dataset.watchedHidden === 'true' && card.dataset.watchedVideoId === videoId) {
-        card.style.display = '';
+      if ((card.dataset.watchedHidden === 'true' || card.dataset.watchedDimmed === 'true') && card.dataset.watchedVideoId === videoId) {
+        if (card.dataset.watchedHidden === 'true' && card.dataset.shortsHidden !== 'true' && card.dataset.movieHidden !== 'true') card.style.display = '';
         delete card.dataset.watchedHidden;
+        delete card.dataset.watchedDimmed;
         delete card.dataset.watchedVideoId;
       }
       if (!e.contextInvalidated) console.error('[YT-Watched-Hider] Error recording seekbar video:', e);
@@ -1091,10 +1094,11 @@ window._ytWatchedHider = (() => {
         const videoId = getVideoIdFromHref(link.href);
         if (!videoId) continue;
 
-        if (card.dataset.watchedHidden === 'true') {
+        if (card.dataset.watchedHidden === 'true' || card.dataset.watchedDimmed === 'true') {
           if (card.dataset.watchedVideoId === videoId) continue;
-          card.style.display = '';
+          if (card.dataset.watchedHidden === 'true' && card.dataset.shortsHidden !== 'true' && card.dataset.movieHidden !== 'true') card.style.display = '';
           delete card.dataset.watchedHidden;
+          delete card.dataset.watchedDimmed;
           delete card.dataset.watchedVideoId;
         }
 
@@ -1153,6 +1157,7 @@ window._ytWatchedHider = (() => {
         for (const [videoId, isWatched] of Object.entries(results)) {
           const matchingCards = cardMap.get(videoId) || [];
           if (isWatched === true) {
+            if (!enabled) continue;
             rememberWatched(videoId);
             for (const card of matchingCards) {
               hideCard(card, videoId);
@@ -1174,7 +1179,7 @@ window._ytWatchedHider = (() => {
 
       const totalHidden = hiddenBySeekbar + hiddenByCache + hiddenByDb;
       if (totalHidden > 0) {
-        console.log(`[YT-Watched-Hider] Hidden ${totalHidden} videos (seekbar: ${hiddenBySeekbar}, cache: ${hiddenByCache}, db: ${hiddenByDb})`);
+        console.log(`[YT-Watched-Hider] Processed ${totalHidden} watched videos (seekbar: ${hiddenBySeekbar}, cache: ${hiddenByCache}, db: ${hiddenByDb})`);
       }
     } catch (e) {
       if (!e.contextInvalidated) console.error('[YT-Watched-Hider] Error processing page:', e);
@@ -1193,16 +1198,21 @@ window._ytWatchedHider = (() => {
       card.dataset.watchedCheckedId = videoId;
       return;
     }
-    card.style.display = 'none';
-    card.dataset.watchedHidden = 'true';
+    if (watchedDisplaySettings.dimWatched) {
+      card.dataset.watchedDimmed = 'true';
+    } else {
+      card.style.display = 'none';
+      card.dataset.watchedHidden = 'true';
+    }
     card.dataset.watchedVideoId = videoId;
   }
 
   function showAllCards() {
-    const hidden = document.querySelectorAll('[data-watched-hidden="true"]');
+    const hidden = document.querySelectorAll('[data-watched-hidden="true"], [data-watched-dimmed="true"]');
     for (const card of hidden) {
-      card.style.display = '';
+      if (card.dataset.watchedHidden === 'true' && card.dataset.shortsHidden !== 'true' && card.dataset.movieHidden !== 'true') card.style.display = '';
       delete card.dataset.watchedHidden;
+      delete card.dataset.watchedDimmed;
       delete card.dataset.watchedVideoId;
     }
     const checked = document.querySelectorAll('[data-watched-checked-id]');
@@ -1214,11 +1224,12 @@ window._ytWatchedHider = (() => {
   function showCardsForVideoIds(videoIds) {
     const ids = new Set((videoIds || []).filter(Boolean));
     if (ids.size === 0) return;
-    const hidden = document.querySelectorAll('[data-watched-hidden="true"]');
+    const hidden = document.querySelectorAll('[data-watched-hidden="true"], [data-watched-dimmed="true"]');
     for (const card of hidden) {
       if (!ids.has(card.dataset.watchedVideoId)) continue;
-      card.style.display = '';
+      if (card.dataset.watchedHidden === 'true' && card.dataset.shortsHidden !== 'true' && card.dataset.movieHidden !== 'true') card.style.display = '';
       delete card.dataset.watchedHidden;
+      delete card.dataset.watchedDimmed;
       delete card.dataset.watchedVideoId;
     }
     const checked = document.querySelectorAll('[data-watched-checked-id]');
@@ -1804,9 +1815,10 @@ window._ytWatchedHider = (() => {
     showAllShorts();
     showAllMovies();
     // Reset flags on navigation (sidebar content changes)
-    for (const card of document.querySelectorAll('[data-watched-hidden="true"]')) {
-      card.style.display = '';
+    for (const card of document.querySelectorAll('[data-watched-hidden="true"], [data-watched-dimmed="true"]')) {
+      if (card.dataset.watchedHidden === 'true' && card.dataset.shortsHidden !== 'true' && card.dataset.movieHidden !== 'true') card.style.display = '';
       delete card.dataset.watchedHidden;
+      delete card.dataset.watchedDimmed;
       delete card.dataset.watchedVideoId;
     }
     for (const card of document.querySelectorAll('[data-watched-checked-id]')) {
@@ -1868,11 +1880,12 @@ window._ytWatchedHider = (() => {
 
         // Detect recycled DOM: if the card was hidden/checked for a DIFFERENT video,
         // reset it because YouTube reused this DOM element for new content
-        if (card.dataset.watchedHidden === 'true') {
+        if (card.dataset.watchedHidden === 'true' || card.dataset.watchedDimmed === 'true') {
           if (card.dataset.watchedVideoId === videoId) continue; // still same video, stay hidden
           // DOM recycled — un-hide and re-check
-          card.style.display = '';
+          if (card.dataset.watchedHidden === 'true' && card.dataset.shortsHidden !== 'true' && card.dataset.movieHidden !== 'true') card.style.display = '';
           delete card.dataset.watchedHidden;
+          delete card.dataset.watchedDimmed;
           delete card.dataset.watchedVideoId;
         }
 
@@ -1922,6 +1935,7 @@ window._ytWatchedHider = (() => {
       for (const { card, videoId } of unchecked) {
         const isWatched = results[videoId];
         if (isWatched === true) {
+          if (!enabled) continue;
           rememberWatched(videoId);
           hideCard(card, videoId);
         } else if (isWatched === false) {

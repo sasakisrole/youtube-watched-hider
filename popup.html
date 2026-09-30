@@ -62,6 +62,14 @@
         <input type="number" id="watchedThreshold" min="1" max="100" step="any" value="95" aria-labelledby="watchedThresholdLabel" aria-describedby="watchedThresholdDesc" style="width:64px">
       </div>
       <div class="setting-desc" id="watchedThresholdDesc" data-i18n="popup_watchedThresholdHelp">1〜100％（既定95％）。範囲外や数値でない値は95％に戻ります。登録済みの視聴記録は変更しません。</div>
+      <div class="setting-item">
+        <span class="setting-label" id="dimWatchedLabel" data-i18n="popup_dimWatched">視聴済みを半透明で表示する</span>
+        <label class="toggle toggle-small">
+          <input type="checkbox" id="dimWatched" aria-labelledby="dimWatchedLabel" aria-describedby="dimWatchedDesc">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="setting-desc" id="dimWatchedDesc" data-i18n="popup_dimWatchedHelp">オンにすると視聴済みを消さずに薄く表示し、マウスを乗せると元の濃さに戻ります。</div>
       <h2 class="settings-heading" data-i18n="popup_pageVisibility">ページ別の非表示</h2>
       <div class="setting-desc" data-i18n="popup_pageVisibilityHelp">オフにしたページでは動画を隠しません。視聴記録は継続します。</div>
       <div class="setting-item">

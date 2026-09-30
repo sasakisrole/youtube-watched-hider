@@ -349,7 +349,7 @@ function loadHistory() {
 // Watched display settings use the same local storage and tab message pattern.
 const watchedThresholdInput = document.getElementById('watchedThreshold');
 const watchedDisplayDefaults = {
-  watchedThreshold: 95, hideOnHome: true, hideOnSubscriptions: true, hideOnChannel: true,
+  watchedThreshold: 95, dimWatched: false, hideOnHome: true, hideOnSubscriptions: true, hideOnChannel: true,
   hideOnSearch: true, hideOnRelated: true, showSearchFilter: true,
 };
 const pageToggleKeys = ['hideOnHome', 'hideOnSubscriptions', 'hideOnChannel', 'hideOnSearch', 'hideOnRelated', 'showSearchFilter'];
@@ -358,6 +358,7 @@ function normalizeWatchedThreshold(value) {
 }
 chrome.storage.local.get(watchedDisplayDefaults, (settings) => {
   watchedThresholdInput.value = normalizeWatchedThreshold(settings.watchedThreshold);
+  document.getElementById('dimWatched').checked = settings.dimWatched === true;
   for (const key of pageToggleKeys) document.getElementById(key).checked = settings[key] !== false;
 });
 function saveWatchedDisplaySetting(key, value) {
@@ -380,6 +381,9 @@ watchedThresholdInput.addEventListener('change', () => {
   const value = normalizeWatchedThreshold(watchedThresholdInput.valueAsNumber);
   watchedThresholdInput.value = value;
   saveWatchedDisplaySetting('watchedThreshold', value);
+});
+document.getElementById('dimWatched').addEventListener('change', (event) => {
+  saveWatchedDisplaySetting('dimWatched', event.target.checked);
 });
 for (const key of pageToggleKeys) {
   document.getElementById(key).addEventListener('change', (event) => {

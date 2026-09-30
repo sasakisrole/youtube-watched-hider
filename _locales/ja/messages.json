@@ -1,4 +1,10 @@
 {
+  "popup_dimWatched": {
+    "message": "視聴済みを半透明で表示する"
+  },
+  "popup_dimWatchedHelp": {
+    "message": "オンにすると視聴済みを消さずに薄く表示し、マウスを乗せると元の濃さに戻ります。"
+  },
   "popup_hideChannel": {
     "message": "各チャンネルページで隠す"
   },
