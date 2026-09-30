@@ -76,6 +76,8 @@
     persistedMode: MODE.ALL,
     loadPromise: null,
     storageChangeGeneration: 0,
+    showSearchFilter: !hasStorageLocal(),
+    visibilityChangeGeneration: 0,
     saveQueue: Promise.resolve(),
     observer: null,
     scanTimer: null,
@@ -266,7 +268,7 @@
     }
   }
 
-  function storageLocalGet() {
+  function storageLocalGet(key = STORAGE_KEY) {
     return new Promise((resolve, reject) => {
       let settled = false;
       const finish = (result) => {
@@ -277,7 +279,7 @@
         else resolve(result || {});
       };
       try {
-        const pending = globalThis.chrome.storage.local.get(STORAGE_KEY, finish);
+        const pending = globalThis.chrome.storage.local.get(key, finish);
         if (pending?.then) {
           pending.then(finish, (error) => {
             if (settled) return;
@@ -851,7 +853,7 @@
   }
 
   function scanSearchResults() {
-    if (state.disposed || !isSearchPage()) return;
+    if (state.disposed || !state.showSearchFilter || !isSearchPage()) return;
 
     const profile = resolveEffectiveState();
     const cards = getSearchVideoCards();
@@ -894,6 +896,23 @@
     state.persistedMode = settings.globalMode;
     initializePage();
     renderManagementState();
+  }
+
+  async function loadVisibility() {
+    const generation = state.visibilityChangeGeneration;
+    let visible = true;
+    if (hasStorageLocal()) {
+      try {
+        const stored = await storageLocalGet('showSearchFilter');
+        visible = stored.showSearchFilter !== false;
+      } catch {
+        // Missing or unreadable settings preserve the default display.
+      }
+    }
+    if (!state.disposed && generation === state.visibilityChangeGeneration) {
+      state.showSearchFilter = visible;
+      initializePage();
+    }
   }
 
   async function loadSettings() {
@@ -1243,14 +1262,16 @@
   }
 
   function onStorageChanged(changes, areaName) {
-    if (
-      state.disposed ||
-      areaName !== 'local' ||
-      !changes ||
-      !Object.prototype.hasOwnProperty.call(changes, STORAGE_KEY)
-    ) return;
-    state.storageChangeGeneration += 1;
-    applySettings(sanitizeSettings(changes[STORAGE_KEY]?.newValue));
+    if (state.disposed || areaName !== 'local' || !changes) return;
+    if (Object.prototype.hasOwnProperty.call(changes, 'showSearchFilter')) {
+      state.visibilityChangeGeneration += 1;
+      state.showSearchFilter = changes.showSearchFilter?.newValue !== false;
+      initializePage();
+    }
+    if (Object.prototype.hasOwnProperty.call(changes, STORAGE_KEY)) {
+      state.storageChangeGeneration += 1;
+      applySettings(sanitizeSettings(changes[STORAGE_KEY]?.newValue));
+    }
   }
 
   function scheduleScan(delayMs = 50) {
@@ -2050,7 +2071,7 @@
   }
 
   function ensurePanel() {
-    if (!isSearchPage() || !document.body) return null;
+    if (!state.showSearchFilter || !isSearchPage() || !document.body) return null;
 
     let panel = document.getElementById?.(PANEL_ID);
     if (panel) return panel;
@@ -2244,7 +2265,7 @@
   function initializePage() {
     if (state.disposed) return;
 
-    if (!isSearchPage()) {
+    if (!state.showSearchFilter || !isSearchPage()) {
       cleanupSearchPage();
       return;
     }
@@ -2274,7 +2295,7 @@
   }
 
   function onMutation(mutations) {
-    if (!isSearchPage()) {
+    if (!state.showSearchFilter || !isSearchPage()) {
       cleanupSearchPage();
       return;
     }
@@ -2307,7 +2328,7 @@
   globalThis._ywhOfficialSearchFilter = controller;
 
   initializePage();
-  state.loadPromise = loadSettings();
+  state.loadPromise = Promise.all([loadVisibility(), loadSettings()]);
 
   if (typeof MutationObserver === 'function' && document.body) {
     state.observer = new MutationObserver(onMutation);

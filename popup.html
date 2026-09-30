@@ -78,6 +78,13 @@
         </label>
       </div>
       <div class="setting-item">
+        <span class="setting-label" id="hideOnChannelLabel" data-i18n="popup_hideChannel">チャンネルページで隠す</span>
+        <label class="toggle toggle-small">
+          <input type="checkbox" id="hideOnChannel" checked aria-labelledby="hideOnChannelLabel">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="setting-item">
         <span class="setting-label" id="hideOnSearchLabel" data-i18n="popup_hideSearch">検索結果で隠す</span>
         <label class="toggle toggle-small">
           <input type="checkbox" id="hideOnSearch" checked aria-labelledby="hideOnSearchLabel">
@@ -91,7 +98,7 @@
           <span class="slider"></span>
         </label>
       </div>
-      <div class="setting-desc" data-i18n="popup_pageVisibilityHelp">オフのページでは動画を隠しません。視聴記録は継続します。関連動画は視聴ページが対象です。</div>
+      <div class="setting-desc" data-i18n="popup_pageVisibilityHelp">オフのページでは動画を隠しません。視聴記録は継続します。関連動画は視聴ページが対象です。チャンネルページは、各チャンネルのトップと動画・ショートなどのタブが対象です。</div>
 
       <div class="setting-item">
         <span class="setting-label" id="hideShortsLabel" data-i18n="popup_hideShorts">ショート動画を隠す</span>
@@ -110,6 +117,14 @@
         </label>
       </div>
       <div class="setting-desc" data-i18n="popup_hideMoviesHelp">映画・番組を一覧から非表示にする</div>
+      <div class="setting-item">
+        <span class="setting-label" id="showSearchFilterLabel" data-i18n="popup_showSearchFilter">検索フィルターを表示する</span>
+        <label class="toggle toggle-small">
+          <input type="checkbox" id="showSearchFilter" checked aria-labelledby="showSearchFilterLabel">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="setting-desc" data-i18n="popup_showSearchFilterHelp">オフにすると公式優先検索フィルターを表示せず、結果の絞り込みも止めます。</div>
 
       <h2 class="settings-heading" data-i18n="popup_recording">記録</h2>
 

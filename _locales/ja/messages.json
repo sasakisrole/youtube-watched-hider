@@ -1,4 +1,13 @@
 {
+  "popup_hideChannel": {
+    "message": "チャンネルページで隠す"
+  },
+  "popup_showSearchFilter": {
+    "message": "検索フィルターを表示する"
+  },
+  "popup_showSearchFilterHelp": {
+    "message": "オフにすると公式優先検索フィルターを表示せず、結果の絞り込みも止めます。"
+  },
   "whatsnew_title": {
     "message": "使い方と更新情報 - YouTube Watched Hider"
   },
@@ -293,7 +302,7 @@
     "message": "関連動画で隠す"
   },
   "popup_pageVisibilityHelp": {
-    "message": "オフのページでは動画を隠しません。視聴記録は継続します。関連動画は視聴ページが対象です。"
+    "message": "オフのページでは動画を隠しません。視聴記録は継続します。関連動画は視聴ページが対象です。チャンネルページは、各チャンネルのトップと動画・ショートなどのタブが対象です。"
   },
   "popup_hideShorts": {
     "message": "ショート動画を隠す"

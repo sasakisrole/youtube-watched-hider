@@ -1,4 +1,13 @@
 {
+  "popup_hideChannel": {
+    "message": "Hide on channel pages"
+  },
+  "popup_showSearchFilter": {
+    "message": "Show search filter"
+  },
+  "popup_showSearchFilterHelp": {
+    "message": "When off, hides the official-first search filter and stops filtering results."
+  },
   "whatsnew_title": {
     "message": "Guide and release notes - YouTube Watched Hider"
   },
@@ -293,7 +302,7 @@
     "message": "Hide related videos"
   },
   "popup_pageVisibilityHelp": {
-    "message": "Videos stay visible on pages where hiding is off. Watch history is still recorded. Related videos refers to suggestions on watch pages."
+    "message": "Videos stay visible on pages where hiding is off. Watch history is still recorded. Related videos refers to suggestions on watch pages. Channel pages include each channel's home and its tabs, such as Videos and Shorts."
   },
   "popup_hideShorts": {
     "message": "Hide Shorts"

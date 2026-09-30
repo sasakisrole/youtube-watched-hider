@@ -349,10 +349,10 @@ function loadHistory() {
 // Watched display settings use the same local storage and tab message pattern.
 const watchedThresholdInput = document.getElementById('watchedThreshold');
 const watchedDisplayDefaults = {
-  watchedThreshold: 95, hideOnHome: true, hideOnSubscriptions: true,
-  hideOnSearch: true, hideOnRelated: true,
+  watchedThreshold: 95, hideOnHome: true, hideOnSubscriptions: true, hideOnChannel: true,
+  hideOnSearch: true, hideOnRelated: true, showSearchFilter: true,
 };
-const pageToggleKeys = ['hideOnHome', 'hideOnSubscriptions', 'hideOnSearch', 'hideOnRelated'];
+const pageToggleKeys = ['hideOnHome', 'hideOnSubscriptions', 'hideOnChannel', 'hideOnSearch', 'hideOnRelated', 'showSearchFilter'];
 function normalizeWatchedThreshold(value) {
   return typeof value === 'number' && Number.isFinite(value) && value >= 1 && value <= 100 ? value : 95;
 }

@@ -43,6 +43,7 @@ window._ytWatchedHider = (() => {
     watchedThreshold: 95,
     hideOnHome: true,
     hideOnSubscriptions: true,
+    hideOnChannel: true,
     hideOnSearch: true,
     hideOnRelated: true,
   };
@@ -52,13 +53,16 @@ window._ytWatchedHider = (() => {
     const value = settings.watchedThreshold;
     WATCHED_THRESHOLD = typeof value === 'number' && Number.isFinite(value) && value >= 1 && value <= 100 ? value : 95;
     watchedDisplaySettings = { ...WATCHED_DISPLAY_DEFAULTS, watchedThreshold: WATCHED_THRESHOLD };
-    for (const key of ['hideOnHome', 'hideOnSubscriptions', 'hideOnSearch', 'hideOnRelated']) {
+    for (const key of ['hideOnHome', 'hideOnSubscriptions', 'hideOnChannel', 'hideOnSearch', 'hideOnRelated']) {
       watchedDisplaySettings[key] = settings[key] !== false;
     }
   }
 
   function shouldHideOnCurrentPage() {
     const path = location.pathname.replace(/\/+$/, '') || '/';
+    if (/^\/(?:@[^/]+|(?:channel|c|user)\/[^/]+)(?:\/|$)/.test(path)) {
+      return watchedDisplaySettings.hideOnChannel;
+    }
     const key = { '/': 'hideOnHome', '/feed/subscriptions': 'hideOnSubscriptions',
       '/results': 'hideOnSearch', '/watch': 'hideOnRelated' }[path];
     return !key || watchedDisplaySettings[key];
