@@ -3,7 +3,7 @@
     "message": "Hide on channel pages"
   },
   "popup_showSearchFilter": {
-    "message": "Show search filter"
+    "message": "Show search filter (Beta)"
   },
   "popup_showSearchFilterHelp": {
     "message": "When off, hides the official-first search filter and stops filtering results."
@@ -1100,7 +1100,7 @@
     "message": "Registered official channels"
   },
   "officialOfficialFirstSearchFilter": {
-    "message": "Official first search filter"
+    "message": "Official first search filter (Beta)"
   },
   "officialHideOtherChannelsShowOfficialAndTopicChannels": {
     "message": "Hide other channels. Show official and Topic channels"

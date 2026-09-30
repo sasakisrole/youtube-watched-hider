@@ -2080,7 +2080,7 @@
     panel = document.createElement('section');
     panel.id = PANEL_ID;
     panel.setAttribute('role', 'region');
-    panel.setAttribute('aria-label', officialMessage('officialOfficialFirstSearchFilter', '公式優先検索フィルター'));
+    panel.setAttribute('aria-label', officialMessage('officialOfficialFirstSearchFilter', '公式優先検索フィルター（試験中）'));
     panel.dataset.expanded = 'false';
 
     const handle = document.createElement('div');
@@ -2143,7 +2143,7 @@
       header,
       'h2',
       'ywh-osf-panel__title',
-      officialMessage('officialOfficialFirstSearchFilter', '公式優先検索フィルター')
+      officialMessage('officialOfficialFirstSearchFilter', '公式優先検索フィルター（試験中）')
     );
     heading.id = 'ywh-osf-title';
     expandedContent.appendChild(header);
