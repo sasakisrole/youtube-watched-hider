@@ -34,9 +34,9 @@ test('REQ-1 channel toggle order and live broadcast', () => {
 test('REQ-4 localized channel label and help scope', () => {
   for (const lang of ['ja', 'en']) {
     const messages = JSON.parse(read(`_locales/${lang}/messages.json`));
-    assert.equal(messages.popup_hideChannel.message, lang === 'ja' ? 'チャンネルページで隠す' : 'Hide on channel pages');
+    assert.equal(messages.popup_hideChannel.message, lang === 'ja' ? '各チャンネルページで隠す' : 'Hide on channel pages');
     const help = messages.popup_pageVisibilityHelp.message;
-    assert(help.includes(lang === 'ja' ? 'チャンネルページは' : 'Channel pages include'), 'channel scope sentence');
+    assert(help.includes(lang === 'ja' ? '各チャンネルページは' : 'Channel pages means'), 'channel scope sentence');
     assert(html.includes('data-i18n="popup_hideChannel"'));
   }
 });
