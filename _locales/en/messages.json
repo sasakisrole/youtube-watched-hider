@@ -2,6 +2,15 @@
   "popup_hideChannel": {
     "message": "Hide on channel pages"
   },
+  "popup_hideSubscriptionsHelp": {
+    "message": "The Subscriptions feed in the left menu."
+  },
+  "popup_hideChannelHelp": {
+    "message": "Each channel's home and its tabs, such as Videos and Shorts."
+  },
+  "popup_hideRelatedHelp": {
+    "message": "Suggestions shown beside the video on watch pages."
+  },
   "popup_showSearchFilter": {
     "message": "Show search filter (Beta)"
   },
@@ -302,7 +311,7 @@
     "message": "Hide related videos"
   },
   "popup_pageVisibilityHelp": {
-    "message": "Videos stay visible on pages where hiding is off. Watch history is still recorded. Subscriptions means the Subscriptions feed in the left menu. Channel pages means each channel's home and its tabs, such as Videos and Shorts. Related videos refers to suggestions on watch pages."
+    "message": "Videos stay visible on pages where hiding is off. Watch history is still recorded."
   },
   "popup_hideShorts": {
     "message": "Hide Shorts"

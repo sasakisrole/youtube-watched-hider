@@ -2,6 +2,15 @@
   "popup_hideChannel": {
     "message": "各チャンネルページで隠す"
   },
+  "popup_hideSubscriptionsHelp": {
+    "message": "左メニューの「登録チャンネル」（登録先の新着一覧）が対象です。"
+  },
+  "popup_hideChannelHelp": {
+    "message": "チャンネルごとのトップや動画・ショートなどのタブが対象です。"
+  },
+  "popup_hideRelatedHelp": {
+    "message": "動画の視聴ページの横に出る関連動画が対象です。"
+  },
   "popup_showSearchFilter": {
     "message": "検索フィルターを表示する（試験中）"
   },
@@ -302,7 +311,7 @@
     "message": "関連動画で隠す"
   },
   "popup_pageVisibilityHelp": {
-    "message": "オフのページでは動画を隠しません。視聴記録は継続します。登録チャンネルは左メニューの「登録チャンネル」（新着の一覧）、各チャンネルページはチャンネルごとのトップや動画・ショートなどのタブ、関連動画は視聴ページが対象です。"
+    "message": "オフにしたページでは動画を隠しません。視聴記録は継続します。"
   },
   "popup_hideShorts": {
     "message": "ショート動画を隠す"
