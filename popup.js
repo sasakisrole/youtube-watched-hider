@@ -351,6 +351,7 @@ const watchedThresholdInput = document.getElementById('watchedThreshold');
 const watchedDisplayDefaults = {
   playlistCardMode: 'never',
   playlistCardPlaces: null,
+  hideCompletedPlaylists: false,
   watchedThreshold: 95, dimWatched: false, hideOnHome: true, hideOnSubscriptions: true, hideOnChannel: true, hideOnPlaylist: true,
   hideOnSearch: true, hideOnRelated: true, showSearchFilter: true,
 };
@@ -373,6 +374,7 @@ function normalizeWatchedThreshold(value) {
 chrome.storage.local.get(watchedDisplayDefaults, (settings) => {
   watchedThresholdInput.value = normalizeWatchedThreshold(settings.watchedThreshold);
   document.getElementById('dimWatched').checked = settings.dimWatched === true;
+  document.getElementById('hideCompletedPlaylists').checked = settings.hideCompletedPlaylists === true;
   const mode = normalizePlaylistCardMode(settings.playlistCardMode);
   document.getElementById('playlistCardMode').value = mode;
   document.getElementById('playlistCardPlaces').hidden = mode !== 'hide';
@@ -405,6 +407,9 @@ watchedThresholdInput.addEventListener('change', () => {
 });
 document.getElementById('dimWatched').addEventListener('change', (event) => {
   saveWatchedDisplaySetting('dimWatched', event.target.checked);
+});
+document.getElementById('hideCompletedPlaylists').addEventListener('change', (event) => {
+  saveWatchedDisplaySetting('hideCompletedPlaylists', event.target.checked);
 });
 document.getElementById('playlistCardMode').addEventListener('change', (event) => {
   const value = normalizePlaylistCardMode(event.target.value);

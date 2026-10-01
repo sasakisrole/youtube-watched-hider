@@ -3495,5 +3495,11 @@
   },
   "history_scripts_search_role_arranger": {
     "message": "編曲者"
+  },
+  "popup_hideCompletedPlaylists": {
+    "message": "見終えた再生リストを隠す（試験中）"
+  },
+  "popup_hideCompletedPlaylistsHelp": {
+    "message": "再生リスト一覧で、再生できる動画がすべて視聴済みのリストを隠します。半透明表示にも対応。「後で見る」「高く評価した動画」とミックスは対象外です。300本まで確認し、結果は本数の変化または7日後に更新します。上の「プレイリストのカード」で再生リスト一覧を隠す設定にしていると、そちらが優先されます。"
   }
 }

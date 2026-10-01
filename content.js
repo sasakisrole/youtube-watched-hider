@@ -47,6 +47,7 @@ window._ytWatchedHider = (() => {
     dimWatched: false,
     playlistCardMode: 'never',
     playlistCardPlaces: null,
+    hideCompletedPlaylists: false,
     hideOnHome: true,
     hideOnSubscriptions: true,
     hideOnChannel: true,
@@ -61,6 +62,7 @@ window._ytWatchedHider = (() => {
     WATCHED_THRESHOLD = typeof value === 'number' && Number.isFinite(value) && value >= 1 && value <= 100 ? value : 95;
     watchedDisplaySettings = { ...WATCHED_DISPLAY_DEFAULTS, watchedThreshold: WATCHED_THRESHOLD };
     watchedDisplaySettings.dimWatched = settings.dimWatched === true;
+    watchedDisplaySettings.hideCompletedPlaylists = settings.hideCompletedPlaylists === true;
     watchedDisplaySettings.playlistCardMode = ['hide', 'search_related', 'everywhere'].includes(settings.playlistCardMode) ? 'hide' : 'never';
     const defaults = { home: true, search: true, related: true, subscriptions: false, channel: false, playlists: false };
     const places = settings.playlistCardPlaces;
@@ -98,7 +100,11 @@ window._ytWatchedHider = (() => {
         '/feed/subscriptions': 'subscriptions', '/feed/playlists': 'playlists' }[path];
     const shouldHide = mode === 'hide' && watchedDisplaySettings.playlistCardPlaces?.[place] === true &&
       (place !== 'related' || !!card.closest?.('#related, ytd-watch-next-secondary-results-renderer'));
-    if (!enabled || !shouldHide) return;
+    if (!enabled) return;
+    if (!shouldHide) {
+      if (watchedDisplaySettings.hideCompletedPlaylists === true) queuePlaylistAllWatchedCard(card);
+      return;
+    }
     if (watchedDisplaySettings.dimWatched) {
       card.dataset.watchedDimmed = 'true';
     } else {
@@ -106,6 +112,309 @@ window._ytWatchedHider = (() => {
       card.dataset.watchedHidden = 'true';
     }
   }
+
+  // Playlist completion feature: begin
+  // Only explicit, fully enumerated playability is accepted. Unknown layouts stay visible.
+  const PLAYLIST_ALL_WATCHED_TTL = 7 * 24 * 60 * 60 * 1000;
+  let playlistAllWatchedGeneration = 0;
+  let playlistAllWatchedFailures = 0;
+  let playlistAllWatchedObserver = null;
+  let playlistAllWatchedCards = new WeakMap();
+  let playlistAllWatchedQueue = [];
+  let playlistAllWatchedRunning = false;
+  let playlistAllWatchedFetchController = null;
+  let playlistAllWatchedLastFetch = 0;
+
+  function playlistAllWatchedEligible(listId) {
+    return typeof listId === 'string' && /^[A-Za-z0-9_-]+$/.test(listId) &&
+      !listId.startsWith('RD') && listId !== 'WL' && listId !== 'LL';
+  }
+
+  function playlistAllWatchedActive(generation = playlistAllWatchedGeneration) {
+    return enabled && watchedDisplaySettings.hideCompletedPlaylists === true &&
+      location.pathname.replace(/\/+$/, '') === '/feed/playlists' &&
+      !contextInvalidated && generation === playlistAllWatchedGeneration && playlistAllWatchedFailures < 3;
+  }
+
+  function playlistAllWatchedCacheFresh(entry, videoCount, now = Date.now()) {
+    return !!entry && Number.isSafeInteger(videoCount) && videoCount >= 0 &&
+      entry.videoCount === videoCount && typeof entry.allWatched === 'boolean' &&
+      Number.isFinite(entry.checkedAt) && now >= entry.checkedAt && now - entry.checkedAt < PLAYLIST_ALL_WATCHED_TTL;
+  }
+
+  function evaluatePlaylistAllWatched(listId, entries, watched, overLimit = false) {
+    if (!playlistAllWatchedEligible(listId) || overLimit || entries.length > 300) {
+      return { allWatched: false, unwatchedCount: null, skipped: true };
+    }
+    const playable = entries.filter(entry => {
+      if (typeof entry.isPlayable !== 'boolean') throw new Error('unknown-playability');
+      return entry.isPlayable;
+    });
+    let unwatchedCount = 0;
+    for (const entry of playable) {
+      if (!/^[A-Za-z0-9_-]{11}$/.test(entry.videoId || '') || typeof watched?.[entry.videoId] !== 'boolean') {
+        throw new Error('incomplete-watched-lookup');
+      }
+      if (!watched[entry.videoId]) unwatchedCount++;
+    }
+    return { allWatched: playable.length > 0 && unwatchedCount === 0, unwatchedCount };
+  }
+
+  function parsePlaylistAllWatchedPage(data, continuationPage = false) {
+    if (!data || data.error || data.responseContext?.mainAppWebResponseContext?.loggedOut === true) {
+      throw new Error('invalid-browse-response');
+    }
+    const unsupported = reason => Object.assign(new Error(reason), { playlistUnsupported: true });
+    const containers = [];
+    let lockupLayout = false;
+    if (continuationPage) {
+      for (const action of [...(data.onResponseReceivedActions || []), ...(data.onResponseReceivedEndpoints || [])]) {
+        const items = action.appendContinuationItemsAction?.continuationItems;
+        if (Array.isArray(items)) containers.push(items);
+      }
+    } else {
+      const walk = node => {
+        if (!node || typeof node !== 'object') return;
+        if (node.playlistVideoListRenderer) {
+          const list = node.playlistVideoListRenderer;
+          if (!Array.isArray(list.contents) || list.continuations?.length) throw unsupported('unknown-playlist-layout');
+          containers.push(list.contents);
+          return;
+        }
+        for (const value of Object.values(node)) walk(value);
+      };
+      // Do not scan headers/sidebar/recommendations for an apparent playlist body.
+      walk(data.contents);
+      // Only accept the observed initial-page path, never loose/recommended lockups.
+      const tabs = data.contents?.twoColumnBrowseResultsRenderer?.tabs;
+      if (Array.isArray(tabs)) {
+        for (const tab of tabs) {
+          const section = tab?.tabRenderer?.content?.sectionListRenderer;
+          const sections = section?.contents;
+          if (!Array.isArray(sections)) continue;
+          const hasLockups = sections.some(item => Array.isArray(item?.itemSectionRenderer?.contents) &&
+            item.itemSectionRenderer.contents.some(entry => entry?.lockupViewModel));
+          if (!hasLockups) continue;
+          if (tabs.length !== 1 || sections.length !== 1 ||
+              Object.keys(sections[0]).some(key => key !== 'itemSectionRenderer')) {
+            throw unsupported('unknown-playlist-layout');
+          }
+          // Lockup continuations are not verified. Reject tokens even on enclosing sections.
+          const hasContinuation = node => !!node && typeof node === 'object' &&
+            Object.entries(node).some(([key, value]) =>
+              /continuation/i.test(key) ? !!value && (!Array.isArray(value) || value.length > 0) : hasContinuation(value));
+          if (hasContinuation(section)) throw unsupported('unsupported-lockup-continuation');
+          containers.push(sections[0].itemSectionRenderer.contents);
+          lockupLayout = true;
+        }
+      }
+    }
+    if (containers.length !== 1) throw unsupported('unproven-playlist-body');
+    const entries = [];
+    let continuation = '';
+    for (const item of containers[0]) {
+      if (!item || typeof item !== 'object') throw unsupported('unknown-playlist-entry');
+      if (lockupLayout) {
+        const video = item.lockupViewModel;
+        if (Object.keys(item).length !== 1 || video?.contentType !== 'LOCKUP_CONTENT_TYPE_VIDEO' ||
+            !/^[A-Za-z0-9_-]{11}$/.test(video.contentId || '')) throw unsupported('unknown-playlist-entry');
+        // No playability field exists here; unknown/deleted IDs remain in the denominator.
+        entries.push({ videoId: video.contentId, isPlayable: true });
+        continue;
+      }
+      const video = item.playlistVideoRenderer;
+      if (video) {
+        if (typeof video.isPlayable !== 'boolean' ||
+            (video.isPlayable && !/^[A-Za-z0-9_-]{11}$/.test(video.videoId || ''))) throw unsupported('unknown-playability');
+        entries.push({ videoId: video.videoId || '', isPlayable: video.isPlayable });
+      } else if (item.continuationItemRenderer) {
+        const token = item.continuationItemRenderer.continuationEndpoint?.continuationCommand?.token;
+        if (continuation || typeof token !== 'string' || !token) throw unsupported('invalid-continuation');
+        continuation = token;
+      } else {
+        throw unsupported('unknown-playlist-entry');
+      }
+    }
+    if (!entries.length && continuation) throw unsupported('empty-continuation-page');
+    return { entries, continuation };
+  }
+
+  function playlistAllWatchedContext() {
+    const html = document.documentElement?.innerHTML || '';
+    const sync = getYouTubeSyncContext();
+    const clientVersion = (html.match(/"INNERTUBE_CLIENT_VERSION"\s*:\s*"([^"]+)"/) || [])[1];
+    // 2026-10 live pages expose only DATASYNC_ID; it is the stable per-account cache key there.
+    const accountId = sync.accountId || (html.match(/"DATASYNC_ID"\s*:\s*"([^"]+)"/) || [])[1] || '';
+    // SESSION_INDEX alone also exists when signed out. Require positive login evidence.
+    if (!sync.success || !accountId || !clientVersion || !/"LOGGED_IN"\s*:\s*true/.test(html) ||
+        !/(?:^|;\s*)(?:SAPISID|__Secure-3PAPISID|__Secure-1PAPISID)=([^;]+)/.test(document.cookie || '')) return null;
+    return { ...sync, accountId, clientVersion };
+  }
+
+  async function fetchPlaylistAllWatchedPage(body, context, generation) {
+    const wait = Math.max(0, 500 - (Date.now() - playlistAllWatchedLastFetch));
+    if (wait) await new Promise(resolve => setTimeout(resolve, wait));
+    if (!playlistAllWatchedActive(generation)) throw new Error('cancelled');
+    try {
+      return await new Promise((resolve, reject) => {
+        onMessage({ type: 'FETCH_INNERTUBE_BROWSE', authUser: context.authUser,
+          clientVersion: context.clientVersion, body, playlistCompletionGeneration: generation }, {}, response => {
+          if (response?.success && response.data) resolve(response.data);
+          else reject(new Error('browse-failed'));
+        });
+      });
+    } finally {
+      // At least 500 ms from the completion of one browse request to the next.
+      playlistAllWatchedLastFetch = Date.now();
+    }
+  }
+
+  async function checkPlaylistAllWatched(meta, generation) {
+    if (!playlistAllWatchedActive(generation) || !playlistAllWatchedEligible(meta.listId) ||
+        !Number.isSafeInteger(meta.videoCount) || meta.videoCount < 0) return null;
+    try {
+      const context = playlistAllWatchedContext();
+      if (!context) throw new Error('logged-out-or-unknown-context');
+      const stillCurrent = () => {
+        const current = playlistAllWatchedContext();
+        return playlistAllWatchedActive(generation) && current?.accountId === context.accountId && current?.authUser === context.authUser;
+      };
+      // Account scoped individual keys avoid read/modify/write races between tabs.
+      const key = 'playlistAllWatched.v1.' + encodeURIComponent(context.accountId) + '.' + context.authUser + '.' + meta.listId;
+      const cached = (await chrome.storage.local.get(key))[key];
+      if (!stillCurrent()) return null;
+      if (playlistAllWatchedCacheFresh(cached, meta.videoCount)) {
+        playlistAllWatchedFailures = 0;
+        return cached;
+      }
+      const entries = [];
+      let continuation = '', overLimit = meta.videoCount > 300, unsupported = false;
+      const tokens = new Set();
+      if (!overLimit) {
+        for (let page = 0; page < 3; page++) {
+          if (!stillCurrent()) return null;
+          const body = { context: { client: { clientName: 'WEB', clientVersion: context.clientVersion } },
+            ...(page ? { continuation } : { browseId: 'VL' + meta.listId }) };
+          const data = await fetchPlaylistAllWatchedPage(body, context, generation);
+          if (!stillCurrent()) return null;
+          let parsed;
+          try {
+            parsed = parsePlaylistAllWatchedPage(data, page > 0);
+          } catch (error) {
+            if (!error.playlistUnsupported) throw error;
+            unsupported = true;
+            break;
+          }
+          entries.push(...parsed.entries);
+          continuation = parsed.continuation;
+          if (continuation && tokens.has(continuation)) throw new Error('repeated-continuation');
+          if (continuation) tokens.add(continuation);
+          overLimit = entries.length > 300 || (page === 2 && !!continuation);
+          if (overLimit || !continuation) break;
+        }
+      }
+      const ids = [...new Set(entries.filter(entry => entry.isPlayable).map(entry => entry.videoId))];
+      const watched = unsupported || overLimit || !ids.length ? {} : await DBClient.checkMultiple(ids);
+      if (!stillCurrent()) return null;
+      const result = { ...(unsupported ? { allWatched: false, unwatchedCount: null, unsupported: true } :
+        evaluatePlaylistAllWatched(meta.listId, entries, watched, overLimit)),
+        videoCount: meta.videoCount, checkedAt: Date.now() };
+      await chrome.storage.local.set({ [key]: result });
+      if (!stillCurrent()) return null;
+      playlistAllWatchedFailures = 0;
+      return result;
+    } catch (_) {
+      // Cancelled work belongs to the old page and must not trip the new page's breaker.
+      if (generation === playlistAllWatchedGeneration) playlistAllWatchedFailures++;
+      return null;
+    }
+  }
+
+  function playlistAllWatchedCardMeta(card) {
+    const links = card.querySelectorAll('a[href*="list="]');
+    let listId = '';
+    for (const link of links) {
+      try {
+        const id = new URL(link.href, location.href).searchParams.get('list');
+        if (id) { listId = id; break; }
+      } catch (_) { /* malformed link is not evidence */ }
+    }
+    if (!playlistAllWatchedEligible(listId)) return null;
+    // Exact counts only; compact/rounded counts (1.2K etc.) cannot invalidate a cache safely.
+    let videoCount = null;
+    const badges = card.querySelectorAll('#video-count, .yt-badge-shape__text, .ytBadgeShapeText, .ytThumbnailOverlayBadgeViewModelBadgeText, ytd-thumbnail-overlay-side-panel-renderer, ytd-thumbnail-overlay-bottom-panel-renderer');
+    for (const badge of badges) {
+      const text = (badge.textContent || '').trim();
+      const match = text.match(/^(\d{1,3}(?:,\d{3})+|\d+)\s*(?:videos?\b|本(?:の動画)?|動画)/i) ||
+        (badge.id === 'video-count' ? text.match(/^(\d{1,3}(?:,\d{3})+|\d+)$/) : null);
+      if (match) { videoCount = Number(match[1].replace(/,/g, '')); break; }
+    }
+    return Number.isSafeInteger(videoCount) ? { listId, videoCount } : null;
+  }
+
+  function displayCompletedPlaylist(card) {
+    if (watchedDisplaySettings.dimWatched) card.dataset.watchedDimmed = 'true';
+    else { card.style.display = 'none'; card.dataset.watchedHidden = 'true'; }
+  }
+
+  function queuePlaylistAllWatchedCard(card) {
+    if (!playlistAllWatchedActive()) return;
+    const meta = playlistAllWatchedCardMeta(card);
+    if (!meta) return;
+    const context = playlistAllWatchedContext();
+    if (!context) return;
+    const key = context.accountId + ':' + context.authUser + ':' + meta.listId + ':' + meta.videoCount;
+    const previous = playlistAllWatchedCards.get(card);
+    if (previous?.key === key && (!previous.result || playlistAllWatchedCacheFresh(previous.result, meta.videoCount))) {
+      if (previous.result?.allWatched) displayCompletedPlaylist(card);
+      return;
+    }
+    const task = { card, meta, key, generation: playlistAllWatchedGeneration, queued: false, result: null };
+    playlistAllWatchedCards.set(card, task);
+    if (!playlistAllWatchedObserver && typeof IntersectionObserver !== 'undefined') {
+      playlistAllWatchedObserver = new IntersectionObserver(entries => {
+        for (const entry of entries) {
+          const pending = playlistAllWatchedCards.get(entry.target);
+          if (!entry.isIntersecting || !pending || pending.queued || !playlistAllWatchedActive(pending.generation)) continue;
+          pending.queued = true;
+          playlistAllWatchedObserver.unobserve(entry.target);
+          playlistAllWatchedQueue.push(pending);
+        }
+        void drainPlaylistAllWatchedQueue();
+      });
+    }
+    playlistAllWatchedObserver?.observe(card);
+  }
+
+  async function drainPlaylistAllWatchedQueue() {
+    if (playlistAllWatchedRunning) return;
+    playlistAllWatchedRunning = true;
+    try {
+      while (playlistAllWatchedQueue.length) {
+        const task = playlistAllWatchedQueue.shift();
+        if (!playlistAllWatchedActive(task.generation) || !task.card.isConnected ||
+            playlistAllWatchedCards.get(task.card) !== task) continue;
+        task.result = await checkPlaylistAllWatched(task.meta, task.generation);
+        const current = playlistAllWatchedCardMeta(task.card);
+        if (playlistAllWatchedActive(task.generation) && task.card.isConnected && isPlaylistCard(task.card) &&
+            current?.listId === task.meta.listId && current?.videoCount === task.meta.videoCount &&
+            playlistAllWatchedCards.get(task.card) === task) applyPlaylistCardDisplay(task.card);
+      }
+    } finally {
+      playlistAllWatchedRunning = false;
+    }
+  }
+
+  function resetPlaylistAllWatched(navigation = false) {
+    playlistAllWatchedGeneration++;
+    if (navigation) playlistAllWatchedFailures = 0;
+    playlistAllWatchedObserver?.disconnect();
+    playlistAllWatchedObserver = null;
+    playlistAllWatchedCards = new WeakMap();
+    playlistAllWatchedQueue = [];
+    playlistAllWatchedFetchController?.abort();
+  }
+  // Playlist completion feature: end
 
   let recordWhileOff = false;
   let harvestMode = false;
@@ -1809,6 +2118,13 @@ window._ytWatchedHider = (() => {
     if (contextInvalidated) return;
     let hasRelevantChange = false;
     for (const mutation of mutations) {
+      // Playlist counts/links can change in place without inserting another card.
+      if (watchedDisplaySettings.hideCompletedPlaylists === true && location.pathname === '/feed/playlists' &&
+          (mutation.type === 'characterData' || mutation.type === 'attributes')) {
+        const target = mutation.target.nodeType === Node.ELEMENT_NODE ? mutation.target : mutation.target.parentElement;
+        const card = target?.closest?.(ALL_CARD_SELECTORS);
+        if (card && isPlaylistCard(card)) { hasRelevantChange = true; break; }
+      }
       for (const node of mutation.addedNodes) {
         if (node.nodeType === Node.ELEMENT_NODE) {
           if (node.matches?.(ALL_CARD_SELECTORS) || node.querySelector?.(ALL_CARD_SELECTORS) ||
@@ -1841,11 +2157,15 @@ window._ytWatchedHider = (() => {
   observer.observe(document.body, {
     childList: true,
     subtree: true,
+    characterData: true,
+    attributes: true,
+    attributeFilter: ['href'],
   });
 
   // Listen for YouTube SPA navigation
   function onNavigateFinish() {
     if (contextInvalidated) return;
+    resetPlaylistAllWatched(true);
     if (location.pathname === '/watch') {
       attachVideoEndedListener();
       startRecoPolling();
@@ -2932,6 +3252,7 @@ window._ytWatchedHider = (() => {
     }
 
     if (message.type === 'ENABLED_CHANGED') {
+      if (watchedDisplaySettings.hideCompletedPlaylists) resetPlaylistAllWatched();
       enabled = message.enabled;
       if (enabled) {
         processPage();
@@ -2943,6 +3264,7 @@ window._ytWatchedHider = (() => {
     }
 
     if (message.type === 'WATCHED_DISPLAY_SETTINGS_CHANGED') {
+      if (watchedDisplaySettings.hideCompletedPlaylists) resetPlaylistAllWatched();
       applyWatchedDisplaySettings(message.settings || {});
       showAllCards();
       showAllShorts();
@@ -3080,6 +3402,8 @@ window._ytWatchedHider = (() => {
       (async () => {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), PROXY_FETCH_TIMEOUT_MS);
+        const completion = message.playlistCompletionGeneration !== undefined;
+        if (completion) playlistAllWatchedFetchController = controller;
         try {
           const authUser = String(message.authUser == null ? '' : message.authUser);
           if (!/^\d+$/.test(authUser)) {
@@ -3095,6 +3419,10 @@ window._ytWatchedHider = (() => {
           };
           if (message.clientVersion) headers['X-YouTube-Client-Version'] = message.clientVersion;
           const auth = await computeSapisidHash();
+          if (completion && (!auth || !playlistAllWatchedActive(message.playlistCompletionGeneration) || !playlistAllWatchedContext())) {
+            sendResponse({ success: false, reason: 'completion-inactive' });
+            return;
+          }
           if (auth) headers['Authorization'] = auth;
           const res = await fetch(url, {
             method: 'POST',
@@ -3113,6 +3441,7 @@ window._ytWatchedHider = (() => {
           sendResponse({ success: false, reason: e.name === 'AbortError' ? 'timeout' : 'fetch-error', error: e.message });
         } finally {
           clearTimeout(timer);
+          if (completion && playlistAllWatchedFetchController === controller) playlistAllWatchedFetchController = null;
         }
       })();
       return true;
@@ -3195,6 +3524,7 @@ window._ytWatchedHider = (() => {
 
   // Cleanup function for re-injection
   function cleanup(keepReloadNotice = false) {
+    resetPlaylistAllWatched();
     for (const timer of contextTimers) window.clearTimeout(timer);
     contextTimers.clear();
     processQueued = false;

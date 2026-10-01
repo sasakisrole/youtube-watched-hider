@@ -3495,5 +3495,11 @@
   },
   "history_scripts_search_role_arranger": {
     "message": "Arranger"
+  },
+  "popup_hideCompletedPlaylists": {
+    "message": "Hide completed playlists (experimental)"
+  },
+  "popup_hideCompletedPlaylistsHelp": {
+    "message": "On the Playlists list, hide lists whose playable videos are all watched. Supports dim mode. Watch Later, Liked videos and mixes are excluded. Checks up to 300 entries; results refresh when the count changes or after 7 days. If Playlist cards above is set to hide on the Playlists list, that setting takes priority."
   }
 }

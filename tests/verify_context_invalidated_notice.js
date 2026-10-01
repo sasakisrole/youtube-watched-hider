@@ -98,6 +98,7 @@ function makeHarness(mode = 'throw', failOp = null) {
     getCurrentVideoDurationSec: () => 30, getCurrentVideoCategory: () => '',
     removeHarvestStyle() {}, renderHarvestStatus() {}, injectHarvestStyle() {}, isHistoryPage: () => true,
     onNavigateFinish() {}, onMessage() {},
+    resetPlaylistAllWatched() {}, // Completion queue is covered by verify_playlist_all_watched_flow.js.
   };
   const context = vm.createContext(deps);
   vm.runInContext(`

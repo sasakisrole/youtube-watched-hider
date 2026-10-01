@@ -295,7 +295,7 @@ async function run() {
   const abortReasonCount = (src.match(/reason: e\.name === 'AbortError' \? 'timeout' : 'fetch-error'/g) || []).length;
   check('drift: all 4 handlers distinguish a timeout abort from a generic fetch error',
     abortReasonCount === PROXY_HANDLER_COUNT);
-  const clearTimeoutCount = (src.match(/\} finally \{\s*clearTimeout\(timer\);\s*\}/g) || []).length;
+  const clearTimeoutCount = (src.match(/\} finally \{\s*clearTimeout\(timer\);(?:\s*if \(completion && playlistAllWatchedFetchController === controller\) playlistAllWatchedFetchController = null;)?\s*\}/g) || []).length;
   check('drift: all 4 handlers clear the timeout in a finally (no leaked timers)',
     clearTimeoutCount === PROXY_HANDLER_COUNT);
 
