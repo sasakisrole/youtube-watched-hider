@@ -74,7 +74,7 @@ function setup({ all, sorted, renderedCount = 100, filtered = false } = {}) {
   const api = 'return { deleteVideo, restoreDelete, commitDelete, updateTotalCount, '
     + 'getPending: () => pendingDeletes, getRenderedCount: () => renderedCount };';
   // eslint-disable-next-line no-new-func
-  const built = new Function(...names, BLOCK + '\n' + api)(...names.map((k) => scope[k]));
+  const built = new Function(...names, 'let historySortCache = null;\n' + BLOCK + '\n' + api)(...names.map((k) => scope[k]));
   state.filtered = filtered;
   return { ...built, state, scope };
 }

@@ -50,7 +50,7 @@
 
 body {
   width: 320px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif;
   font-feature-settings: 'palt';
   background: var(--bg);
   color: var(--text);
@@ -647,4 +647,58 @@ input:checked + .slider::before {
 #playlistCardPlaces .toggle input:focus-visible + .slider {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
+}
+
+/* Native disclosure keeps section navigation usable without extra script state. */
+.settings-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.settings-group > summary {
+  min-height: 44px;
+  padding: 12px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.settings-group > summary:hover { background: var(--surface-2); }
+.settings-group-danger > summary { color: var(--danger); }
+.settings-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 12px 12px;
+}
+body { max-width: 100%; }
+.btn, .fold-toggle, .btn-link, .search-input,
+#watchedThreshold, #playlistCardMode { min-height: 44px; }
+.toggle, .toggle-small {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+}
+.toggle .slider { top: 10px; bottom: 10px; }
+.toggle-small .slider { top: 12px; bottom: 12px; left: 4px; right: 4px; }
+.toggle input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  cursor: pointer;
+}
+.toggle input:focus-visible + .slider {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.setting-label { min-width: 0; padding-right: 8px; overflow-wrap: anywhere; }
+#watchedThreshold, #playlistCardMode {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 6px;
 }

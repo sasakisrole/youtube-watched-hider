@@ -29,6 +29,7 @@ const backToTopBtn = document.getElementById('backToTop');
 const sortBtns = document.querySelectorAll('.sort-btn');
 
 let allData = [];
+let historySortCache = null;
 let currentSort = 'date-desc';
 let noChannelOnly = false;
 let sortedCache = [];  // cached sorted+filtered result
@@ -61,6 +62,13 @@ function unwrapWatchedRecords(data) {
   if (data && typeof data === 'object' && data.schemaVersion === 2 && Array.isArray(data.watchedVideos)) return data.watchedVideos;
   if (data && typeof data === 'object' && Array.isArray(data.records)) return data.records;
   return [];
+}
+
+function getSortedHistory() {
+  if (!historySortCache || historySortCache.source !== allData || historySortCache.mode !== currentSort) {
+    historySortCache = { source: allData, mode: currentSort, records: sortData(allData, currentSort) };
+  }
+  return historySortCache.records;
 }
 
 // Sort data
@@ -125,6 +133,7 @@ function restoreDelete(entry) {
   clearTimeout(entry.timer);
   pendingDeletes = pendingDeletes.filter((e) => e !== entry);
   if (entry.allIndex >= 0) allData.splice(Math.min(entry.allIndex, allData.length), 0, entry.video);
+  historySortCache = null;
   if (entry.sortedIndex >= 0) {
     sortedCache.splice(Math.min(entry.sortedIndex, sortedCache.length), 0, entry.video);
     if (entry.sortedIndex < renderedCount) renderedCount++;
@@ -154,6 +163,7 @@ function deleteVideo(video, rowEl) {
   const allIndex = allData.indexOf(video);
   const sortedIndex = sortedCache.indexOf(video);
   if (allIndex >= 0) allData.splice(allIndex, 1);
+  historySortCache = null;
   if (sortedIndex >= 0) {
     sortedCache.splice(sortedIndex, 1);
     // renderedCount は sortedCache の添字。手前が1件減ったら一緒に詰めないと、
@@ -288,7 +298,8 @@ function renderBatch() {
 // Full render (reset + first batch)
 function render() {
   const filter = searchInput.value.toLowerCase();
-  let filtered = allData;
+  // Filtering preserves order, so typing need not sort the same history again.
+  let filtered = getSortedHistory().slice();
   if (filter) {
     filtered = filtered.filter(v =>
       (v.title || v.videoId).toLowerCase().includes(filter) ||
@@ -300,7 +311,7 @@ function render() {
     filtered = filtered.filter(v => !v.channel || v.channel.trim() === '');
   }
 
-  sortedCache = sortData(filtered, currentSort);
+  sortedCache = filtered;
   updateTotalCount();
   renderedCount = 0;
   lastDateKeyRendered = '';
@@ -1058,6 +1069,7 @@ function runFix(videoIds, force, label) {
         if (rec) {
           if (msg.channel) rec.channel = msg.channel;
           if (msg.title && (force || !rec.title)) rec.title = msg.title;
+          historySortCache = null;
         }
         const cacheIdx = sortedCache.findIndex(v => v.videoId === msg.videoId);
         if (cacheIdx !== -1) {

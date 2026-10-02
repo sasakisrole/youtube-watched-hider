@@ -3501,5 +3501,20 @@
   },
   "popup_hideCompletedPlaylistsHelp": {
     "message": "再生リスト一覧で、再生できる動画がすべて視聴済みのリストを隠します。半透明表示にも対応。「後で見る」「高く評価した動画」とミックスは対象外です。300本まで確認し、結果は本数の変化または7日後に更新します。上の「プレイリストのカード」で再生リスト一覧を隠す設定にしていると、そちらが優先されます。"
+  },
+  "popup_playlistRefresh": {
+    "message": "このページの再生リストを再確認"
+  },
+  "popup_playlistRefreshStarted": {
+    "message": "再確認を開始しました。一覧をスクロールすると、表示されたリストを順に確認します。"
+  },
+  "popup_playlistRefreshDisabled": {
+    "message": "非表示機能と「見終えた再生リストを隠す」をオンにしてから再確認してください。"
+  },
+  "popup_playlistRefreshUnavailable": {
+    "message": "ログインしたYouTubeの「再生リスト」一覧を開いて再確認してください。反応がない場合はページを再読み込みしてください。"
+  },
+  "popup_playlistRefreshAllHidden": {
+    "message": "再生リスト全体の非表示設定で「再生リスト一覧」をオフにしてから再確認してください。"
   }
 }

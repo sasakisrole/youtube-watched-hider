@@ -88,11 +88,16 @@ let historyRenderedCount = 0;
 let lastHistoryDateGroup = '';
 const HISTORY_PAGE_SIZE = 50;
 
+let statusTimer = null;
 function showStatus(msg, isError = false, isWarn = false) {
+  clearTimeout(statusTimer);
   statusEl.textContent = msg;
   statusEl.style.color = isError ? 'var(--danger)' : (isWarn ? 'var(--warning)' : 'var(--success)');
   // Keep warnings/errors on screen longer so a "N件スキップ" notice is readable.
-  setTimeout(() => { statusEl.textContent = ''; }, (isError || isWarn) ? 5000 : 3000);
+  statusTimer = setTimeout(() => {
+    statusEl.textContent = '';
+    statusTimer = null;
+  }, (isError || isWarn) ? 5000 : 3000);
 }
 
 function renderCacheStats(response) {
@@ -411,6 +416,35 @@ document.getElementById('dimWatched').addEventListener('change', (event) => {
 document.getElementById('hideCompletedPlaylists').addEventListener('change', (event) => {
   saveWatchedDisplaySetting('hideCompletedPlaylists', event.target.checked);
 });
+function showPlaylistRefreshStatus(message, isError = false) {
+  const status = document.getElementById('playlistRefreshStatus');
+  status.textContent = message;
+  status.style.color = isError ? 'var(--danger)' : 'var(--success)';
+}
+
+document.getElementById('refreshCompletedPlaylists').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) throw new Error('no-active-tab');
+    const result = await chrome.tabs.sendMessage(tab.id, { type: 'REFRESH_COMPLETED_PLAYLISTS' });
+    if (result?.success) {
+      showPlaylistRefreshStatus(popupMessage('popup_playlistRefreshStarted', '再確認を開始しました。一覧をスクロールすると、表示されたリストを順に確認します。'));
+    } else if (result?.reason === 'all-hidden') {
+      showPlaylistRefreshStatus(popupMessage('popup_playlistRefreshAllHidden', '再生リスト全体の非表示設定で「再生リスト一覧」をオフにしてから再確認してください。'), true);
+    } else if (result?.reason === 'disabled') {
+      showPlaylistRefreshStatus(popupMessage('popup_playlistRefreshDisabled', '非表示機能と「見終えた再生リストを隠す」をオンにしてから再確認してください。'), true);
+    } else {
+      showPlaylistRefreshStatus(popupMessage('popup_playlistRefreshUnavailable', 'ログインしたYouTubeの「再生リスト」一覧を開いて再確認してください。反応がない場合はページを再読み込みしてください。'), true);
+    }
+  } catch (_) {
+    showPlaylistRefreshStatus(popupMessage('popup_playlistRefreshUnavailable', 'ログインしたYouTubeの「再生リスト」一覧を開いて再確認してください。反応がない場合はページを再読み込みしてください。'), true);
+  } finally {
+    button.disabled = false;
+  }
+});
+
 document.getElementById('playlistCardMode').addEventListener('change', (event) => {
   const value = normalizePlaylistCardMode(event.target.value);
   event.target.value = value;

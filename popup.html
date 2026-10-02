@@ -49,13 +49,9 @@
       </button>
     </div>
     <div id="settingsPanel" class="settings-panel" style="display:none">
-      <div class="setting-item cache-setting">
-        <span class="setting-label" data-i18n="popup_cache">キャッシュ</span>
-        <span id="cacheModeBadge" class="cache-mode-badge cache-error">error</span>
-      </div>
-      <div class="setting-desc" id="cacheDetail" data-i18n="popup_cacheLoading">キャッシュの状態を読み込み中...</div>
-
-      <h2 class="settings-heading" data-i18n="popup_display">表示</h2>
+      <details class="settings-group" open>
+        <summary><span data-i18n="popup_display">表示</span></summary>
+        <div class="settings-group-body">
 
       <div class="setting-item">
         <span class="setting-label" id="watchedThresholdLabel" data-i18n="popup_watchedThreshold">視聴済みとみなす％</span>
@@ -70,7 +66,11 @@
         </label>
       </div>
       <div class="setting-desc" id="dimWatchedDesc" data-i18n="popup_dimWatchedHelp">オンにすると視聴済みを消さずに薄く表示し、マウスを乗せると元の濃さに戻ります。</div>
-      <h2 class="settings-heading" data-i18n="popup_pageVisibility">ページ別の非表示</h2>
+      </div></details>
+
+      <details class="settings-group">
+        <summary><span data-i18n="popup_pageVisibility">ページ別の非表示</span></summary>
+        <div class="settings-group-body">
       <div class="setting-desc" data-i18n="popup_pageVisibilityHelp">オフにしたページでは動画を隠しません。視聴記録は継続します。</div>
       <div class="setting-item">
         <span class="setting-label" id="hideOnHomeLabel" data-i18n="popup_hideHome">ホームで隠す</span>
@@ -180,6 +180,8 @@
         </label>
       </div>
       <div class="setting-desc" id="hideCompletedPlaylistsDesc" data-i18n="popup_hideCompletedPlaylistsHelp">再生リスト一覧で、再生できる動画がすべて視聴済みのリストを隠します。半透明表示にも対応。「後で見る」「高く評価した動画」とミックスは対象外です。300本まで確認し、結果は本数の変化または7日後に更新します。上の「プレイリストのカード」で再生リスト一覧を隠す設定にしていると、そちらが優先されます。</div>
+      <button id="refreshCompletedPlaylists" class="btn" type="button" data-i18n="popup_playlistRefresh">このページの再生リストを再確認</button>
+      <div id="playlistRefreshStatus" class="setting-desc" role="status" aria-live="polite"></div>
 
       <div class="setting-item">
         <span class="setting-label" id="hideShortsLabel" data-i18n="popup_hideShorts">ショート動画を隠す</span>
@@ -207,7 +209,11 @@
       </div>
       <div class="setting-desc" data-i18n="popup_showSearchFilterHelp">オフにすると公式優先検索フィルターを表示せず、結果の絞り込みも止めます。</div>
 
-      <h2 class="settings-heading" data-i18n="popup_recording">記録</h2>
+      </div></details>
+
+      <details class="settings-group">
+        <summary><span data-i18n="popup_recording">記録</span></summary>
+        <div class="settings-group-body">
 
       <div class="setting-item">
         <span class="setting-label" id="harvestModeLabel" data-i18n="popup_harvestMode">履歴ページに一括取り込みボタンを出す</span>
@@ -229,7 +235,11 @@
       </div>
       <div class="setting-desc" data-i18n="popup_recordWhileOffHelp">非表示をOFFにしている間も視聴履歴だけは記録する</div>
 
-      <h2 class="settings-heading" data-i18n="popup_backup">バックアップ</h2>
+      </div></details>
+
+      <details class="settings-group">
+        <summary><span data-i18n="popup_backup">バックアップ</span></summary>
+        <div class="settings-group-body">
 
       <div class="setting-item">
         <span class="setting-label" id="autoBackupLabel" data-i18n="popup_autoBackup">毎日自動でバックアップ</span>
@@ -257,18 +267,28 @@
         <button id="importCancelBtn" class="btn-link" data-i18n="popup_cancel">キャンセル</button>
       </div>
 
-      <h2 class="settings-heading" data-i18n="popup_syncHeading">別PCと同期（Dropbox）</h2>
+      </div></details>
+
+      <details class="settings-group">
+        <summary><span data-i18n="popup_syncHeading">別PCと同期（Dropbox）</span></summary>
+        <div class="settings-group-body">
       <div class="setting-desc" data-i18n="popup_syncHelp">別PCで保存したバックアップを読み込んで差分だけ統合する</div>
       <div class="sync-actions">
         <button id="syncImportBtn" class="btn btn-sync" data-i18n="popup_syncImport">読み込んで統合</button>
       </div>
       <div id="syncStatus" class="sync-status" role="status" aria-live="polite"></div>
 
-      <h2 class="settings-heading settings-heading-danger" data-i18n="popup_deleteHeading">データ削除</h2>
+      </div></details>
+
+      <details class="settings-group settings-group-danger">
+        <summary><span data-i18n="popup_deleteHeading">データ削除</span></summary>
+        <div class="settings-group-body">
       <div class="setting-desc" data-i18n="popup_deleteHelp">削除する範囲を選べます。「全データを初期化」は実行前に自動でバックアップを1件保存します。</div>
       <button id="clearWatchedBtn" class="btn btn-danger" data-i18n="popup_clearWatched">視聴履歴だけ削除</button>
       <button id="clearLikedBtn" class="btn btn-danger" data-i18n="popup_clearLiked">高評価データだけ削除</button>
       <button id="clearAllBtn" class="btn btn-danger" data-i18n="popup_clearAll">全データを初期化（自動バックアップ後）</button>
+
+      </div></details>
 
       <div class="about-section">
         <button id="aboutBtn" class="fold-toggle about-link" type="button" aria-expanded="false" aria-controls="aboutPanel">
@@ -276,6 +296,11 @@
           <span data-i18n="popup_about">このツールについて</span>
         </button>
         <div id="aboutPanel" style="display:none" class="about-content">
+      <div class="setting-item cache-setting">
+        <span class="setting-label" data-i18n="popup_cache">キャッシュ</span>
+        <span id="cacheModeBadge" class="cache-mode-badge cache-error">error</span>
+      </div>
+      <div class="setting-desc" id="cacheDetail" data-i18n="popup_cacheLoading">キャッシュの状態を読み込み中...</div>
           <p><strong data-i18n="popup_appTitle">YT Watched Hider</strong> <span id="aboutVersion"></span></p>
           <ul>
             <li data-i18n="popup_aboutStorage">IndexedDB: 容量制限なし（1曲≒300B / 1万曲≒3MB）</li>

@@ -3501,5 +3501,20 @@
   },
   "popup_hideCompletedPlaylistsHelp": {
     "message": "On the Playlists list, hide lists whose playable videos are all watched. Supports dim mode. Watch Later, Liked videos and mixes are excluded. Checks up to 300 entries; results refresh when the count changes or after 7 days. If Playlist cards above is set to hide on the Playlists list, that setting takes priority."
+  },
+  "popup_playlistRefresh": {
+    "message": "Recheck playlists on this page"
+  },
+  "popup_playlistRefreshStarted": {
+    "message": "Rechecking started. Scroll the list to check playlists as they appear."
+  },
+  "popup_playlistRefreshDisabled": {
+    "message": "Turn on hiding and \"Hide completed playlists\" before rechecking."
+  },
+  "popup_playlistRefreshUnavailable": {
+    "message": "Open the YouTube Playlists list while signed in, then try again. Reload that page if it does not respond."
+  },
+  "popup_playlistRefreshAllHidden": {
+    "message": "Turn off hiding all playlist cards on the Playlists list before rechecking."
   }
 }

@@ -117,6 +117,7 @@ window._ytWatchedHider = (() => {
   // Only explicit, fully enumerated playability is accepted. Unknown layouts stay visible.
   const PLAYLIST_ALL_WATCHED_TTL = 7 * 24 * 60 * 60 * 1000;
   let playlistAllWatchedGeneration = 0;
+  let playlistAllWatchedRefresh = null;
   let playlistAllWatchedFailures = 0;
   let playlistAllWatchedObserver = null;
   let playlistAllWatchedCards = new WeakMap();
@@ -283,7 +284,10 @@ window._ytWatchedHider = (() => {
       const key = 'playlistAllWatched.v1.' + encodeURIComponent(context.accountId) + '.' + context.authUser + '.' + meta.listId;
       const cached = (await chrome.storage.local.get(key))[key];
       if (!stillCurrent()) return null;
-      if (playlistAllWatchedCacheFresh(cached, meta.videoCount)) {
+      const refresh = playlistAllWatchedRefresh?.generation === generation &&
+        playlistAllWatchedRefresh.accountId === context.accountId &&
+        playlistAllWatchedRefresh.authUser === context.authUser ? playlistAllWatchedRefresh : null;
+      if ((!refresh || refresh.checked.has(key)) && playlistAllWatchedCacheFresh(cached, meta.videoCount)) {
         playlistAllWatchedFailures = 0;
         return cached;
       }
@@ -321,6 +325,7 @@ window._ytWatchedHider = (() => {
         videoCount: meta.videoCount, checkedAt: Date.now() };
       await chrome.storage.local.set({ [key]: result });
       if (!stillCurrent()) return null;
+      if (refresh) refresh.checked.add(key);
       playlistAllWatchedFailures = 0;
       return result;
     } catch (_) {
@@ -407,12 +412,34 @@ window._ytWatchedHider = (() => {
 
   function resetPlaylistAllWatched(navigation = false) {
     playlistAllWatchedGeneration++;
+    playlistAllWatchedRefresh = null;
     if (navigation) playlistAllWatchedFailures = 0;
     playlistAllWatchedObserver?.disconnect();
     playlistAllWatchedObserver = null;
     playlistAllWatchedCards = new WeakMap();
     playlistAllWatchedQueue = [];
     playlistAllWatchedFetchController?.abort();
+  }
+  function refreshCompletedPlaylists() {
+    if (contextInvalidated || location.pathname.replace(/\/+$/, '') !== '/feed/playlists') {
+      return { success: false, reason: 'wrong-page' };
+    }
+    if (!enabled || watchedDisplaySettings.hideCompletedPlaylists !== true) {
+      return { success: false, reason: 'disabled' };
+    }
+    if (watchedDisplaySettings.playlistCardMode === 'hide' &&
+        watchedDisplaySettings.playlistCardPlaces?.playlists === true) {
+      return { success: false, reason: 'all-hidden' };
+    }
+    const context = playlistAllWatchedContext();
+    if (!context) return { success: false, reason: 'account' };
+    resetPlaylistAllWatched(true);
+    // Bypass each list once in this page/account generation, without clearing shared caches.
+    playlistAllWatchedRefresh = { generation: playlistAllWatchedGeneration,
+      accountId: context.accountId, authUser: context.authUser, checked: new Set() };
+    showAllCards();
+    void processPage();
+    return { success: true };
   }
   // Playlist completion feature: end
 
@@ -1417,11 +1444,10 @@ window._ytWatchedHider = (() => {
     processQueued = false;
 
     try {
-      // Hide Shorts and Movies first (independent of watched state)
-      hideShortsCards();
-      hideMovieCards();
-
       const cards = document.querySelectorAll(ALL_CARD_SELECTORS);
+      // These synchronous filters only change styles, so the card snapshot stays valid.
+      hideShortsCards(cards);
+      hideMovieCards(cards);
       if (cards.length === 0) {
         processRunning = false;
         return;
@@ -1609,7 +1635,7 @@ window._ytWatchedHider = (() => {
     return false;
   }
 
-  function hideShortsCards() {
+  function hideShortsCards(cards = null) {
     if (!hideShorts || !shouldHideOnCurrentPage()) return;
 
     // Hide Shorts shelves (entire row)
@@ -1632,7 +1658,7 @@ window._ytWatchedHider = (() => {
     }
 
     // Hide individual cards that link to Shorts
-    const cards = document.querySelectorAll(ALL_CARD_SELECTORS);
+    cards = cards || document.querySelectorAll(ALL_CARD_SELECTORS);
     for (const card of cards) {
       if (card.dataset.shortsHidden === 'true') continue;
       if (isCardShorts(card)) {
@@ -1668,10 +1694,10 @@ window._ytWatchedHider = (() => {
     return hasRating || hasFreeOrPaid;
   }
 
-  function hideMovieCards() {
+  function hideMovieCards(cards = null) {
     if (!hideMovies || !shouldHideOnCurrentPage()) return;
 
-    const cards = document.querySelectorAll(ALL_CARD_SELECTORS);
+    cards = cards || document.querySelectorAll(ALL_CARD_SELECTORS);
     for (const card of cards) {
       if (card.dataset.movieHidden === 'true') continue;
       if (isCardMovie(card)) {
@@ -2223,12 +2249,10 @@ window._ytWatchedHider = (() => {
     recoChecking = true;
 
     try {
-      // Hide Shorts and Movies in recommendations too
-      hideShortsCards();
-      hideMovieCards();
-
       // Search entire document — covers sidebar, below-player (theater), end screen
       const cards = document.querySelectorAll(ALL_CARD_SELECTORS);
+      hideShortsCards(cards);
+      hideMovieCards(cards);
       if (cards.length === 0) return;
 
       const unchecked = [];
@@ -3154,6 +3178,8 @@ window._ytWatchedHider = (() => {
     ensureWatchLaterButton();
     if (contextInvalidated) return;
     recoInterval = setInterval(() => {
+      // Hidden tabs need no button layout work; the next visible tick catches up.
+      if (contextInvalidated || document.hidden) return;
       checkRecommendations();
       ensureQueueAllButton();
       ensureWatchLaterButton();
@@ -3308,6 +3334,11 @@ window._ytWatchedHider = (() => {
 
     if (message.type === 'GET_CACHE_STATS') {
       sendResponse({ success: true, ...getCacheStats() });
+      return true;
+    }
+
+    if (message.type === 'REFRESH_COMPLETED_PLAYLISTS') {
+      sendResponse(refreshCompletedPlaylists());
       return true;
     }
 
