@@ -65,8 +65,10 @@ assert.equal(scope.sortedCache.length, 5, 'reload invalidates by source identity
 // Execute the real mutation functions so stale-cache bugs cannot hide behind a mock invalidation.
 Object.assign(scope, {
   pendingDeletes: [], UNDO_WINDOW_MS: 5000, renderedCount: 5,
+  deletionOrders: new WeakMap(), unsettledDeletes: new Set(),
   clearTimeout() {}, setTimeout() { return 1; }, renderUndoToast() {},
 });
+vm.runInContext(block('function getDeletionOrder(', 'function renderUndoToast('), scope);
 vm.runInContext(block('function restoreDelete(', 'function commitDelete('), scope);
 vm.runInContext(block('function deleteVideo(', 'if (undoToastBtn)'), scope);
 const video = scope.allData[2];

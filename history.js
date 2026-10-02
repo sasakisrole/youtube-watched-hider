@@ -118,6 +118,34 @@ function updateTotalCount() {
 // 「消してから戻す」ではなく「まだ消さない」で取り消しを成立させている。
 const UNDO_WINDOW_MS = 5000;
 let pendingDeletes = [];
+let deletionOrders = new WeakMap();
+const unsettledDeletes = new Set();
+
+function getDeletionOrder(records) {
+  let order = deletionOrders.get(records);
+  if (!order) {
+    // Replies can arrive out of order; mutable array offsets cannot identify the original position.
+    order = new WeakMap(records.map((video, index) => [video, index]));
+    deletionOrders.set(records, order);
+  }
+  return order;
+}
+
+function restoreInDeletionOrder(records, video, order) {
+  const rank = order.get(video);
+  let low = 0, high = records.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (order.get(records[middle]) < rank) low = middle + 1;
+    else high = middle;
+  }
+  records.splice(low, 0, video);
+}
+
+function settleDelete(entry) {
+  unsettledDeletes.delete(entry);
+  if (!unsettledDeletes.size) deletionOrders = new WeakMap();
+}
 
 function renderUndoToast() {
   if (!undoToast) return;
@@ -132,12 +160,13 @@ function renderUndoToast() {
 function restoreDelete(entry) {
   clearTimeout(entry.timer);
   pendingDeletes = pendingDeletes.filter((e) => e !== entry);
-  if (entry.allIndex >= 0) allData.splice(Math.min(entry.allIndex, allData.length), 0, entry.video);
+  if (entry.allIndex >= 0) restoreInDeletionOrder(allData, entry.video, entry.allOrder);
   historySortCache = null;
-  if (entry.sortedIndex >= 0) {
-    sortedCache.splice(Math.min(entry.sortedIndex, sortedCache.length), 0, entry.video);
-    if (entry.sortedIndex <= renderedCount) renderedCount++;
+  if (entry.sortedIndex >= 0 && entry.sortedSource === sortedCache) {
+    restoreInDeletionOrder(sortedCache, entry.video, entry.sortedOrder);
+    if (entry.row.isConnected) renderedCount++;
   }
+  settleDelete(entry);
   entry.row.hidden = false;
   updateTotalCount();
   renderUndoToast();
@@ -155,6 +184,7 @@ function commitDelete(entry) {
       showJobMessage(historyMessage('history_delete_error', `履歴から削除できませんでした: ${entry.video.title || entry.video.videoId}`, [entry.video.title || entry.video.videoId]), { state: 'error' });
       return;
     }
+    settleDelete(entry);
     entry.row.remove();
   });
 }
@@ -162,6 +192,9 @@ function commitDelete(entry) {
 function deleteVideo(video, rowEl) {
   const allIndex = allData.indexOf(video);
   const sortedIndex = sortedCache.indexOf(video);
+  const entry = { video, row: rowEl, allIndex, sortedIndex, timer: null,
+    allOrder: getDeletionOrder(allData), sortedOrder: getDeletionOrder(sortedCache), sortedSource: sortedCache };
+  unsettledDeletes.add(entry);
   if (allIndex >= 0) allData.splice(allIndex, 1);
   historySortCache = null;
   if (sortedIndex >= 0) {
@@ -172,7 +205,6 @@ function deleteVideo(video, rowEl) {
   }
   rowEl.hidden = true;
   updateTotalCount();
-  const entry = { video, row: rowEl, allIndex, sortedIndex, timer: null };
   entry.timer = setTimeout(() => commitDelete(entry), UNDO_WINDOW_MS);
   pendingDeletes.push(entry);
   renderUndoToast();
@@ -180,7 +212,6 @@ function deleteVideo(video, rowEl) {
 
 if (undoToastBtn) {
   undoToastBtn.addEventListener('click', () => {
-    // 後から消したものほど添字が新しいので、新しい順に戻すと元の位置へ収まる
     [...pendingDeletes].reverse().forEach(restoreDelete);
   });
 }

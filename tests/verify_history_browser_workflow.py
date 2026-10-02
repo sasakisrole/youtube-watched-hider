@@ -14,7 +14,7 @@ from playwright.sync_api import sync_playwright
 parser = argparse.ArgumentParser()
 parser.add_argument('--browser', required=True)
 parser.add_argument('--output', required=True)
-parser.add_argument('--scenario', choices=['workflow', 'scroll'], default='workflow')
+parser.add_argument('--scenario', choices=['workflow', 'scroll', 'delete-race', 'delete-cost'], default='workflow')
 args = parser.parse_args()
 root = Path(__file__).resolve().parents[1]
 output = Path(args.output).resolve()
@@ -27,6 +27,7 @@ mock = r"""() => {
   }));
   window.testDeleteCalls = [];
   window.testFailDelete = false;
+  window.testDeleteOutcomes = {};
   window.testDeferDelete = false;
   window.testPendingDeleteResponses = [];
   window.chrome = {
@@ -36,8 +37,8 @@ mock = r"""() => {
       if (message.type === 'EXPORT_DATA') data = records.filter(v => !removed.has(v.videoId));
       if (message.type === 'DELETE_VIDEO') {
         testDeleteCalls.push(message.videoId);
-        data = {success: !testFailDelete};
-        if (!testFailDelete) {
+        data = {success: Object.hasOwn(testDeleteOutcomes, message.videoId) ? testDeleteOutcomes[message.videoId] : !testFailDelete};
+        if (data.success) {
           removed.add(message.videoId);
           sessionStorage.setItem('testRemoved', JSON.stringify([...removed]));
         }
@@ -54,6 +55,7 @@ mock = r"""() => {
   };
 }"""
 checks = []
+measurements = {}
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path=args.browser, headless=True)
     try:
@@ -147,7 +149,7 @@ with sync_playwright() as p:
             page.wait_for_function('allData.length === 99998')
             assert not page.evaluate('(id) => allData.some(v => v.videoId === id)', doomed)
             checks.append('pagehide-flushes-pending-delete')
-        else:
+        elif args.scenario == 'scroll':
             def visible_ids():
                 return page.locator('.video-row:not([hidden]) .video-id').all_text_contents()
             def assert_prefix(expected):
@@ -191,11 +193,97 @@ with sync_playwright() as p:
             assert_prefix(expected)
             assert visible_ids() == expected
             checks.append('last-rendered-delete-undo-does-not-duplicate-at-end')
+        elif args.scenario == 'delete-race':
+            for mode, order, mixed in [('title', [0, 1], False), ('title', [1, 0], False),
+                                       ('date-desc', [0, 1], False), ('date-desc', [1, 0], False),
+                                       ('title', [0, 1], True), ('title', [1, 0], True)]:
+                page.reload()
+                page.wait_for_function('allData.length >= 99998')
+                search('music 0000')
+                page.locator(f'.sort-btn[data-sort="{mode}"]').click()
+                original_all = page.evaluate('allData.map(v => v.videoId)')
+                expected = ids()
+                targets = [expected[-1], expected[-2]]
+                page.evaluate('testFailDelete = true; testDeferDelete = true')
+                if mixed:
+                    page.evaluate('(id) => testDeleteOutcomes[id] = true', targets[0])
+                for target in targets:
+                    page.locator('.video-row').filter(has=page.locator('.video-id', has_text=target)).locator('.delete-btn').click()
+                page.wait_for_function('testPendingDeleteResponses.length === 2', timeout=8000)
+                missing = set(targets)
+                for index in order:
+                    page.evaluate('(i) => testPendingDeleteResponses[i]()', index)
+                    if not (mixed and index == 0):
+                        missing.remove(targets[index])
+                    assert page.evaluate('allData.map(v => v.videoId)') == [value for value in original_all if value not in missing]
+                    current = [value for value in expected if value not in missing]
+                    assert ids() == current
+                    assert page.locator('.video-row:not([hidden]) .video-id').all_text_contents() == current
+                    assert page.evaluate('renderedCount') == len(current)
+                assert page.evaluate('unsettledDeletes.size') == 0
+                assert page.evaluate('deletionOrders.has(allData)') is False
+                page.evaluate('window.scrollTo(0, 0)')
+                page.wait_for_timeout(50)
+                page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+                page.wait_for_timeout(100)
+                assert page.locator('.video-row:not([hidden]) .video-id').all_text_contents() == current
+                checks.append(f'delete-race-{mode}-{order}-mixed-{mixed}')
+            for order in [[0, 1], [1, 0]]:
+                page.reload()
+                page.wait_for_function('allData.length >= 99998')
+                original_all = page.evaluate('allData.map(v => v.videoId)')
+                search('music 0000')
+                page.locator('.sort-btn[data-sort="title"]').click()
+                targets = [first_id()]
+                page.evaluate('testFailDelete = true; testDeferDelete = true')
+                page.locator('.video-row:not([hidden]) .delete-btn').first.click()
+                search('music 000')
+                page.locator('.sort-btn[data-sort="date-desc"]').click()
+                targets.append(first_id())
+                page.locator('.video-row:not([hidden]) .delete-btn').first.click()
+                page.wait_for_function('testPendingDeleteResponses.length === 2', timeout=8000)
+                missing = set(targets)
+                for index in order:
+                    page.evaluate('(i) => testPendingDeleteResponses[i]()', index)
+                    missing.remove(targets[index])
+                    assert page.evaluate('allData.map(v => v.videoId)') == [value for value in original_all if value not in missing]
+                    expected = sorted([value for value in original_all if (int(value) * 7919) % 100000 < 1000 and value not in missing], reverse=True)
+                    assert ids() == expected
+                    assert page.evaluate('currentSort') == 'date-desc'
+                    visible = page.locator('.video-row:not([hidden]) .video-id').all_text_contents()
+                    assert visible == expected[:len(visible)]
+                    assert page.evaluate('renderedCount') == len(visible)
+                page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+                page.wait_for_function('renderedCount >= 200')
+                visible = page.locator('.video-row:not([hidden]) .video-id').all_text_contents()
+                assert visible == expected[:len(visible)]
+                assert len(visible) == len(set(visible))
+                assert page.evaluate('unsettledDeletes.size') == 0
+                checks.append(f'delete-race-across-views-{order}')
+        else:
+            measurements = page.evaluate("""() => {
+              const values = {};
+              for (const query of ['', 'music 0000']) {
+                searchInput.value = query; currentSort = 'date-desc'; render();
+                values[query || 'all'] = [];
+                for (let i = 0; i < 5; i++) {
+                  const start = performance.now();
+                  document.querySelector('.video-row:not([hidden]) .delete-btn').click();
+                  content.getBoundingClientRect();
+                  values[query || 'all'].push(performance.now() - start);
+                  undoToastBtn.click();
+                  if (unsettledDeletes.size || deletionOrders.has(allData)) throw Error('retained deletion order');
+                  if (allData.length !== 100000) throw Error('record lost');
+                }
+              }
+              return values;
+            }""")
+            checks.append('cold-delete-cost-full-and-filtered')
         assert not errors, errors
         context.close()
     finally:
         browser.close()
-result = {'result': 'passed', 'checks': checks, 'records': 100000, 'scenario': args.scenario,
+result = {'result': 'passed', 'checks': checks, 'records': 100000, 'scenario': args.scenario, 'measurements_ms': measurements,
           'commit': subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip(),
           'test_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
           'history_sha256': hashlib.sha256((root / 'history.js').read_bytes()).hexdigest(),

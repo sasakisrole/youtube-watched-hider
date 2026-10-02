@@ -33,7 +33,7 @@ const BLOCK = SRC.slice(startIdx, endIdx);
 // 呼び出し側から同じ配列を覗ける。renderedCount は再代入されるので getter で読む。
 function setup({ all, sorted, renderedCount = 100, filtered = false } = {}) {
   const state = {
-    sent: [], jobMessages: [], renders: 0,
+    sent: [], jobMessages: [], renders: 0, responses: [], deferDelete: false,
     timers: new Map(), nextTimer: 1,
     lastError: null, deleteResult: { success: true },
     listeners: {},
@@ -65,7 +65,10 @@ function setup({ all, sorted, renderedCount = 100, filtered = false } = {}) {
         get lastError() { return state.lastError; },
         sendMessage: (msg, cb) => {
           state.sent.push(msg);
-          if (cb) cb(state.deleteResult);
+          if (cb) {
+            if (state.deferDelete) state.responses.push(cb);
+            else cb(state.deleteResult);
+          }
         },
       },
     },
@@ -88,6 +91,66 @@ function makeRow() {
 }
 
 // --- 削除を押した直後 ------------------------------------------------------
+
+function permutations(items) {
+  return items.length ? items.flatMap((item, i) => permutations(items.filter((_, n) => n !== i)).map(tail => [item, ...tail])) : [[]];
+}
+for (const positions of [[99, 98], [0, 50, 99]]) {
+  for (const replyOrder of permutations(positions.map((_, i) => i))) {
+    for (const successful of [[], [0]]) {
+      const originalAll = makeVideos(200);
+      const originalSorted = originalAll.slice().reverse();
+      const raceAll = originalAll.slice(), raceSorted = originalSorted.slice();
+      const race = setup({ all: raceAll, sorted: raceSorted, renderedCount: 100 });
+      race.state.deferDelete = true;
+      const targets = positions.map(index => originalSorted[index]);
+      targets.forEach(video => race.deleteVideo(video, makeRow()));
+      [...race.state.timers.values()].forEach(fn => fn());
+      const missing = new Set(targets);
+      for (const index of replyOrder) {
+        const success = successful.includes(index);
+        race.state.responses[index]({success});
+        if (!success) missing.delete(targets[index]);
+        const tag = positions.join(',') + '/' + replyOrder.join(',') + '/' + successful.join(',') + '/reply' + index;
+        check('out-of-order reply preserves source order ' + tag,
+          raceAll.map(v => v.videoId).join(',') === originalAll.filter(v => !missing.has(v)).map(v => v.videoId).join(','));
+        check('out-of-order reply preserves view order ' + tag,
+          raceSorted.map(v => v.videoId).join(',') === originalSorted.filter(v => !missing.has(v)).map(v => v.videoId).join(','));
+        check('out-of-order reply preserves rendered count ' + tag,
+          race.getRenderedCount() === 100 - missing.size);
+      }
+    }
+  }
+}
+
+{
+  const original = makeVideos(200);
+  const mixedAll = original.slice(), mixedSorted = original.slice();
+  const mixed = setup({ all: mixedAll, sorted: mixedSorted, renderedCount: 100 });
+  mixed.state.deferDelete = true;
+  mixed.deleteVideo(original[99], makeRow());
+  mixed.deleteVideo(original[98], makeRow());
+  mixed.commitDelete(mixed.getPending()[0]);
+  mixed.state.undoToastBtn.handlers.click();
+  check('undo during another request does not send a second delete', mixed.state.sent.length === 1);
+  mixed.state.responses[0]({success: false});
+  check('undo plus delayed failure preserves source and view order',
+    mixedAll.every((v, i) => v === original[i]) && mixedSorted.every((v, i) => v === original[i]));
+  check('undo plus delayed failure restores rendered count', mixed.getRenderedCount() === 100);
+
+  mixed.deleteVideo(original[50], makeRow());
+  mixed.commitDelete(mixed.getPending()[0]);
+  mixed.state.responses[1]({success: true});
+  const reduced = original.filter(v => v !== original[50]);
+  mixed.deleteVideo(original[99], makeRow());
+  mixed.deleteVideo(original[98], makeRow());
+  [...mixed.getPending()].forEach(mixed.commitDelete);
+  mixed.state.responses[2]({success: false});
+  mixed.state.responses[3]({success: false});
+  check('next deletion group uses the remaining source order',
+    mixedAll.length === 199 && mixedAll.every((v, i) => v === reduced[i]) && mixedSorted.every((v, i) => v === reduced[i]));
+  check('next deletion group keeps a successful deletion removed', mixed.getRenderedCount() === 99);
+}
 
 for (const failure of [false, true]) {
   const boundaryAll = makeVideos(200);
