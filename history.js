@@ -1111,6 +1111,7 @@ function runFix(videoIds, force, label) {
           // Under noChannelOnly the updated row no longer qualifies — drop it.
           if (noChannelOnly && msg.channel) {
             sortedCache.splice(cacheIdx, 1);
+            if (cacheIdx < renderedCount) renderedCount--;
             const rows = content.querySelectorAll('.video-row');
             // Find the row whose videoId matches and remove it.
             for (const row of rows) {
