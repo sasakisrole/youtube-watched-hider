@@ -14,6 +14,7 @@ from playwright.sync_api import sync_playwright
 parser = argparse.ArgumentParser()
 parser.add_argument('--browser', required=True)
 parser.add_argument('--output', required=True)
+parser.add_argument('--scenario', choices=['workflow', 'scroll'], default='workflow')
 args = parser.parse_args()
 root = Path(__file__).resolve().parents[1]
 output = Path(args.output).resolve()
@@ -78,78 +79,123 @@ with sync_playwright() as p:
             return page.evaluate('sortedCache.map(v => v.videoId)')
         def first_id():
             return page.locator('.video-row:not([hidden]) .video-id').first.inner_text()
-        for mode in ['date-desc', 'date-asc', 'count-desc', 'channel', 'title']:
-            search('music 00')
-            page.locator(f'.sort-btn[data-sort="{mode}"]').click()
-            before = ids()
-            assert len(before) == 10000
-            page.locator('.video-row:not([hidden]) .delete-btn').first.click()
-            page.locator('.video-row:not([hidden]) .delete-btn').first.click()
-            assert page.evaluate('allData.length') == 99998
-            assert len(ids()) == 9998
+        if args.scenario == 'workflow':
+            for mode in ['date-desc', 'date-asc', 'count-desc', 'channel', 'title']:
+                search('music 00')
+                page.locator(f'.sort-btn[data-sort="{mode}"]').click()
+                before = ids()
+                assert len(before) == 10000
+                page.locator('.video-row:not([hidden]) .delete-btn').first.click()
+                page.locator('.video-row:not([hidden]) .delete-btn').first.click()
+                assert page.evaluate('allData.length') == 99998
+                assert len(ids()) == 9998
+                search('music 000')
+                page.locator('.sort-btn[data-sort="date-asc"]').click()
+                page.locator('#undoToastBtn').click()
+                assert page.evaluate('allData.length') == 100000
+                assert page.evaluate('testDeleteCalls.length') == 0
+                search('music 00')
+                page.locator(f'.sort-btn[data-sort="{mode}"]').click()
+                assert ids() == before, mode
+                visible = page.locator('.video-row:not([hidden]) .video-id').all_text_contents()
+                assert visible == before[:len(visible)]
+                assert not page.locator('#undoToast').is_visible()
+                checks.append('search-sort-delete-two-change-filter-undo-' + mode)
+            page.reload()
+            page.wait_for_function('allData.length === 100000')
+            checks.append('undo-survives-reload-with-no-storage-delete')
             search('music 000')
-            page.locator('.sort-btn[data-sort="date-asc"]').click()
-            page.locator('#undoToastBtn').click()
-            assert page.evaluate('allData.length') == 100000
-            assert page.evaluate('testDeleteCalls.length') == 0
+            doomed = first_id()
+            page.locator('.video-row:not([hidden]) .delete-btn').first.click()
+            page.wait_for_function('testDeleteCalls.length === 1', timeout=8000)
+            page.reload()
+            page.wait_for_function('allData.length === 99999')
+            assert not page.evaluate('(id) => allData.some(v => v.videoId === id)', doomed)
+            checks.append('committed-delete-survives-reload')
+            search('music 000')
+            before = ids()
+            page.evaluate('testFailDelete = true')
+            page.locator('.video-row:not([hidden]) .delete-btn').first.click()
+            page.wait_for_function('testDeleteCalls.length === 1', timeout=8000)
+            assert ids() == before
+            assert page.evaluate('allData.length') == 99999
+            page.reload()
+            page.wait_for_function('allData.length === 99999')
+            checks.append('failed-delete-restores-history-and-order')
             search('music 00')
-            page.locator(f'.sort-btn[data-sort="{mode}"]').click()
-            assert ids() == before, mode
-            visible = page.locator('.video-row:not([hidden]) .video-id').all_text_contents()
-            assert visible == before[:len(visible)]
-            assert not page.locator('#undoToast').is_visible()
-            checks.append('search-sort-delete-two-change-filter-undo-' + mode)
-        page.reload()
-        page.wait_for_function('allData.length === 100000')
-        checks.append('undo-survives-reload-with-no-storage-delete')
-        search('music 000')
-        doomed = first_id()
-        page.locator('.video-row:not([hidden]) .delete-btn').first.click()
-        page.wait_for_function('testDeleteCalls.length === 1', timeout=8000)
-        page.reload()
-        page.wait_for_function('allData.length === 99999')
-        assert not page.evaluate('(id) => allData.some(v => v.videoId === id)', doomed)
-        checks.append('committed-delete-survives-reload')
-        search('music 000')
-        before = ids()
-        page.evaluate('testFailDelete = true')
-        page.locator('.video-row:not([hidden]) .delete-btn').first.click()
-        page.wait_for_function('testDeleteCalls.length === 1', timeout=8000)
-        assert ids() == before
-        assert page.evaluate('allData.length') == 99999
-        page.reload()
-        page.wait_for_function('allData.length === 99999')
-        checks.append('failed-delete-restores-history-and-order')
-        search('music 00')
-        page.locator('.sort-btn[data-sort="title"]').click()
-        before = ids()
-        page.evaluate('testFailDelete = true; testDeferDelete = true')
-        page.locator('.video-row:not([hidden]) .delete-btn').first.click()
-        page.wait_for_function('testPendingDeleteResponses.length === 1', timeout=8000)
-        search('music 09')
-        page.locator('.sort-btn[data-sort="date-asc"]').click()
-        page.evaluate('testPendingDeleteResponses.shift()()')
-        assert page.evaluate('currentSort') == 'date-asc'
-        assert ids() == [str(i).zfill(11) for i in range(100000) if (i * 7919) % 100000 >= 90000]
-        assert page.evaluate("sortedCache.every(v => v.title.toLowerCase().includes('music 09'))")
-        assert page.evaluate('allData.length') == 99999
-        search('music 00')
-        page.locator('.sort-btn[data-sort="title"]').click()
-        assert ids() == before
-        page.reload()
-        page.wait_for_function('allData.length === 99999')
-        checks.append('delayed-failure-after-search-and-sort-restores-correct-results')
-        doomed = first_id()
-        page.locator('.video-row:not([hidden]) .delete-btn').first.click()
-        page.reload()
-        page.wait_for_function('allData.length === 99998')
-        assert not page.evaluate('(id) => allData.some(v => v.videoId === id)', doomed)
-        checks.append('pagehide-flushes-pending-delete')
+            page.locator('.sort-btn[data-sort="title"]').click()
+            before = ids()
+            page.evaluate('testFailDelete = true; testDeferDelete = true')
+            page.locator('.video-row:not([hidden]) .delete-btn').first.click()
+            page.wait_for_function('testPendingDeleteResponses.length === 1', timeout=8000)
+            search('music 09')
+            page.locator('.sort-btn[data-sort="date-asc"]').click()
+            page.evaluate('testPendingDeleteResponses.shift()()')
+            assert page.evaluate('currentSort') == 'date-asc'
+            assert ids() == [str(i).zfill(11) for i in range(100000) if (i * 7919) % 100000 >= 90000]
+            assert page.evaluate("sortedCache.every(v => v.title.toLowerCase().includes('music 09'))")
+            assert page.evaluate('allData.length') == 99999
+            search('music 00')
+            page.locator('.sort-btn[data-sort="title"]').click()
+            assert ids() == before
+            page.reload()
+            page.wait_for_function('allData.length === 99999')
+            checks.append('delayed-failure-after-search-and-sort-restores-correct-results')
+            doomed = first_id()
+            page.locator('.video-row:not([hidden]) .delete-btn').first.click()
+            page.reload()
+            page.wait_for_function('allData.length === 99998')
+            assert not page.evaluate('(id) => allData.some(v => v.videoId === id)', doomed)
+            checks.append('pagehide-flushes-pending-delete')
+        else:
+            def visible_ids():
+                return page.locator('.video-row:not([hidden]) .video-id').all_text_contents()
+            def assert_prefix(expected):
+                visible = visible_ids()
+                assert len(visible) == len(set(visible)), 'duplicate rendered video'
+                assert visible == expected[:len(visible)], 'missing or out-of-order rendered video'
+                assert len(visible) == page.evaluate('renderedCount'), 'rendered pointer disagrees with DOM'
+            def next_batch():
+                before = page.evaluate('renderedCount')
+                page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+                page.wait_for_function('(before) => renderedCount > before', arg=before)
+            for mode in ['date-desc', 'date-asc', 'count-desc', 'channel', 'title']:
+                page.evaluate('window.scrollTo(0, 0)')
+                search('music 00')
+                page.locator(f'.sort-btn[data-sort="{mode}"]').click()
+                expected = ids()
+                page.locator('.video-row:not([hidden]) .delete-btn').nth(99).click()
+                remaining = set(ids())
+                removed = [value for value in expected if value not in remaining]
+                assert len(removed) == 1
+                next_batch()
+                assert_prefix([value for value in expected if value not in removed])
+                page.locator('#undoToastBtn').click()
+                assert_prefix(expected)
+                next_batch()
+                assert_prefix(expected)
+                assert page.evaluate('testDeleteCalls.length') == 0
+                checks.append('scroll-delete-undo-prefix-' + mode)
+            page.evaluate('window.scrollTo(0, 0)')
+            search('music 0000')
+            page.locator('.sort-btn[data-sort="title"]').click()
+            expected = ids()
+            assert len(expected) == 100
+            page.locator('.video-row:not([hidden]) .delete-btn').last.click()
+            page.locator('#undoToastBtn').click()
+            assert_prefix(expected)
+            page.evaluate('window.scrollTo(0, 0)')
+            page.wait_for_timeout(50)
+            page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+            page.wait_for_timeout(100)
+            assert_prefix(expected)
+            assert visible_ids() == expected
+            checks.append('last-rendered-delete-undo-does-not-duplicate-at-end')
         assert not errors, errors
         context.close()
     finally:
         browser.close()
-result = {'result': 'passed', 'checks': checks, 'records': 100000,
+result = {'result': 'passed', 'checks': checks, 'records': 100000, 'scenario': args.scenario,
           'commit': subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip(),
           'test_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
           'history_sha256': hashlib.sha256((root / 'history.js').read_bytes()).hexdigest(),

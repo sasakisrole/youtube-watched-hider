@@ -136,7 +136,7 @@ function restoreDelete(entry) {
   historySortCache = null;
   if (entry.sortedIndex >= 0) {
     sortedCache.splice(Math.min(entry.sortedIndex, sortedCache.length), 0, entry.video);
-    if (entry.sortedIndex < renderedCount) renderedCount++;
+    if (entry.sortedIndex <= renderedCount) renderedCount++;
   }
   entry.row.hidden = false;
   updateTotalCount();

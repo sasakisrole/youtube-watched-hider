@@ -89,6 +89,21 @@ function makeRow() {
 
 // --- 削除を押した直後 ------------------------------------------------------
 
+for (const failure of [false, true]) {
+  const boundaryAll = makeVideos(200);
+  const boundarySorted = boundaryAll.slice();
+  const boundary = setup({ all: boundaryAll, sorted: boundarySorted, renderedCount: 100 });
+  boundary.state.deleteResult = { success: !failure };
+  boundary.deleteVideo(boundaryAll[99], makeRow());
+  check('last rendered row removal decrements count', boundary.getRenderedCount() === 99);
+  if (failure) [...boundary.state.timers.values()][0]();
+  else boundary.state.undoToastBtn.handlers.click();
+  check(failure ? 'failed boundary deletion restores count' : 'boundary undo restores count',
+    boundary.getRenderedCount() === 100);
+  check('next batch starts at the next video, not the restored row',
+    boundarySorted[boundary.getRenderedCount()].videoId === 'v100');
+}
+
 let all = makeVideos(10);
 let sorted = all.slice();
 let ctx = setup({ all, sorted, renderedCount: 10 });
