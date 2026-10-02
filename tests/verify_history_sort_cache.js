@@ -101,6 +101,34 @@ scope.noChannelOnly = false;
 scope.render();
 assert.deepEqual(ids(scope.sortedCache), ids(originalSort(scope.allData, 'date-desc')));
 
+for (const mode of ['date-desc', 'date-asc', 'count-desc', 'channel', 'title']) {
+  scope.allData = records.slice();
+  scope.historySortCache = null;
+  scope.currentSort = mode;
+  scope.searchInput.value = 'song 1';
+  scope.noChannelOnly = false;
+  const sortedSizes = [];
+  scope.sortData = (data, mode) => { sortedSizes.push(data.length); return originalSort(data, mode); };
+  scope.render();
+  const subset = filtered(scope.allData, 'song 1', false);
+  assert.deepEqual(sortedSizes, [subset.length], 'cold query sorts only matching records');
+  assert.deepEqual(ids(scope.sortedCache), ids(originalSort(subset, mode)));
+  assert.equal(scope.historySortCache, null, 'partial order is not stored as full order');
+  scope.searchInput.value = '';
+  scope.render();
+  assert.equal(scope.historySortCache.records.length, records.length);
+  const before = sortedSizes.length;
+  scope.searchInput.value = 'song';
+  scope.render();
+  assert.equal(sortedSizes.length, before, 'warm full order remains reusable');
+  scope.historySortCache = null;
+  scope.noChannelOnly = true;
+  scope.searchInput.value = '';
+  scope.render();
+  assert.deepEqual(ids(scope.sortedCache), ids(originalSort(filtered(records, '', true), mode)));
+}
+scope.sortData = originalSort;
+
 if (process.argv.includes('--benchmark')) {
   const large = Array.from({ length: 100000 }, (_, i) => ({
     videoId: 'v' + i, title: 'song ' + ((i * 7919) % 100000),

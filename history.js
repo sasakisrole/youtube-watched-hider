@@ -298,8 +298,8 @@ function renderBatch() {
 // Full render (reset + first batch)
 function render() {
   const filter = searchInput.value.toLowerCase();
-  // Filtering preserves order, so typing need not sort the same history again.
-  let filtered = getSortedHistory().slice();
+  const hasCachedOrder = historySortCache?.source === allData && historySortCache.mode === currentSort;
+  let filtered = hasCachedOrder ? historySortCache.records : allData;
   if (filter) {
     filtered = filtered.filter(v =>
       (v.title || v.videoId).toLowerCase().includes(filter) ||
@@ -311,7 +311,9 @@ function render() {
     filtered = filtered.filter(v => !v.channel || v.channel.trim() === '');
   }
 
-  sortedCache = filtered;
+  // A cold filtered view need not sort records that cannot be displayed.
+  sortedCache = hasCachedOrder ? filtered.slice() :
+    filtered.length === allData.length ? getSortedHistory().slice() : sortData(filtered, currentSort);
   updateTotalCount();
   renderedCount = 0;
   lastDateKeyRendered = '';
