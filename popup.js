@@ -208,6 +208,8 @@ function formatTime(timestamp) {
 function deleteHistoryVideo(videoId, rowEl) {
   chrome.runtime.sendMessage({ type: 'DELETE_VIDEO', videoId }, (res) => {
     if (res && res.success) {
+      const deletedIndex = filteredHistoryData.findIndex(v => v.videoId === videoId);
+      if (deletedIndex >= 0 && deletedIndex < historyRenderedCount) historyRenderedCount--;
       allHistoryData = allHistoryData.filter(v => v.videoId !== videoId);
       filteredHistoryData = filteredHistoryData.filter(v => v.videoId !== videoId);
       rowEl.style.transition = 'opacity 0.2s';
