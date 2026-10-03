@@ -1687,6 +1687,14 @@ function loadData() {
   const revision = historyDataRevision;
   const generation = ++historyLoadGeneration;
   let responded = false;
+  function clearLoadedHistory() {
+    allData = [];
+    historySortCache = null;
+    sortedCache = [];
+    renderedCount = 0;
+    lastDateKeyRendered = '';
+    updateTotalCount();
+  }
 
   const timeout = setTimeout(() => {
     if (!responded) {
@@ -1696,6 +1704,7 @@ function loadData() {
         loadData();
         return;
       }
+      clearLoadedHistory();
       content.textContent = '';
       const empty = document.createElement('div');
       empty.className = 'empty';
@@ -1717,6 +1726,7 @@ function loadData() {
       }
 
       if (chrome.runtime.lastError) {
+        clearLoadedHistory();
         content.textContent = '';
         const errDiv = document.createElement('div');
         errDiv.className = 'empty';
@@ -1726,6 +1736,7 @@ function loadData() {
       }
 
       if (data && data.__error) {
+        clearLoadedHistory();
         content.textContent = '';
         const errDiv = document.createElement('div');
         errDiv.className = 'empty';
@@ -1753,6 +1764,7 @@ function loadData() {
     responded = true;
     clearTimeout(timeout);
     if (generation !== historyLoadGeneration) return;
+    clearLoadedHistory();
     content.textContent = '';
     const errDiv = document.createElement('div');
     errDiv.className = 'empty';
