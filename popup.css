@@ -307,7 +307,7 @@ input:checked + .slider::before {
   transition: opacity 0.15s, color 0.15s;
 }
 
-.history-item:hover .history-delete-btn { opacity: 1; }
+.history-item:hover .history-delete-btn, .history-item:focus-within .history-delete-btn { opacity: 1; }
 .history-delete-btn:hover { color: var(--danger); }
 
 .history-text {
