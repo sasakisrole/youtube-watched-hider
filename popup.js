@@ -557,7 +557,10 @@ fileInput.addEventListener('change', (e) => {
 
   // Claim a generation at SELECTION time so the last-picked file wins even if an
   // earlier file's read/diff completes later (Codex B2 minor 1).
-  const myGen = ++importGeneration;
+  closeImportPanel();
+  const myGen = importGeneration;
+  importDiffSummary.textContent = '';
+  statusEl.textContent = '';
   const reader = new FileReader();
   reader.onload = (event) => {
     if (myGen !== importGeneration) return; // a newer file was picked while reading
@@ -587,6 +590,11 @@ fileInput.addEventListener('change', (e) => {
         showStatus(popupMessage('popupDynamicDiffFailed', `差分の計算に失敗しました: ${((response && response.error) || 'unknown')}`, [((response && response.error) || 'unknown')]), true);
       }
     });
+  };
+  reader.onerror = reader.onabort = () => {
+    if (myGen !== importGeneration) return;
+    closeImportPanel();
+    showStatus(popupMessage('popupDynamicJsonRetry', 'JSONを読み取れませんでした。バックアップファイルを選び直してください'), true);
   };
   reader.readAsText(file);
   fileInput.value = '';
