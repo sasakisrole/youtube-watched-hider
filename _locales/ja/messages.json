@@ -517,6 +517,9 @@
   "popupDynamicPlayCount": {
     "message": "$1回再生"
   },
+  "popupDynamicHistoryLoadFailed": {
+    "message": "履歴を読み込めませんでした。履歴を閉じて開き直してください。"
+  },
   "popupDynamicHistoryDeleteFailed": {
     "message": "動画の削除に失敗しました。もう一度お試しください。"
   },

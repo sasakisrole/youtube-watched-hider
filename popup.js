@@ -86,6 +86,8 @@ let allHistoryData = [];
 let filteredHistoryData = [];
 let historyRenderedCount = 0;
 let lastHistoryDateGroup = '';
+let historyLoadFailed = false;
+let historyLoadGeneration = 0;
 const HISTORY_PAGE_SIZE = 50;
 
 let statusTimer = null;
@@ -347,7 +349,9 @@ function renderHistory(filter = '') {
   if (filteredHistoryData.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'history-empty';
-    empty.textContent = filter
+    empty.textContent = historyLoadFailed
+      ? historyLoadErrorMessage()
+      : filter
       ? popupMessage('popupDynamicNoMatches', '該当する動画はありません。検索語を短くしてみてください。')
       : popupMessage('popupDynamicNoHistory', 'まだ記録がありません。YouTubeで動画を再生すると記録されます。');
     historyList.appendChild(empty);
@@ -358,19 +362,36 @@ function renderHistory(filter = '') {
 }
 
 // Load and show history
+function historyLoadErrorMessage() {
+  return popupMessage('popupDynamicHistoryLoadFailed', '履歴を読み込めませんでした。履歴を閉じて開き直してください。');
+}
+
 function loadHistory() {
-  chrome.runtime.sendMessage({ type: 'EXPORT_DATA' }, (data) => {
-    const records = getExportRecords(data);
-    if (!records) {
-      allHistoryData = [];
-    } else if (records.length === 0) {
-      allHistoryData = [];
-    } else {
-      // Sort by most recent first
-      allHistoryData = records.sort((a, b) => b.watchedAt - a.watchedAt);
-    }
+  const generation = ++historyLoadGeneration;
+  const reportFailure = () => {
+    if (generation !== historyLoadGeneration) return;
+    historyLoadFailed = true;
+    allHistoryData = [];
     renderHistory(historySearch.value);
-  });
+    showStatus(historyLoadErrorMessage(), true);
+  };
+  try {
+    chrome.runtime.sendMessage({ type: 'EXPORT_DATA' }, (data) => {
+      const error = chrome.runtime.lastError;
+      if (generation !== historyLoadGeneration) return;
+      const records = unwrapWatchedRecords(data);
+      if (error || (data && data.__error) || !records) {
+        reportFailure();
+        return;
+      }
+      if (historyLoadFailed && statusEl.textContent === historyLoadErrorMessage()) showStatus('');
+      historyLoadFailed = false;
+      allHistoryData = records.sort((a, b) => b.watchedAt - a.watchedAt);
+      renderHistory(historySearch.value);
+    });
+  } catch (_) {
+    reportFailure();
+  }
 }
 
 // Watched display settings use the same local storage and tab message pattern.
@@ -832,6 +853,8 @@ clearWatchedBtn.addEventListener('click', () => {
     if (response && response.success) {
       showStatus(popupMessage('popupDynamicWatchedCleared', '視聴履歴を削除しました'));
       loadStats();
+      historyLoadGeneration++;
+      historyLoadFailed = false;
       allHistoryData = [];
       renderHistory();
     } else {
@@ -871,6 +894,8 @@ clearAllBtn.addEventListener('click', () => {
         : (b && b.reason === 'no_data' ? popupMessage('popupDynamicNoData', '（データなし）') : '');
       showStatus(popupMessage('popupDynamicResetDone', `全データを初期化しました ${backedUp}`, [backedUp]));
       loadStats();
+      historyLoadGeneration++;
+      historyLoadFailed = false;
       allHistoryData = [];
       renderHistory();
       settingsPanel.style.display = 'none';

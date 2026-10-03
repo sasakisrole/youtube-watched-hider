@@ -517,6 +517,9 @@
   "popupDynamicPlayCount": {
     "message": "Plays: $1"
   },
+  "popupDynamicHistoryLoadFailed": {
+    "message": "Could not load your history. Close and reopen the history panel to try again."
+  },
   "popupDynamicHistoryDeleteFailed": {
     "message": "Could not delete this video. Please try again."
   },

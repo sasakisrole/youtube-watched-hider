@@ -18,7 +18,7 @@ class Element {
 function boot(){
  const list=new Element('div'),callbacks=[],timers=[],notices=[];
  const records=Array.from({length:101},(_,i)=>({videoId:'v'+i,title:(i%2?'odd':'even')+' '+i,watchedAt:0}));
- const context=vm.createContext({allHistoryData:records,filteredHistoryData:[],historyRenderedCount:0,lastHistoryDateGroup:'',HISTORY_PAGE_SIZE:50,
+ const context=vm.createContext({allHistoryData:records,filteredHistoryData:[],historyRenderedCount:0,historyLoadFailed:false,lastHistoryDateGroup:'',HISTORY_PAGE_SIZE:50,
   historyList:list,chrome:{runtime:{sendMessage:(msg,cb)=>callbacks.push({msg,cb})}},setTimeout:fn=>timers.push(fn),loadStats:()=>{},
   formatDateGroup:()=> 'one-day',formatTime:()=> '00:00',popupMessage:key=>key,showStatus:(...args)=>notices.push(args),
   document:{createElement:tag=>new Element(tag),createDocumentFragment:()=>new Element('fragment')}});
