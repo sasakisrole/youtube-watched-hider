@@ -397,7 +397,15 @@ function saveWatchedDisplaySetting(key, value, extra = {}) {
     }
     // Read the latest complete snapshot to avoid overwriting another popup's settings.
     chrome.storage.local.get(watchedDisplayDefaults, (settings) => {
+      if (chrome.runtime.lastError || !settings || typeof settings !== 'object' || Array.isArray(settings)) {
+        showStatus(popupMessage('popupDynamicSettingsApplyFailed', '設定は保存しましたが、開いているページへの反映を確認できませんでした。ページを再読み込みすると適用されます。'), true);
+        return;
+      }
       chrome.tabs.query({ url: '*://*.youtube.com/*' }, (tabs) => {
+        if (chrome.runtime.lastError || !Array.isArray(tabs)) {
+          showStatus(popupMessage('popupDynamicSettingsApplyFailed', '設定は保存しましたが、開いているページへの反映を確認できませんでした。ページを再読み込みすると適用されます。'), true);
+          return;
+        }
         for (const tab of tabs) {
           chrome.tabs.sendMessage(tab.id, { type: 'WATCHED_DISPLAY_SETTINGS_CHANGED', settings }).catch(() => {});
         }

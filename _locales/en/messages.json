@@ -526,6 +526,9 @@
   "popupDynamicNoHistory": {
     "message": "No records yet. Play a video on YouTube to start recording."
   },
+  "popupDynamicSettingsApplyFailed": {
+    "message": "Your settings were saved, but we could not confirm that they reached the open pages. Reload the pages to apply them."
+  },
   "popupDynamicSettingsFailed": {
     "message": "Could not save settings"
   },

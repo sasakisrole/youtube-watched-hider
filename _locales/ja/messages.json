@@ -526,6 +526,9 @@
   "popupDynamicNoHistory": {
     "message": "まだ記録がありません。YouTubeで動画を再生すると記録されます。"
   },
+  "popupDynamicSettingsApplyFailed": {
+    "message": "設定は保存しましたが、開いているページへの反映を確認できませんでした。ページを再読み込みすると適用されます。"
+  },
   "popupDynamicSettingsFailed": {
     "message": "設定を保存できませんでした"
   },
