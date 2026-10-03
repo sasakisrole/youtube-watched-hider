@@ -206,8 +206,13 @@ function formatTime(timestamp) {
 
 // Delete a video from history
 function deleteHistoryVideo(videoId, rowEl) {
-  chrome.runtime.sendMessage({ type: 'DELETE_VIDEO', videoId }, (res) => {
-    if (res && res.success) {
+  const reportFailure = () => showStatus(popupMessage('popupDynamicHistoryDeleteFailed', '動画の削除に失敗しました。もう一度お試しください。'), true);
+  try {
+    chrome.runtime.sendMessage({ type: 'DELETE_VIDEO', videoId }, (res) => {
+      if (chrome.runtime.lastError || !res || !res.success) {
+        reportFailure();
+        return;
+      }
       const deletedIndex = filteredHistoryData.findIndex(v => v.videoId === videoId);
       if (deletedIndex >= 0 && deletedIndex < historyRenderedCount) historyRenderedCount--;
       allHistoryData = allHistoryData.filter(v => v.videoId !== videoId);
@@ -228,8 +233,10 @@ function deleteHistoryVideo(videoId, rowEl) {
         }
       }, 200);
       loadStats();
-    }
-  });
+    });
+  } catch (_) {
+    reportFailure();
+  }
 }
 
 // Build a single history item element

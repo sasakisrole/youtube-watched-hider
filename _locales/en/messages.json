@@ -517,6 +517,9 @@
   "popupDynamicPlayCount": {
     "message": "Plays: $1"
   },
+  "popupDynamicHistoryDeleteFailed": {
+    "message": "Could not delete this video. Please try again."
+  },
   "popupDynamicDeleteVideo": {
     "message": "Delete this video from history"
   },

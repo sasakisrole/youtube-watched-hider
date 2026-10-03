@@ -517,6 +517,9 @@
   "popupDynamicPlayCount": {
     "message": "$1回再生"
   },
+  "popupDynamicHistoryDeleteFailed": {
+    "message": "動画の削除に失敗しました。もう一度お試しください。"
+  },
   "popupDynamicDeleteVideo": {
     "message": "この動画を履歴から削除"
   },
