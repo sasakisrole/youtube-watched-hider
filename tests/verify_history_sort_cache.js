@@ -66,6 +66,7 @@ assert.equal(scope.sortedCache.length, 5, 'reload invalidates by source identity
 Object.assign(scope, {
   pendingDeletes: [], UNDO_WINDOW_MS: 5000, renderedCount: 5,
   deletionOrders: new WeakMap(), unsettledDeletes: new Set(),
+  historyDataRevision: 0, reloadAfterDeletes: false,
   clearTimeout() {}, setTimeout() { return 1; }, renderUndoToast() {},
 });
 vm.runInContext(block('function getDeletionOrder(', 'function renderUndoToast('), scope);

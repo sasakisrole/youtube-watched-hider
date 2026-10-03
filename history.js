@@ -120,6 +120,9 @@ const UNDO_WINDOW_MS = 5000;
 let pendingDeletes = [];
 let deletionOrders = new WeakMap();
 const unsettledDeletes = new Set();
+let historyDataRevision = 0;
+let historyLoadGeneration = 0;
+let reloadAfterDeletes = false;
 
 function getDeletionOrder(records) {
   let order = deletionOrders.get(records);
@@ -144,7 +147,13 @@ function restoreInDeletionOrder(records, video, order) {
 
 function settleDelete(entry) {
   unsettledDeletes.delete(entry);
-  if (!unsettledDeletes.size) deletionOrders = new WeakMap();
+  if (!unsettledDeletes.size) {
+    deletionOrders = new WeakMap();
+    if (reloadAfterDeletes) {
+      reloadAfterDeletes = false;
+      setTimeout(loadData, 0);
+    }
+  }
 }
 
 function renderUndoToast() {
@@ -158,6 +167,7 @@ function renderUndoToast() {
 }
 
 function restoreDelete(entry) {
+  historyDataRevision++;
   clearTimeout(entry.timer);
   pendingDeletes = pendingDeletes.filter((e) => e !== entry);
   if (entry.allIndex >= 0) restoreInDeletionOrder(allData, entry.video, entry.allOrder);
@@ -184,12 +194,14 @@ function commitDelete(entry) {
       showJobMessage(historyMessage('history_delete_error', `履歴から削除できませんでした: ${entry.video.title || entry.video.videoId}`, [entry.video.title || entry.video.videoId]), { state: 'error' });
       return;
     }
+    historyDataRevision++;
     settleDelete(entry);
     entry.row.remove();
   });
 }
 
 function deleteVideo(video, rowEl) {
+  historyDataRevision++;
   const allIndex = allData.indexOf(video);
   const sortedIndex = sortedCache.indexOf(video);
   const entry = { video, row: rowEl, allIndex, sortedIndex, timer: null,
@@ -1667,11 +1679,23 @@ searchInput.addEventListener('input', () => {
 
 // Load data from extension
 function loadData() {
+  // A fresh export must not replace the objects/ranks needed by pending Undo or failure recovery.
+  if (unsettledDeletes.size) {
+    reloadAfterDeletes = true;
+    return;
+  }
+  const revision = historyDataRevision;
+  const generation = ++historyLoadGeneration;
   let responded = false;
 
   const timeout = setTimeout(() => {
     if (!responded) {
       responded = true;
+      if (generation !== historyLoadGeneration) return;
+      if (revision !== historyDataRevision || unsettledDeletes.size) {
+        loadData();
+        return;
+      }
       content.textContent = '';
       const empty = document.createElement('div');
       empty.className = 'empty';
@@ -1685,6 +1709,12 @@ function loadData() {
       if (responded) return;
       responded = true;
       clearTimeout(timeout);
+      if (generation !== historyLoadGeneration) return;
+      // A delete may settle after this export captured its DB snapshot. Fetch again instead of resurrecting it.
+      if (revision !== historyDataRevision || unsettledDeletes.size) {
+        loadData();
+        return;
+      }
 
       if (chrome.runtime.lastError) {
         content.textContent = '';
@@ -1722,6 +1752,7 @@ function loadData() {
   } catch (e) {
     responded = true;
     clearTimeout(timeout);
+    if (generation !== historyLoadGeneration) return;
     content.textContent = '';
     const errDiv = document.createElement('div');
     errDiv.className = 'empty';
