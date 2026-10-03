@@ -184,20 +184,43 @@ function restoreDelete(entry) {
   if (!entry.row.isConnected) render();
 }
 
+function removeEmptyDateHeaders() {
+  const children = Array.from(content.children);
+  for (let i = 0; i < children.length; i++) {
+    const header = children[i];
+    if (header.className !== 'date-header') continue;
+    const next = children[i + 1];
+    // Hidden rows still belong to their group until Undo or the DELETE reply settles.
+    if (!next || next.className === 'date-header') {
+      header.remove();
+      if (!next) lastDateKeyRendered = '';
+    }
+  }
+}
+
 function commitDelete(entry) {
   pendingDeletes = pendingDeletes.filter((e) => e !== entry);
   renderUndoToast();
-  chrome.runtime.sendMessage({ type: 'DELETE_VIDEO', videoId: entry.video.videoId }, (res) => {
-    if (chrome.runtime.lastError || !res || !res.success) {
-      // 消せていないのに画面から消えたままだと、次に開いたとき黙って戻っている
-      restoreDelete(entry);
-      showJobMessage(historyMessage('history_delete_error', `履歴から削除できませんでした: ${entry.video.title || entry.video.videoId}`, [entry.video.title || entry.video.videoId]), { state: 'error' });
-      return;
-    }
-    historyDataRevision++;
-    settleDelete(entry);
-    entry.row.remove();
-  });
+  function failDelete() {
+    restoreDelete(entry);
+    showJobMessage(historyMessage('history_delete_error', `履歴から削除できませんでした: ${entry.video.title || entry.video.videoId}`, [entry.video.title || entry.video.videoId]), { state: 'error' });
+  }
+  try {
+    chrome.runtime.sendMessage({ type: 'DELETE_VIDEO', videoId: entry.video.videoId }, (res) => {
+      if (chrome.runtime.lastError || !res || !res.success) {
+        // A failed send or reply must restore the same record and release deferred reloads.
+        failDelete();
+        return;
+      }
+      historyDataRevision++;
+      settleDelete(entry);
+      const connected = entry.row.isConnected;
+      entry.row.remove();
+      if (connected) removeEmptyDateHeaders();
+    });
+  } catch (_e) {
+    failDelete();
+  }
 }
 
 function deleteVideo(video, rowEl) {

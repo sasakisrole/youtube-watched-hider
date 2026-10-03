@@ -47,6 +47,8 @@ function setup({ all, sorted, renderedCount = 100, filtered = false } = {}) {
   state.undoToastBtn = { handlers: {}, addEventListener(t, h) { this.handlers[t] = h; } };
 
   const scope = {
+    content: { children: [] },
+    lastDateKeyRendered: '',
     allData: all,
     sortedCache: sorted,
     renderedCount,
