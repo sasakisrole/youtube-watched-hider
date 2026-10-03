@@ -5,7 +5,8 @@ const source=fs.readFileSync(path.join(root,'popup.js'),'utf8');
 const unit=source.slice(source.indexOf('function deleteHistoryVideo('),source.indexOf('// Load and show history'));
 let passed=0;
 class Element {
- constructor(tag){this.tag=tag;this.children=[];this.style={};this.listeners={};this.parent=null;}
+ constructor(tag){this.tag=tag;this.children=[];this.style={};this.listeners={};this.parent=null;this.dataset={};}
+ querySelectorAll(selector){assert.equal(selector,'.history-item');return this.children.filter(x=>x.className==='history-item');}
  appendChild(child){if(child.tag==='fragment'){for(const c of [...child.children])this.appendChild(c);return child;}child.parent=this;this.children.push(child);return child;}
  remove(){if(this.parent){this.parent.children=this.parent.children.filter(x=>x!==this);this.parent=null;}}
  set textContent(value){this.text=String(value);this.children=[];}
@@ -37,4 +38,6 @@ check('filtered pagination retains matching tail record after deletion',()=>{con
 check('late callback after filter change only adjusts current matching prefix',()=>{const h=boot();h.run('renderHistory()');h.request('v0');h.run('renderHistory("odd")');h.flush();h.run('renderHistoryBatch()');assert.deepEqual(h.ids(),sequence(0,101).filter(x=>Number(x.slice(1))%2===1));});
 check('late deletion now outside rendered prefix preserves current boundary',()=>{const h=boot();h.run('renderHistory();renderHistoryBatch()');h.request('v75');h.run('renderHistory()');h.flush();h.run('renderHistoryBatch();renderHistoryBatch()');assert.deepEqual(h.ids(),sequence(0,101).filter(x=>x!=='v75'));});
 check('deleting the final record leaves no negative cursor or phantom rows',()=>{const h=boot();h.run('allHistoryData=allHistoryData.slice(0,1);renderHistory()');h.request('v0');h.flush();h.run('renderHistoryBatch()');assert.deepEqual(h.ids(),[]);assert.equal(h.run('historyRenderedCount'),0);});
+check('late success removes the current same-ID row after unfiltered redraw',()=>{const h=boot();h.run('renderHistory()');h.request('v0');h.run('renderHistory()');h.flush();h.run('renderHistoryBatch();renderHistoryBatch()');assert.deepEqual(h.ids(),sequence(1,101));});
+check('late success removes the current same-ID row after matching filtered redraw',()=>{const h=boot();h.run('renderHistory()');h.request('v0');h.run('renderHistory("even")');h.flush();h.run('renderHistoryBatch()');assert.deepEqual(h.ids(),sequence(0,101).filter(x=>Number(x.slice(1))%2===0&&x!=='v0'));});
 console.log(`${passed} cases passed; failures=${process.exitCode?'present':0}`);

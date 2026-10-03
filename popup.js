@@ -212,9 +212,11 @@ function deleteHistoryVideo(videoId, rowEl) {
       if (deletedIndex >= 0 && deletedIndex < historyRenderedCount) historyRenderedCount--;
       allHistoryData = allHistoryData.filter(v => v.videoId !== videoId);
       filteredHistoryData = filteredHistoryData.filter(v => v.videoId !== videoId);
-      rowEl.style.transition = 'opacity 0.2s';
-      rowEl.style.opacity = '0';
-      setTimeout(() => rowEl.remove(), 200);
+      const currentRow = Array.from(historyList.querySelectorAll('.history-item'))
+        .find(row => row.dataset.videoId === videoId) || rowEl;
+      currentRow.style.transition = 'opacity 0.2s';
+      currentRow.style.opacity = '0';
+      setTimeout(() => currentRow.remove(), 200);
       loadStats();
     }
   });
@@ -224,6 +226,7 @@ function deleteHistoryVideo(videoId, rowEl) {
 function buildHistoryItem(video) {
   const row = document.createElement('div');
   row.className = 'history-item';
+  row.dataset.videoId = video.videoId;
 
   const a = document.createElement('a');
   a.className = 'history-link';
