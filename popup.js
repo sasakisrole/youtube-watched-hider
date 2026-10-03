@@ -216,7 +216,17 @@ function deleteHistoryVideo(videoId, rowEl) {
         .find(row => row.dataset.videoId === videoId) || rowEl;
       currentRow.style.transition = 'opacity 0.2s';
       currentRow.style.opacity = '0';
-      setTimeout(() => currentRow.remove(), 200);
+      setTimeout(() => {
+        const header = currentRow.previousElementSibling;
+        const next = currentRow.nextElementSibling;
+        currentRow.remove();
+        if (header && header.className === 'history-date-header' &&
+            (!next || next.className === 'history-date-header')) {
+          header.remove();
+          const headers = historyList.querySelectorAll('.history-date-header');
+          lastHistoryDateGroup = headers.length ? headers[headers.length - 1].textContent : '';
+        }
+      }, 200);
       loadStats();
     }
   });
