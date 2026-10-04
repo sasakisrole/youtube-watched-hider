@@ -42,11 +42,12 @@ function makeVideoEndedModule(deps) {
 }
 
 function makeHistoryModule(deps) {
+  Object.assign(deps, require('./page_lifecycle_harness').historyDependencies(deps, src));
   // eslint-disable-next-line no-eval
   return eval('(function(deps) {\n' +
     'const { document, DBClient, SELECTORS, WATCHED_THRESHOLD, HISTORY_CARD_SELECTOR,\n' +
     ' getVideoIdFromHref, getTitleFromCard, getChannelFromCard, rememberWatched,\n' +
-    ' showImportToast, console } = deps;\n' + historyBlock +
+    ' showImportToast, console, capturePageState, isPageStateCurrent, isHistoryPage } = deps;\n' + historyBlock +
     '\nreturn { HISTORY_STATE, HISTORY_RETRY_LIMIT, scrapeHistoryPage };\n})')(deps);
 }
 
@@ -189,6 +190,7 @@ class FakeHistoryCard {
     this.href = options.href || null;
     this.progressWidth = options.progressWidth == null ? null : options.progressWidth;
     this.removed = false;
+    this.isConnected = true;
     this.linkQueries = 0;
   }
   querySelector(selector) {

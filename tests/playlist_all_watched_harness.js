@@ -16,7 +16,8 @@ function boot() {
     watchedDisplaySettings: { hideCompletedPlaylists: true, dimWatched: false },
     location: { pathname: '/feed/playlists', href: 'https://www.youtube.com/feed/playlists' },
     chrome: { storage: { local: {
-      async get(key) { return { [key]: stored[key] }; },
+      async get(key) { return key === null ? { ...stored } : { [key]: stored[key] }; },
+      async remove(keys) { for (const key of keys) delete stored[key]; },
       async set(values) { writes.push(values); Object.assign(stored, values); },
     } } },
     DBClient: { async checkMultiple(ids) { calls.push(['db', ids]); return Object.fromEntries(ids.map(id => [id, true])); } },
@@ -27,7 +28,18 @@ function boot() {
     isPlaylistCard: card => card.collection !== false,
     applyPlaylistCardDisplay() {},
   };
+  const background = read('background.js');
+  const cache = background.match(/function createPlaylistCompletionCache\([^]*?\n}/);
+  if (cache) {
+    vm.createContext(scope);
+    vm.runInContext(cache[0], scope);
+    const writer = scope.createPlaylistCompletionCache(scope.chrome.storage.local);
+    scope.sendRuntimeMessage = (message, respond) => {
+      writer(message).then(entry => respond({ success: true, entry }), error => respond(undefined, error));
+    };
+  }
   vm.createContext(scope);
+  require('./page_lifecycle_harness').install(scope, source);
   vm.runInContext(source.slice(start, end), scope);
   scope.productionContext = scope.playlistAllWatchedContext;
   scope.productionFetch = scope.fetchPlaylistAllWatchedPage;

@@ -90,6 +90,10 @@
     creditLookupKey: '',
     creditLookupGeneration: 0,
     creditLookupError: '',
+    pageGeneration: 0,
+    pageNavigating: false,
+    previewGeneration: 0,
+    previewPageHref: '',
     previewVideoIds: [],
     previewCreditsByVideoId: {},
     previewResults: {},
@@ -490,10 +494,48 @@
     });
   }
 
+  const PREVIEW_CREDITS_MEMORY_MAX = 200;
+
+  function resetPreviewCredits() {
+    state.pageGeneration++;
+    state.previewGeneration++;
+    state.creditLookupGeneration++;
+    state.creditLookupKey = '';
+    state.previewCreditsByVideoId = {};
+    state.previewResults = {};
+    state.previewVideoIds = [];
+    state.previewRunning = false;
+    state.previewCancelling = false;
+    state.previewProcessed = state.previewTotal = 0;
+    state.previewMessage = '';
+    state.creditCandidates = [];
+    state.creditRelatedVideoIds = new Set();
+  }
+
+  function prunePreviewCredits(cards) {
+    const visible = new Set(cards.map(getVideoIdFromCard).filter(Boolean));
+    for (const key of Object.keys(state.previewCreditsByVideoId)) {
+      if (!visible.has(key)) delete state.previewCreditsByVideoId[key];
+    }
+    const keys = Object.keys(state.previewCreditsByVideoId);
+    for (const key of keys.slice(0, Math.max(0, keys.length - PREVIEW_CREDITS_MEMORY_MAX))) {
+      delete state.previewCreditsByVideoId[key];
+    }
+    for (const key of Object.keys(state.previewResults)) {
+      if (!visible.has(key)) delete state.previewResults[key];
+    }
+  }
+
   async function startPreviewCredits() {
-    if (state.previewRunning) return;
+    if (state.previewRunning || state.disposed || state.pageNavigating || !isSearchPage()) return;
     const videoIds = state.previewVideoIds.slice(0, core.PREVIEW_CREDITS_MAX_VIDEOS || 20);
     if (videoIds.length === 0) return;
+    const generation = ++state.previewGeneration;
+    const pageGeneration = state.pageGeneration;
+    const href = location.href;
+    const current = () => !state.disposed && !state.pageNavigating && isSearchPage() &&
+      generation === state.previewGeneration && pageGeneration === state.pageGeneration && href === location.href;
+    state.previewPageHref = href;
     state.previewRunning = true;
     state.previewCancelling = false;
     state.previewProcessed = 0;
@@ -510,16 +552,23 @@
           userInitiated: true,
         },
       });
+      if (!current()) return;
       if (!response?.ok) {
         state.previewMessage = response?.reason === 'already-running'
           ? officialMessage('officialAnotherCreditCheckIsRunning', '別のクレジット確認が実行中です。')
           : officialMessage('officialCheckFailed', `確認できませんでした: ${response?.reason || 'unknown'}`, [response?.reason || 'unknown']);
         return;
       }
-      state.previewResults = response.results || {};
+      const visible = new Set(getSearchVideoCards().map(getVideoIdFromCard));
+      state.previewResults = Object.fromEntries(Object.entries(response.results || {})
+        .filter(([id]) => videoIds.includes(id) && visible.has(id)));
       for (const [videoId, result] of Object.entries(state.previewResults)) {
-        if (result?.credits) state.previewCreditsByVideoId[videoId] = result.credits;
+        if (result?.credits) {
+          delete state.previewCreditsByVideoId[videoId];
+          state.previewCreditsByVideoId[videoId] = result.credits;
+        }
       }
+      prunePreviewCredits(getSearchVideoCards());
       state.previewProcessed = Number(response.processed) || 0;
       state.previewTotal = Number(response.total) || videoIds.length;
       state.previewMessage = response.autoStopped
@@ -530,22 +579,29 @@
       state.creditLookupKey = '';
       scanSearchResults();
     } catch (error) {
+      if (!current()) return;
       state.previewMessage = officialMessage('officialCheckFailed', `確認できませんでした: ${error.message}`, [error.message]);
     } finally {
-      state.previewRunning = false;
-      state.previewCancelling = false;
-      renderPanelState();
+      if (generation === state.previewGeneration) {
+        state.previewRunning = false;
+        state.previewCancelling = false;
+        if (current()) renderPanelState();
+      }
     }
   }
 
   async function cancelPreviewCredits() {
     if (!state.previewRunning || state.previewCancelling) return;
+    const generation = state.previewGeneration;
+    const pageGeneration = state.pageGeneration;
+    const href = location.href;
     state.previewCancelling = true;
     state.previewMessage = officialMessage('officialRequestingCancellation', '中止を要求しています。');
     renderPanelState();
     try {
       await runtimeMessage({ type: 'CANCEL_PREVIEW_VIDEO_CREDITS' });
     } catch (_error) {
+      if (state.disposed || generation !== state.previewGeneration || pageGeneration !== state.pageGeneration || href !== location.href) return;
       state.previewMessage = officialMessage('officialCouldNotSendTheCancellationRequest', '中止要求を送信できませんでした。');
       state.previewCancelling = false;
       renderPanelState();
@@ -853,10 +909,11 @@
   }
 
   function scanSearchResults() {
-    if (state.disposed || !state.showSearchFilter || !isSearchPage()) return;
+    if (state.disposed || state.pageNavigating || !state.showSearchFilter || !isSearchPage()) return;
 
     const profile = resolveEffectiveState();
     const cards = getSearchVideoCards();
+    prunePreviewCredits(cards);
     refreshCreditCandidates(cards, getActiveProfile(), profile);
     const counts = createEmptyCounts();
     const previewVideoIds = [];
@@ -1296,6 +1353,7 @@
   }
 
   function cleanupSearchPage() {
+    resetPreviewCredits();
     clearTimeout(state.scanTimer);
     state.scanTimer = null;
     removePanel();
@@ -2274,7 +2332,14 @@
     scanSearchResults();
   }
 
+  function onNavigateStart() {
+    state.pageNavigating = true;
+    resetPreviewCredits();
+  }
+
   function onNavigateFinish() {
+    state.pageNavigating = false;
+    resetPreviewCredits();
     const shouldCollapse = isSearchPage();
     if (shouldCollapse) state.panelExpanded = false;
     initializePage();
@@ -2288,7 +2353,8 @@
   }
 
   function onRuntimeMessage(message) {
-    if (message?.type !== 'PREVIEW_VIDEO_CREDITS_PROGRESS' || !state.previewRunning) return;
+    if (message?.type !== 'PREVIEW_VIDEO_CREDITS_PROGRESS' || !state.previewRunning || state.disposed ||
+        state.pageNavigating || state.previewPageHref !== location.href) return;
     state.previewProcessed = Number(message.processed) || state.previewProcessed;
     state.previewTotal = Number(message.total) || state.previewTotal;
     renderPanelState();
@@ -2311,6 +2377,7 @@
     state.disposed = true;
     clearTimeout(state.scanTimer);
     state.observer?.disconnect();
+    document.removeEventListener?.('yt-navigate-start', onNavigateStart);
     document.removeEventListener?.(
       'yt-navigate-finish',
       onNavigateFinish
@@ -2341,6 +2408,7 @@
     });
   }
 
+  document.addEventListener?.('yt-navigate-start', onNavigateStart);
   document.addEventListener?.(
     'yt-navigate-finish',
     onNavigateFinish

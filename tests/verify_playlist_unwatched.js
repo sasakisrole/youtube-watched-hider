@@ -114,8 +114,9 @@ function boot({ rows, lookup, listId = 'PL1' }) {
       sleep: async () => {},
     };
     vm.createContext(scope);
+    require('./page_lifecycle_harness').install(scope, source);
     vm.runInContext(fn('isShownMenuItem') + ';' + fn('watchLaterOneCard'), scope);
-    const card = { querySelector: () => ({ click() {} }) };
+    const card = { isConnected: true, id: 'fixture-video', querySelector: () => ({ click() {} }) };
     const res = await scope.watchLaterOneCard(card);
     return { res, clicked };
   }

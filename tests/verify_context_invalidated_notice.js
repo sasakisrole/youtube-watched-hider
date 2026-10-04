@@ -34,7 +34,7 @@ const cleanupBlock = block('  function cleanup(', '  return { cleanup };');
 
 function element(tag) {
   return {
-    tag, id: '', dataset: {}, style: {}, children: [], listeners: {},
+    tag, isConnected: true, id: '', dataset: {}, style: {}, children: [], listeners: {},
     setAttribute(name, value) { this[name] = value; },
     appendChild(child) { child.parent = this; this.children.push(child); return child; },
     addEventListener(name, fn) { this.listeners[name] = fn; },
@@ -97,10 +97,11 @@ function makeHarness(mode = 'throw', failOp = null) {
     getWatchPageTitle: () => 'title', getWatchPageChannel: () => 'channel',
     getCurrentVideoDurationSec: () => 30, getCurrentVideoCategory: () => '',
     removeHarvestStyle() {}, renderHarvestStatus() {}, injectHarvestStyle() {}, isHistoryPage: () => true,
-    onNavigateFinish() {}, onMessage() {},
+    onNavigateStart() {}, onNavigateFinish() {}, onMessage() {},
     resetPlaylistAllWatched() {}, // Completion queue is covered by verify_playlist_all_watched_flow.js.
   };
   const context = vm.createContext(deps);
+  require('./page_lifecycle_harness').install(context, source);
   vm.runInContext(`
     let enabled = true, recordWhileOff = false, processQueued = true;
     let queueAbort = false, watchLaterAbort = false, recoInterval = 7;

@@ -146,7 +146,7 @@ async function test(name, run) { await run(); passed++; console.log('PASS ' + na
     h.run(read('content.js').match(/  function applyPlaylistCardDisplay\([^]*?\n  }/)[0]);
     return h;
   }
-  async function flush() { for (let i = 0; i < 30; i++) await Promise.resolve(); }
+  async function flush() { await new Promise(resolve => setImmediate(resolve)); }
   await test('REQ-3 only intersecting cards queued serially; hide dim and existing policy precedence', async () => {
     const h = displayHarness(), a = card(), b = card('PLsecond'); let calls = 0, inFlight = 0, max = 0, release;
     h.scope.fetchPlaylistAllWatchedPage = async () => {

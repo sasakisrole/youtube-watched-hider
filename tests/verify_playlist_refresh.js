@@ -78,7 +78,7 @@ const browseCount = h => h.calls.filter(x => x[0] === 'browse').length;
       return selector.startsWith('a[') ? [{href: 'https://www.youtube.com/playlist?list=PLtest'}] : [{textContent: '1 video'}];
     }};
   }
-  async function flush() { for (let i = 0; i < 40; i++) await Promise.resolve(); }
+  async function flush() { await new Promise(resolve => setImmediate(resolve)); }
   await test('new queue drains after cancelled old request; duplicate cards fetch once', async () => {
     for (const abort of [false, true]) {
       const h = setup(), a = card(), b = card(); let release, requests = 0;

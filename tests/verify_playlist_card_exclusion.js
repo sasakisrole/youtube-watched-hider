@@ -29,6 +29,7 @@ function boot(cards, pathname = '/', dimWatched = false) {
     getCachedWatchedState: () => true, rememberWatched() {}, rememberNotWatched() {},
   };
   vm.createContext(scope);
+  require('./page_lifecycle_harness').install(scope, source);
   vm.runInContext(source.slice(source.indexOf('  // Watched display settings'), source.indexOf('  let recordWhileOff')) +
     ['isPlaylistCard', 'processPage', 'hideCard', 'checkRecommendations'].map(fn).join('\n'), scope);
   scope.applyWatchedDisplaySettings({ dimWatched });

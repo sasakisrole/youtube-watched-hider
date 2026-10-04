@@ -26,6 +26,7 @@ function setup(cards, shorts, movies, allowed = true) {
     isPlaylistCard: () => true, applyPlaylistCardDisplay() {}, console,
   };
   vm.createContext(scope);
+  require('./page_lifecycle_harness').install(scope, src);
   vm.runInContext(block('  function hideShortsCards(', '  function showAllShorts(') +
     block('  function hideMovieCards(', '  function showAllMovies(') +
     block('  async function processPage()', '  function hideCard(') +

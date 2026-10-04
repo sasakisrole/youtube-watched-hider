@@ -270,6 +270,15 @@ window._ytWatchedHider = (() => {
     }
   }
 
+  function playlistAllWatchedCacheRequest(operation, prefix, key, entry) {
+    return new Promise((resolve, reject) => {
+      sendRuntimeMessage({ type: 'PLAYLIST_COMPLETION_CACHE', operation, prefix, key, entry }, (response, error) => {
+        if (error || !response?.success) reject(error || new Error(response?.error || 'cache-unavailable'));
+        else resolve(response.entry);
+      });
+    });
+  }
+
   async function checkPlaylistAllWatched(meta, generation) {
     if (!playlistAllWatchedActive(generation) || !playlistAllWatchedEligible(meta.listId) ||
         !Number.isSafeInteger(meta.videoCount) || meta.videoCount < 0) return null;
@@ -280,9 +289,9 @@ window._ytWatchedHider = (() => {
         const current = playlistAllWatchedContext();
         return playlistAllWatchedActive(generation) && current?.accountId === context.accountId && current?.authUser === context.authUser;
       };
-      // Account scoped individual keys avoid read/modify/write races between tabs.
-      const key = 'playlistAllWatched.v1.' + encodeURIComponent(context.accountId) + '.' + context.authUser + '.' + meta.listId;
-      const cached = (await chrome.storage.local.get(key))[key];
+      const prefix = 'playlistAllWatched.v1.' + encodeURIComponent(context.accountId) + '.' + context.authUser + '.';
+      const key = prefix + meta.listId;
+      const cached = await playlistAllWatchedCacheRequest('get', prefix, key);
       if (!stillCurrent()) return null;
       const refresh = playlistAllWatchedRefresh?.generation === generation &&
         playlistAllWatchedRefresh.accountId === context.accountId &&
@@ -323,7 +332,7 @@ window._ytWatchedHider = (() => {
       const result = { ...(unsupported ? { allWatched: false, unwatchedCount: null, unsupported: true } :
         evaluatePlaylistAllWatched(meta.listId, entries, watched, overLimit)),
         videoCount: meta.videoCount, checkedAt: Date.now() };
-      await chrome.storage.local.set({ [key]: result });
+      await playlistAllWatchedCacheRequest('set', prefix, key, result);
       if (!stillCurrent()) return null;
       if (refresh) refresh.checked.add(key);
       playlistAllWatchedFailures = 0;
@@ -602,6 +611,31 @@ window._ytWatchedHider = (() => {
   let currentVideoElement = null;
   let endedHandler = null;
 
+  // Page response lifecycle: begin
+  let pageGeneration = 0;
+  let pageNavigating = false;
+  let pageDisposed = false;
+
+  function capturePageState() {
+    return { generation: pageGeneration, href: location.href };
+  }
+
+  function isPageStateCurrent(page) {
+    return !pageDisposed && !pageNavigating && !DBClient.contextInvalidated &&
+      page.generation === pageGeneration && page.href === location.href;
+  }
+
+  function isCardPageCurrent(card, videoId, page) {
+    return isPageStateCurrent(page) && card.isConnected && !isPlaylistCard(card) &&
+      getCardVideoId(card) === videoId;
+  }
+
+  function invalidatePageState(navigating = false) {
+    pageGeneration++;
+    pageNavigating = navigating;
+  }
+  // Page response lifecycle: end
+
   // Three-layer cache for large watched histories. Full preload is kept up to
   // 200k IDs; above that we retain positives already loaded and fall back to
   // paged/negative LRU lookups instead of discarding the cache.
@@ -685,7 +719,13 @@ window._ytWatchedHider = (() => {
 
   function rememberWatched(videoId) {
     if (!videoId) return;
+    watchedPositive.delete(videoId);
     watchedPositive.add(videoId);
+    while (watchedPositive.size > FULL_CACHE_HARD_LIMIT) {
+      watchedPositive.delete(watchedPositive.values().next().value);
+      // Evicted positives must be looked up again, never treated as full-cache negatives.
+      if (cacheMode === 'full') cacheMode = 'partial';
+    }
     setRecentLookup(videoId, true);
   }
 
@@ -858,7 +898,7 @@ window._ytWatchedHider = (() => {
       }
       cacheLoaded = true;
       cacheLoadTime = Math.round(performance.now() - t0);
-      cacheMode = hardLimitHit ? 'partial' : 'full';
+      cacheMode = hardLimitHit || cacheMode === 'partial' ? 'partial' : 'full';
       dbStatus = 'ready';
       if (watchedPositive.size > FULL_CACHE_SOFT_LIMIT) {
         console.warn(`[YT-Watched-Hider] Positive cache above soft limit (${watchedPositive.size}/${FULL_CACHE_SOFT_LIMIT})`);
@@ -1434,7 +1474,8 @@ window._ytWatchedHider = (() => {
 
   // Process all visible video cards (with queue to avoid lost updates)
   async function processPage() {
-    if (DBClient.contextInvalidated) return;
+    const page = capturePageState();
+    if (!isPageStateCurrent(page)) return;
     if (!enabled) return;
     if (processRunning) {
       processQueued = true; // will re-run after current finishes
@@ -1532,12 +1573,14 @@ window._ytWatchedHider = (() => {
       const videoIds = Array.from(cardMap.keys());
       if (videoIds.length > 0) {
         const results = await lookupWatchedForIds(videoIds);
+        if (!isPageStateCurrent(page)) return;
         for (const [videoId, isWatched] of Object.entries(results)) {
           const matchingCards = cardMap.get(videoId) || [];
           if (isWatched === true) {
             if (!enabled) continue;
             rememberWatched(videoId);
             for (const card of matchingCards) {
+              if (!isCardPageCurrent(card, videoId, page)) continue;
               hideCard(card, videoId);
               hiddenByDb++;
             }
@@ -1545,6 +1588,7 @@ window._ytWatchedHider = (() => {
             rememberNotWatched(videoId);
             // Mark as checked with the specific videoId so sidebar polling skips these
             for (const card of matchingCards) {
+              if (!isCardPageCurrent(card, videoId, page)) continue;
               card.dataset.watchedCheckedId = videoId;
             }
           }
@@ -1561,13 +1605,12 @@ window._ytWatchedHider = (() => {
       }
     } catch (e) {
       if (!e.contextInvalidated) console.error('[YT-Watched-Hider] Error processing page:', e);
-    }
-
-    processRunning = false;
-    // If another processPage() was requested while we were running, do it now
-    if (processQueued) {
-      processQueued = false;
-      processPage();
+    } finally {
+      processRunning = false;
+      if (processQueued) {
+        processQueued = false;
+        processPage();
+      }
     }
   }
 
@@ -1847,24 +1890,43 @@ window._ytWatchedHider = (() => {
   }
 
   async function scrapeHistoryPage(options = {}) {
-    if (DBClient.contextInvalidated) return { added: 0, scanned: 0 };
+    const page = capturePageState();
+    if (!isPageStateCurrent(page) || !isHistoryPage()) return { added: 0, scanned: 0 };
     const { removeProcessed = false } = options;
     const cards = document.querySelectorAll(HISTORY_CARD_SELECTOR);
     console.log(`[YT-Watched-Hider] History scrape: found ${cards.length} cards`);
 
+    const examined = new Map();
+    let yielded = false;
+    let completedThisPass = [], exhaustedThisPass = [];
+    const current = (card, videoId) => {
+      if (!isPageStateCurrent(page) || !isHistoryPage() || !card.isConnected) return false;
+      if (!yielded) return true;
+      const link = getHistoryVideoLink(card);
+      return (link ? getVideoIdFromHref(link.href) || '' : '') === videoId;
+    };
     const candidates = []; // { card, videoId } — confirmed >=95%, awaiting DB check
     let newlySeen = 0; // cards examined for the first time this pass (harvest stall detection)
 
     for (const card of cards) {
+      const link = getHistoryVideoLink(card);
+      const videoId = link ? getVideoIdFromHref(link.href) || '' : '';
+      if (card.dataset.historyVideoId && card.dataset.historyVideoId !== videoId) {
+        delete card.dataset.historyState;
+        delete card.dataset.historyRetries;
+      }
+      card.dataset.historyVideoId = videoId;
+      examined.set(card, videoId);
       const state = card.dataset.historyState;
       // COMPLETED: resolved, nothing left to do. EXHAUSTED (§8.5 🟡1): gave up
       // after HISTORY_RETRY_LIMIT retries — never implies watched, just stops
       // re-examining a card that has had ample chances to resolve.
+      if (state === HISTORY_STATE.COMPLETED) completedThisPass.push(card);
+      if (state === HISTORY_STATE.EXHAUSTED) exhaustedThisPass.push(card);
       if (state === HISTORY_STATE.COMPLETED || state === HISTORY_STATE.EXHAUSTED) continue;
 
       if (!state) newlySeen++;
 
-      const link = getHistoryVideoLink(card);
       if (!link) {
         // Link not rendered yet — leave UNKNOWN so a later pass re-checks it,
         // instead of writing the card off permanently.
@@ -1872,7 +1934,6 @@ window._ytWatchedHider = (() => {
         continue;
       }
 
-      const videoId = getVideoIdFromHref(link.href);
       if (!videoId) {
         card.dataset.historyState = HISTORY_STATE.UNKNOWN;
         continue;
@@ -1887,49 +1948,43 @@ window._ytWatchedHider = (() => {
         continue;
       }
 
-      candidates.push({ card, videoId });
+      // A recycled card can describe another video by the time the DB responds.
+      const sectionDate = getHistorySectionDate(card) || Date.now();
+      candidates.push({ card, videoId, record: { videoId, title: getHistoryTitle(card),
+        channel: getHistoryChannel(card) || '', watchedAt: sectionDate,
+        firstWatchedAt: sectionDate, playCount: 0, source: 'history' } });
     }
     console.log(`[YT-Watched-Hider] Candidates: ${candidates.length}`);
 
     let added = 0;
-    const completedThisPass = [];
+
     if (candidates.length > 0) {
       const videoIds = candidates.map(c => c.videoId);
       let existing = null;
       try {
+        yielded = true;
         existing = await DBClient.checkMultiple(videoIds);
       } catch (e) {
-        if (e.contextInvalidated) return { added: 0, scanned: newlySeen };
+        if (e.contextInvalidated || !isPageStateCurrent(page)) return { added: 0, scanned: newlySeen };
         console.error('[YT-Watched-Hider] History checkMultiple failed:', e);
         // Confirmation-unable — do not mark completed, retry these next pass.
-        for (const { card } of candidates) card.dataset.historyState = HISTORY_STATE.FAILED;
+        for (const { card, videoId } of candidates) {
+          if (current(card, videoId)) card.dataset.historyState = HISTORY_STATE.FAILED;
+        }
       }
 
+      if (!isPageStateCurrent(page)) return { added: 0, scanned: newlySeen };
       if (existing) {
         const newEntries = []; // { card, videoId, record }
-        for (const { card, videoId } of candidates) {
+        for (const { card, videoId, record } of candidates) {
+          if (!current(card, videoId)) continue;
           if (existing[videoId]) {
             card.dataset.historyState = HISTORY_STATE.COMPLETED;
             completedThisPass.push(card);
             continue;
           }
 
-          const title = getHistoryTitle(card);
-          const channel = getHistoryChannel(card);
-          const sectionDate = getHistorySectionDate(card) || Date.now();
-          newEntries.push({
-            card,
-            videoId,
-            record: {
-              videoId,
-              title,
-              channel: channel || '',
-              watchedAt: sectionDate,
-              firstWatchedAt: sectionDate,
-              playCount: 0,
-              source: 'history',
-            },
-          });
+          newEntries.push({ card, videoId, record });
         }
 
         if (newEntries.length > 0) {
@@ -1937,17 +1992,20 @@ window._ytWatchedHider = (() => {
             await DBClient.importData(newEntries.map((e) => e.record));
             for (const { card, videoId } of newEntries) {
               rememberWatched(videoId);
+              if (!current(card, videoId)) continue;
               card.dataset.historyState = HISTORY_STATE.COMPLETED;
               completedThisPass.push(card);
             }
-            showImportToast(newEntries.length);
+            if (isPageStateCurrent(page)) showImportToast(newEntries.length);
             added = newEntries.length;
             console.log(`[YT-Watched-Hider] Imported ${added} new videos from history`);
           } catch (e) {
-            if (e.contextInvalidated) return { added: 0, scanned: newlySeen };
+            if (e.contextInvalidated || !isPageStateCurrent(page)) return { added: 0, scanned: newlySeen };
             console.error('[YT-Watched-Hider] History batch import failed:', e);
             // Import unconfirmed — leave retriable rather than assuming completed.
-            for (const { card } of newEntries) card.dataset.historyState = HISTORY_STATE.FAILED;
+            for (const { card, videoId } of newEntries) {
+              if (current(card, videoId)) card.dataset.historyState = HISTORY_STATE.FAILED;
+            }
           }
         }
       }
@@ -1958,8 +2016,9 @@ window._ytWatchedHider = (() => {
     // cards actually touched this pass (state set above, or left over as
     // FAILED from a prior DB error) are counted — COMPLETED/EXHAUSTED cards
     // were already skipped by the `continue` above and are untouched here.
-    const exhaustedThisPass = [];
+
     for (const card of cards) {
+      if (!current(card, examined.get(card))) continue;
       const state = card.dataset.historyState;
       if (state === HISTORY_STATE.COMPLETED || state === HISTORY_STATE.EXHAUSTED) continue;
       if (!state) continue; // not examined at all this pass (defensive; shouldn't happen)
@@ -1979,7 +2038,10 @@ window._ytWatchedHider = (() => {
     // 🟡1 DOM-boundedness fix). Anything still UNKNOWN/PARTIAL/FAILED stays in
     // the DOM so the next scrapeHistoryPage() call (mutation observer /
     // harvest tick / SPA nav) can re-examine it.
+    // Include terminal cards resolved by observer passes before harvest began.
     if (removeProcessed) {
+      completedThisPass = completedThisPass.filter(card => current(card, examined.get(card)));
+      exhaustedThisPass = exhaustedThisPass.filter(card => current(card, examined.get(card)));
       for (const card of completedThisPass) card.remove();
       for (const card of exhaustedThisPass) card.remove();
     }
@@ -2103,17 +2165,18 @@ window._ytWatchedHider = (() => {
   }
 
   async function harvestTick() {
-    if (!harvest.running) return;
+    const page = capturePageState();
+    if (!harvest.running || !isPageStateCurrent(page)) return;
 
     // Scroll to bottom to trigger YouTube's infinite scroll
     window.scrollTo(0, document.documentElement.scrollHeight);
 
     // Wait for new cards to render
     await new Promise(r => setTimeout(r, 900));
-    if (!harvest.running) return;
+    if (!harvest.running || !isPageStateCurrent(page)) return;
 
     const { added, scanned } = await scrapeHistoryPage({ removeProcessed: true });
-    if (!harvest.running) return;
+    if (!harvest.running || !isPageStateCurrent(page)) return;
     harvest.added += added;
     harvest.scanned += scanned;
     if (scanned === 0) {
@@ -2189,8 +2252,17 @@ window._ytWatchedHider = (() => {
   });
 
   // Listen for YouTube SPA navigation
+  function onNavigateStart() {
+    invalidatePageState(true);
+    resetPlaylistAllWatched(true);
+    cancelBulkOperations();
+    if (harvest.running) stopHarvest('navigation');
+  }
+
   function onNavigateFinish() {
     if (contextInvalidated) return;
+    invalidatePageState();
+    cancelBulkOperations();
     resetPlaylistAllWatched(true);
     if (location.pathname === '/watch') {
       attachVideoEndedListener();
@@ -2226,6 +2298,7 @@ window._ytWatchedHider = (() => {
     }
   }
 
+  document.addEventListener('yt-navigate-start', onNavigateStart);
   document.addEventListener('yt-navigate-finish', onNavigateFinish);
 
   // Recommendation check: polls for video cards across the entire page.
@@ -2242,7 +2315,8 @@ window._ytWatchedHider = (() => {
   }
 
   async function checkRecommendations() {
-    if (DBClient.contextInvalidated) return;
+    const page = capturePageState();
+    if (!isPageStateCurrent(page)) return;
     if (!enabled || location.pathname !== '/watch') return;
     if (document.hidden) return; // skip while tab is not visible
     if (recoChecking) return; // prevent overlap
@@ -2322,7 +2396,9 @@ window._ytWatchedHider = (() => {
 
       const ids = unchecked.map(c => c.videoId);
       const results = await lookupWatchedForIds(ids);
+      if (!isPageStateCurrent(page)) return;
       for (const { card, videoId } of unchecked) {
+        if (!isCardPageCurrent(card, videoId, page)) continue;
         const isWatched = results[videoId];
         if (isWatched === true) {
           if (!enabled) continue;
@@ -2543,10 +2619,18 @@ window._ytWatchedHider = (() => {
   // Works by programmatically clicking each card's kebab menu, then "Add to queue".
   let queueAllBtn = null;
   let queueInProgress = false;
+  let queueRunGeneration = 0;
   let queueAbort = false;
   let queueBtnObserver = null;
   let queueButtonContext = null;
   let bulkButtonBar = null;
+
+  function cancelBulkOperations() {
+    queueRunGeneration++;
+    watchLaterRunGeneration++;
+    queueAbort = watchLaterAbort = true;
+    queueInProgress = watchLaterInProgress = false;
+  }
 
   function sleep(ms) {
     return new Promise(r => setTimeout(r, ms));
@@ -2704,7 +2788,9 @@ window._ytWatchedHider = (() => {
     return el.getClientRects().length > 0;
   }
 
-  async function seedQueueWithCurrentVideo() {
+  async function seedQueueWithCurrentVideo(expectedVideoId = getCurrentVideoId(), page = capturePageState(), shouldContinue = () => true) {
+    const active = () => isPageStateCurrent(page) && getCurrentVideoId() === expectedVideoId && shouldContinue();
+    if (!active()) return { ok: false, reason: 'stale-page' };
     // Click the "..." button next to the current video (below the player).
     const moreBtn = document.querySelector(
       'ytd-watch-metadata #button-shape button[aria-label*="その他"], ' +
@@ -2715,6 +2801,7 @@ window._ytWatchedHider = (() => {
     if (!moreBtn) return { ok: false, reason: 'no-more-btn' };
     moreBtn.click();
     await sleep(200);
+    if (!active()) return { ok: false, reason: 'cancelled' };
 
     let queueItem = null;
     for (let i = 0; i < 12; i++) {
@@ -2734,6 +2821,7 @@ window._ytWatchedHider = (() => {
       }
       if (queueItem) break;
       await sleep(80);
+      if (!active()) return { ok: false, reason: 'cancelled' };
     }
 
     if (!queueItem) {
@@ -2741,12 +2829,16 @@ window._ytWatchedHider = (() => {
       return { ok: false, reason: 'no-queue-item' };
     }
     const clickTarget = queueItem.querySelector('button, [role="menuitem"], .yt-list-item-view-model-wiz__container') || queueItem;
+    if (!active()) return { ok: false, reason: 'cancelled' };
     clickTarget.click();
     await sleep(200);
+    if (!active()) return { ok: false, reason: 'cancelled' };
     return { ok: true };
   }
 
-  async function queueOneCard(card) {
+  async function queueOneCard(card, expectedVideoId = getCardVideoId(card), page = capturePageState(), shouldContinue = () => true) {
+    const active = () => isCardPageCurrent(card, expectedVideoId, page) && shouldContinue();
+    if (!active()) return { ok: false, reason: 'stale-card' };
     const kebab = card.querySelector(
       'button[aria-label*="その他の操作"], ' +                 // new UI (yt-lockup-view-model)
       'button[aria-label*="More actions"], ' +                  // English new UI
@@ -2760,6 +2852,7 @@ window._ytWatchedHider = (() => {
 
     kebab.click();
     await sleep(180);
+    if (!active()) return { ok: false, reason: 'cancelled' };
 
     // Poll for popup items
     let queueItem = null;
@@ -2781,19 +2874,23 @@ window._ytWatchedHider = (() => {
       }
       if (queueItem) break;
       await sleep(80);
+      if (!active()) return { ok: false, reason: 'cancelled' };
     }
 
     if (!queueItem) {
       // Close menu
       document.body.click();
       await sleep(100);
+      if (!active()) return { ok: false, reason: 'cancelled' };
       return { ok: false, reason: 'no-queue-item' };
     }
 
     // For new UI, inner clickable is a button/div; click deepest clickable if present
     const clickTarget = queueItem.querySelector('button, [role="menuitem"], .yt-list-item-view-model-wiz__container') || queueItem;
+    if (!active()) return { ok: false, reason: 'cancelled' };
     clickTarget.click();
     await sleep(180);
+    if (!active()) return { ok: false, reason: 'cancelled' };
     return { ok: true };
   }
 
@@ -2814,50 +2911,69 @@ window._ytWatchedHider = (() => {
       if (queueAllBtn) queueAllBtn.textContent = contentMessage('content_stopping', '中止中...');
       return;
     }
-    const context = getBulkPageContext();
-    if (context === 'playlist') await refreshPlaylistWatchedState();
-    const cards = findQueueableCards(context);
-    if (cards.length === 0) return;
-    if (!confirm(buildBulkConfirmMessage('queue', cards.length, context))) return;
-
+    const page = capturePageState();
+    const button = queueAllBtn;
+    const generation = ++queueRunGeneration;
+    const current = () => isPageStateCurrent(page) && generation === queueRunGeneration &&
+      queueAllBtn === button && button?.isConnected;
+    if (!current()) return;
     queueInProgress = true;
     queueAbort = false;
-    if (queueAllBtn) queueAllBtn.style.background = '#888';
-    let success = 0, failed = 0;
+    let success = 0, failed = 0, started = false;
+    try {
+      const context = getBulkPageContext();
+      if (context === 'playlist') await refreshPlaylistWatchedState();
+      if (!current()) return;
+      const cards = findQueueableCards(context).map(card => ({ card, videoId: getCardVideoId(card) }));
+      if (cards.length === 0) return;
+      if (!confirm(buildBulkConfirmMessage('queue', cards.length, context))) return;
+      started = true;
 
-    if (context === 'watch') {
-      // Seed the queue with the currently playing video first, so related
-      // videos get appended AFTER it (otherwise YouTube starts a new queue
-      // with the first added video placed above the current one).
-      try {
-        if (queueAllBtn) queueAllBtn.textContent = contentMessage('content_queueCurrent', '現在の動画をキューに追加中...');
-        await seedQueueWithCurrentVideo();
-        await sleep(200);
-      } catch (e) {
-        console.warn('[YT-Watched-Hider] seed queue error:', e);
+      if (queueAllBtn) queueAllBtn.style.background = '#888';
+
+      if (context === 'watch') {
+        // Seed the queue with the currently playing video first, so related
+        // videos get appended AFTER it (otherwise YouTube starts a new queue
+        // with the first added video placed above the current one).
+        try {
+          if (queueAllBtn) queueAllBtn.textContent = contentMessage('content_queueCurrent', '現在の動画をキューに追加中...');
+          await seedQueueWithCurrentVideo(getCurrentVideoId(), page, () => current() && !queueAbort);
+          if (!current() || queueAbort) return;
+          await sleep(200);
+          if (!current() || queueAbort) return;
+        } catch (e) {
+          console.warn('[YT-Watched-Hider] seed queue error:', e);
+        }
+      }
+
+      for (let i = 0; i < cards.length; i++) {
+        if (queueAbort || !current()) break;
+        const { card, videoId } = cards[i];
+        if (!isCardPageCurrent(card, videoId, page)) { failed++; continue; }
+        if (!queueAllBtn) break;
+        queueAllBtn.textContent = contentMessage('content_queueProgress', `追加中 ${i + 1}/${cards.length}(クリックで中止)`, [i + 1, cards.length]);
+        try {
+          const res = await queueOneCard(card, videoId, page, () => current() && !queueAbort);
+          if (!current()) break;
+          if (res.ok) success++; else failed++;
+        } catch (e) {
+          failed++;
+          console.warn('[YT-Watched-Hider] queue error:', e);
+        }
+        await sleep(120);
+      }
+
+    } finally {
+      if (generation === queueRunGeneration) {
+        queueInProgress = false;
+        queueAbort = false;
+        if (started && current()) {
+          queueAllBtn.style.background = '#ff4444';
+          queueAllBtn.textContent = contentMessage('content_bulkDone', `完了: ${success}件追加${failed ? ` / ${failed}件失敗` : ''}`, [success, failed ? contentMessage('content_bulkFailures', ` / ${failed}件失敗`, [failed]) : '']);
+          setTimeout(() => { if (current()) updateQueueButtonLabel(); }, 3000);
+        }
       }
     }
-
-    for (let i = 0; i < cards.length; i++) {
-      if (queueAbort) break;
-      if (!queueAllBtn) break;
-      queueAllBtn.textContent = contentMessage('content_queueProgress', `追加中 ${i + 1}/${cards.length}(クリックで中止)`, [i + 1, cards.length]);
-      try {
-        const res = await queueOneCard(cards[i]);
-        if (res.ok) success++; else failed++;
-      } catch (e) {
-        failed++;
-        console.warn('[YT-Watched-Hider] queue error:', e);
-      }
-      await sleep(120);
-    }
-
-    queueInProgress = false;
-    queueAbort = false;
-    if (!queueAllBtn) return;
-    queueAllBtn.style.background = '#ff4444';
-    queueAllBtn.textContent = contentMessage('content_bulkDone', `完了: ${success}件追加${failed ? ` / ${failed}件失敗` : ''}`, [success, failed ? contentMessage('content_bulkFailures', ` / ${failed}件失敗`, [failed]) : '']);
-    setTimeout(updateQueueButtonLabel, 3000);
   }
 
   function ensureQueueAllButton() {
@@ -2923,6 +3039,7 @@ window._ytWatchedHider = (() => {
   // ===== Watch Later feature =====
   let watchLaterBtn = null;
   let watchLaterInProgress = false;
+  let watchLaterRunGeneration = 0;
   let watchLaterAbort = false;
   let watchLaterBtnObserver = null;
   let watchLaterButtonContext = null;
@@ -2962,7 +3079,9 @@ window._ytWatchedHider = (() => {
     return out;
   }
 
-  async function watchLaterOneCard(card) {
+  async function watchLaterOneCard(card, expectedVideoId = getCardVideoId(card), page = capturePageState(), shouldContinue = () => true) {
+    const active = () => isCardPageCurrent(card, expectedVideoId, page) && shouldContinue();
+    if (!active()) return { ok: false, reason: 'stale-card' };
     const kebab = card.querySelector(
       'button[aria-label*="その他の操作"], ' +
       'button[aria-label*="More actions"], ' +
@@ -2976,6 +3095,7 @@ window._ytWatchedHider = (() => {
 
     kebab.click();
     await sleep(200);
+    if (!active()) return { ok: false, reason: 'cancelled' };
 
     let item = null;
     for (let i = 0; i < 15; i++) {
@@ -2999,17 +3119,21 @@ window._ytWatchedHider = (() => {
       }
       if (item) break;
       await sleep(80);
+      if (!active()) return { ok: false, reason: 'cancelled' };
     }
 
     if (!item) {
       document.body.click();
       await sleep(100);
+      if (!active()) return { ok: false, reason: 'cancelled' };
       return { ok: false, reason: 'no-watch-later-item' };
     }
 
     const clickTarget = item.querySelector('button, [role="menuitem"], .yt-list-item-view-model-wiz__container') || item;
+    if (!active()) return { ok: false, reason: 'cancelled' };
     clickTarget.click();
     await sleep(200);
+    if (!active()) return { ok: false, reason: 'cancelled' };
     return { ok: true };
   }
 
@@ -3030,36 +3154,53 @@ window._ytWatchedHider = (() => {
       if (watchLaterBtn) watchLaterBtn.textContent = contentMessage('content_stopping', '中止中...');
       return;
     }
-    const context = getBulkPageContext();
-    if (context === 'playlist') await refreshPlaylistWatchedState();
-    const cards = findWatchLaterableCards(context);
-    if (cards.length === 0) return;
-    if (!confirm(buildBulkConfirmMessage('watchLater', cards.length, context))) return;
-
+    const page = capturePageState();
+    const button = watchLaterBtn;
+    const generation = ++watchLaterRunGeneration;
+    const current = () => isPageStateCurrent(page) && generation === watchLaterRunGeneration &&
+      watchLaterBtn === button && button?.isConnected;
+    if (!current()) return;
     watchLaterInProgress = true;
     watchLaterAbort = false;
-    if (watchLaterBtn) watchLaterBtn.style.background = '#555';
-    let success = 0, failed = 0;
+    let success = 0, failed = 0, started = false;
+    try {
+      const context = getBulkPageContext();
+      if (context === 'playlist') await refreshPlaylistWatchedState();
+      if (!current()) return;
+      const cards = findWatchLaterableCards(context).map(card => ({ card, videoId: getCardVideoId(card) }));
+      if (cards.length === 0) return;
+      if (!confirm(buildBulkConfirmMessage('watchLater', cards.length, context))) return;
+      started = true;
 
-    for (let i = 0; i < cards.length; i++) {
-      if (watchLaterAbort) break;
-      if (!watchLaterBtn) break;
-      watchLaterBtn.textContent = contentMessage('content_watchLaterProgress', `追加中 ${i + 1}/${cards.length}（クリックで中止）`, [i + 1, cards.length]);
-      try {
-        const res = await watchLaterOneCard(cards[i]);
-        if (res.ok) success++; else failed++;
-      } catch (e) {
-        failed++;
+      if (watchLaterBtn) watchLaterBtn.style.background = '#555';
+
+      for (let i = 0; i < cards.length; i++) {
+        if (watchLaterAbort || !current()) break;
+        const { card, videoId } = cards[i];
+        if (!isCardPageCurrent(card, videoId, page)) { failed++; continue; }
+        if (!watchLaterBtn) break;
+        watchLaterBtn.textContent = contentMessage('content_watchLaterProgress', `追加中 ${i + 1}/${cards.length}（クリックで中止）`, [i + 1, cards.length]);
+        try {
+          const res = await watchLaterOneCard(card, videoId, page, () => current() && !watchLaterAbort);
+          if (!current()) break;
+          if (res.ok) success++; else failed++;
+        } catch (e) {
+          failed++;
+        }
+        await sleep(150);
       }
-      await sleep(150);
-    }
 
-    watchLaterInProgress = false;
-    watchLaterAbort = false;
-    if (!watchLaterBtn) return;
-    watchLaterBtn.style.background = '#1565c0';
-    watchLaterBtn.textContent = contentMessage('content_bulkDone', `完了: ${success}件追加${failed ? ` / ${failed}件失敗` : ''}`, [success, failed ? contentMessage('content_bulkFailures', ` / ${failed}件失敗`, [failed]) : '']);
-    setTimeout(updateWatchLaterButtonLabel, 4000);
+    } finally {
+      if (generation === watchLaterRunGeneration) {
+        watchLaterInProgress = false;
+        watchLaterAbort = false;
+        if (started && current()) {
+          watchLaterBtn.style.background = '#1565c0';
+          watchLaterBtn.textContent = contentMessage('content_bulkDone', `完了: ${success}件追加${failed ? ` / ${failed}件失敗` : ''}`, [success, failed ? contentMessage('content_bulkFailures', ` / ${failed}件失敗`, [failed]) : '']);
+          setTimeout(() => { if (current()) updateWatchLaterButtonLabel(); }, 4000);
+        }
+      }
+    }
   }
 
   function findWatchLaterAnchor() {
@@ -3555,6 +3696,9 @@ window._ytWatchedHider = (() => {
 
   // Cleanup function for re-injection
   function cleanup(keepReloadNotice = false) {
+    pageDisposed = true;
+    invalidatePageState();
+    cancelBulkOperations();
     resetPlaylistAllWatched();
     for (const timer of contextTimers) window.clearTimeout(timer);
     contextTimers.clear();
@@ -3568,6 +3712,7 @@ window._ytWatchedHider = (() => {
     if (currentVideoElement && endedHandler) {
       currentVideoElement.removeEventListener('ended', endedHandler);
     }
+    document.removeEventListener('yt-navigate-start', onNavigateStart);
     document.removeEventListener('yt-navigate-finish', onNavigateFinish);
     removeHarvestUI();
     if (!contextInvalidated && chrome.runtime?.id) chrome.runtime.onMessage.removeListener(onMessage);

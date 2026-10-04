@@ -5,6 +5,40 @@ importScripts('credit_target.js');
 importScripts('official_search_filter_core.js');
 importScripts('watch_later_core.js');
 
+function createPlaylistCompletionCache(storageArea) {
+  let pending = Promise.resolve();
+  const maxEntries = 200, ttl = 7 * 24 * 60 * 60 * 1000;
+  async function operate({ operation, prefix, key, entry }) {
+    if (!['get', 'set'].includes(operation) || typeof prefix !== 'string' ||
+        !prefix.startsWith('playlistAllWatched.v1.') || !prefix.endsWith('.') ||
+        typeof key !== 'string' || !key.startsWith(prefix) || !/^[A-Za-z0-9_-]+$/.test(key.slice(prefix.length))) {
+      throw new Error('invalid-playlist-cache-request');
+    }
+    if (operation === 'set') await storageArea.set({ [key]: entry });
+    const stored = await storageArea.get(null), now = Date.now();
+    const fresh = [], remove = [];
+    for (const [storedKey, value] of Object.entries(stored || {})) {
+      if (!storedKey.startsWith(prefix)) continue;
+      if (!value || !Number.isSafeInteger(value.videoCount) || value.videoCount < 0 ||
+          typeof value.allWatched !== 'boolean' || !Number.isFinite(value.checkedAt) ||
+          now < value.checkedAt || now - value.checkedAt >= ttl) remove.push(storedKey);
+      else fresh.push([storedKey, value.checkedAt]);
+    }
+    fresh.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    remove.push(...fresh.slice(maxEntries).map(([storedKey]) => storedKey));
+    if (remove.length) await storageArea.remove(remove);
+    return (await storageArea.get(key))[key];
+  }
+  return message => {
+    // All tabs share this writer, including while a storage snapshot is being pruned.
+    const request = pending.then(() => operate(message));
+    pending = request.catch(() => {});
+    return request;
+  };
+}
+
+const playlistCompletionCache = createPlaylistCompletionCache(chrome.storage.local);
+
 const JOB_CURRENT_KEY = 'ytwh.job.current';
 const JOB_RECENT_KEY = 'ytwh.job.recent';
 
@@ -1193,6 +1227,13 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
 // Handle messages from content script and popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'PLAYLIST_COMPLETION_CACHE') {
+    playlistCompletionCache(message)
+      .then(entry => sendResponse({ success: true, entry }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
   if (message.type === 'DB_RPC') {
     sendToOffscreenDb(message.op, message)
       .then((result) => sendResponse({ success: true, result }))

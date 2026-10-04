@@ -33,6 +33,7 @@ function boot(items) {
     document: { body: { click() {} }, querySelectorAll: () => items, querySelector: () => ({ click() {} }) },
   };
   vm.createContext(scope);
+  require('./page_lifecycle_harness').install(scope, source);
   const names = ['isShownMenuItem', 'seedQueueWithCurrentVideo', 'queueOneCard', 'watchLaterOneCard']
     .filter(n => n === 'isShownMenuItem' ? source.includes('function isShownMenuItem(') : true);
   vm.runInContext(`
@@ -42,7 +43,7 @@ function boot(items) {
   return scope;
 }
 
-const card = { querySelector: () => ({ click() {} }) };
+const card = { isConnected: true, id: 'fixture-video', querySelector: () => ({ click() {} }) };
 
 (async () => {
   for (const [label, run] of [

@@ -16,7 +16,7 @@ function fn(name) {
   return match[0];
 }
 function card(id = 'seen') {
-  return { id, dataset: {}, style: { display: '' }, offsetParent: {},
+  return { id, isConnected: true, dataset: {}, style: { display: '' }, offsetParent: {},
     querySelector: sel => sel.includes('/watch?v=') ? { href: `https://www.youtube.com/watch?v=${id}` } : null };
 }
 function boot(cards = [card()]) {
@@ -38,6 +38,7 @@ function boot(cards = [card()]) {
     rememberWatched() {}, forgetWatched() {}, showImportToast() {},
   };
   vm.createContext(scope);
+  require('./page_lifecycle_harness').install(scope, source);
   vm.runInContext(block('  // Watched display settings', '  let recordWhileOff') +
     ['hideCard', 'showAllCards', 'showCardsForVideoIds', 'hideShortsCards', 'hideMovieCards',
       'showAllShorts', 'showAllMovies', 'isChannelBulkActionCard', 'findQueueableCards',

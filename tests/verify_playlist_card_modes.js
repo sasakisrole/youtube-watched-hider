@@ -33,6 +33,7 @@ function boot(cards, pathname = '/') {
     recordSeekbarWatched: forbidden, sendRuntimeMessage: forbidden, rememberWatched: forbidden, rememberNotWatched: forbidden,
   };
   vm.createContext(scope);
+  require('./page_lifecycle_harness').install(scope, source);
   const start = source.indexOf("    if (message.type === 'ENABLED_CHANGED')");
   const end = source.indexOf("    if (message.type === 'RECORD_WHILE_OFF_CHANGED')", start);
   vm.runInContext(source.slice(source.indexOf('  // Watched display settings'), source.indexOf('  let recordWhileOff')) +

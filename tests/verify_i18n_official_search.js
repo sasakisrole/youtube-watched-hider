@@ -26,7 +26,8 @@ async function check(locale) {
   const element = () => ({ dataset: {}, setAttribute() {}, getAttribute() { return 'false'; }, addEventListener(event, handler) { this[event] = handler; }, appendChild() {},
     set textContent(v) { output.push(v); }, get textContent() { return ''; } });
   const panel = { querySelector(s) { if (!nodes.has(s)) nodes.set(s, element()); return nodes.get(s); }, querySelectorAll: () => [] };
-  const scope = { console, document: { getElementById: id => id === 'panel' ? panel : panel.querySelector(id), createElement: element },
+  const scope = { console, location: { href: 'https://www.youtube.com/results?search_query=example' },
+    isSearchPage: () => true, getSearchVideoCards: () => [], getVideoIdFromCard: c => c.id, document: { getElementById: id => id === 'panel' ? panel : panel.querySelector(id), createElement: element },
     getEffectiveProfile: () => ({ displayName: 'Example', id: 'example' }),
     renderManagementState() {}, scanSearchResults() {},
     appendText(parent, tag, cls, text) { output.push(text); },
@@ -34,7 +35,7 @@ async function check(locale) {
     runtimeMessage: async () => { throw new Error('offline'); },
     core: { PREVIEW_CREDITS_MAX_VIDEOS: 20 }, PANEL_ID: 'panel',
     MODE: { ALL: 'all', OFFICIAL: 'official', DISCOVERY: 'discovery' },
-    state: { counts: {}, settings: {}, mode: 'all', previewVideoIds: [], previewResults: {}, previewMessage: '', visibleCount: 0 } };
+    state: { pageGeneration: 0, previewGeneration: 0, previewCreditsByVideoId: {}, counts: {}, settings: {}, mode: 'all', previewVideoIds: [], previewResults: {}, previewMessage: '', visibleCount: 0 } };
   if (locale !== null) scope.chrome = { i18n: { getMessage(key, values = []) {
     if (locale === 'throws') throw new Error('invalid context');
     if (!locale[key]) return '';
@@ -43,7 +44,8 @@ async function check(locale) {
     return locale[key].message.replace(/\$(\d+)/g, (_, n) => values[n - 1]);
   } } };
   vm.createContext(scope);
-  vm.runInContext(['officialMessage', 'officialModeLabel', 'officialPreviewLabel', 'renderPanelState', 'startPreviewCredits', 'cancelPreviewCredits', 'createModeButton', 'setManagementStatus'].map(n => fn(n)).join('\n'), scope);
+  vm.runInContext('const PREVIEW_CREDITS_MEMORY_MAX = 200;', scope);
+  vm.runInContext(['officialMessage', 'officialModeLabel', 'officialPreviewLabel', 'renderPanelState', 'prunePreviewCredits', 'startPreviewCredits', 'cancelPreviewCredits', 'createModeButton', 'setManagementStatus'].map(n => fn(n)).join('\n'), scope);
   if (locale !== en) vm.runInContext(`
     const originalMessage = officialMessage;
     officialMessage = (key, fallback, substitutions) => {

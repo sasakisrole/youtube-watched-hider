@@ -25,8 +25,9 @@ const names = ['contentMessage', 'showReloadNotice', 'showImportToast', 'renderH
   'updateWatchLaterButtonLabel', 'onWatchLaterClick'];
 function boot(locale) {
   const output = [], calls = new Set(), nodes = [];
+  const actionCards = [{ id: 'one', isConnected: true }, { id: 'two', isConnected: true }];
   function element() {
-    const children = {}, el = { style: {}, appendChild() {}, setAttribute() {}, addEventListener() {}, remove() {},
+    const children = {}, el = { isConnected: true, style: {}, appendChild() {}, setAttribute() {}, addEventListener() {}, remove() {},
       querySelector: s => children[s] ||= element() };
     for (const prop of ['textContent', 'innerHTML']) Object.defineProperty(el, prop, {
       set(value) { this['_' + prop] = value; output.push(value); }, get() { return this['_' + prop]; }
@@ -37,9 +38,9 @@ function boot(locale) {
   const scope = { document: { createElement: element, getElementById: () => null, body: element(), head: element() },
     chrome: {}, location: { reload() {} }, console, setTimeout() {}, clearTimeout() {}, requestAnimationFrame: cb => cb(),
     confirm: text => { output.push(text); return true; }, sleep: async () => {},
-    getBulkPageContext: () => 'watch', findQueueableCards: () => [1, 2], findWatchLaterableCards: () => [1, 2],
-    seedQueueWithCurrentVideo: async () => {}, queueOneCard: async c => ({ ok: c === 1 }),
-    watchLaterOneCard: async c => ({ ok: c === 1 }), isHistoryPage: () => true,
+    getBulkPageContext: () => 'watch', findQueueableCards: () => actionCards, findWatchLaterableCards: () => actionCards,
+    seedQueueWithCurrentVideo: async () => {}, queueOneCard: async c => ({ ok: c === actionCards[0] }),
+    watchLaterOneCard: async c => ({ ok: c === actionCards[0] }), isHistoryPage: () => true,
     startHarvest() {}, stopHarvest() {}, element };
   if (locale !== null) scope.chrome.i18n = { getMessage(key, values = []) {
     calls.add(key);
@@ -50,6 +51,7 @@ function boot(locale) {
     return locale[key].message.replace(/\$(\d+)/g, (_, n) => values[n - 1]);
   } };
   vm.createContext(scope);
+  require('./page_lifecycle_harness').install(scope, source);
   vm.runInContext(`
     let contextInvalidated = false, harvestMode = true;
     const reloadNoticeId = 'reload', BULK_LARGE_COUNT_THRESHOLD = 100;
@@ -58,6 +60,7 @@ function boot(locale) {
     let queueAllBtn = element(), watchLaterBtn = element();
     let queueInProgress = false, watchLaterInProgress = false, queueAbort = false, watchLaterAbort = false;
     let queueButtonContext = null, watchLaterButtonContext = null;
+    let queueRunGeneration = 0, watchLaterRunGeneration = 0;
     ${names.map(fn).join('\n')}
     const originalMessage = contentMessage;
     contentMessage = (key, fallback, values) => {
