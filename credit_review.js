@@ -102,6 +102,16 @@
     var candidates = uniqueCandidateValues(item.candidates);
     appendValueRow(values, scriptMessage('history_scripts_candidate_13', '候補'), candidates.length ? candidates.join(' / ') : scriptMessage('history_scripts_none_14', 'なし'));
     card.append(header, values);
+    (item.candidates || []).filter(function (candidate) {
+      return candidate.source === 'verified-correction' && /^https:\/\//.test(candidate.sourceDetail);
+    }).forEach(function (candidate) {
+      var link = document.createElement('a');
+      link.href = candidate.sourceDetail;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = scriptMessage('history_correctionEvidence', '確認元の資料を開く');
+      card.appendChild(link);
+    });
 
     var message = options.message;
     if (item.state === 'conflict') {
@@ -148,7 +158,7 @@
     }
     var canAdopt = (item.state === 'auto_candidate' || item.state === 'needs_review')
       && !!adoptionValue(item);
-    var canReject = item.state === 'auto_candidate' || item.state === 'needs_review';
+    var canReject = options.allowReject !== false && (item.state === 'auto_candidate' || item.state === 'needs_review');
     var canResolve = item.state === 'conflict';
     var canUndo = !!options.canUndo;
     if (canAdopt || canReject || canResolve || canUndo) {
@@ -230,7 +240,15 @@
       if (event.target === self.modal) self.close();
     });
     document.addEventListener('keydown', function (event) {
-      if (event.key === 'Escape' && self.modal && !self.modal.hidden) self.close();
+      if (!self.modal || self.modal.hidden) return;
+      if (event.key === 'Escape') self.close();
+      if (event.key === 'Tab') {
+        var focusable = Array.from(self.modal.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled)'));
+        if (!focusable.length) return;
+        var first = focusable[0], last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
     });
   };
 
@@ -270,11 +288,15 @@
     }));
     var rawList = root.CreditTarget.getCreditReviewList(records, this.getMaterials());
     var recordsByVideoId = this.recordsByVideoId;
+    var self = this;
     var allItems = rawList.groups.reduce(function (items, group) { return items.concat(group.items); }, [])
       .filter(function (item) {
+        if (typeof self.env.filterItem === 'function'
+          && !self.env.filterItem(item)
+          && !self.undoActions.has(self.roleKey(item.videoId, item.role))) return false;
         if (item.state !== 'auto_candidate' && item.state !== 'needs_review') return true;
         var record = recordsByVideoId.get(item.videoId);
-        return rejectedSignature(record, item.role) !== candidateSignature(item);
+        return self.env.allowReject === false || rejectedSignature(record, item.role) !== candidateSignature(item);
       });
     var limit = this.getLimit();
     var counts = {};
@@ -380,6 +402,7 @@
   };
 
   CreditReviewController.prototype.reject = async function (videoId, role) {
+    if (this.env.allowReject === false) return { error: 'not_rejectable' };
     var key = this.roleKey(videoId, role);
     if (this.busy.has(key)) return { error: 'busy' };
     var item = this.findItem(videoId, role);
@@ -563,6 +586,7 @@
       var key = self.roleKey(item.videoId, item.role);
       fragment.appendChild(createReviewItem(item, record[item.role], {
         busy: self.busy.has(key),
+        allowReject: self.env.allowReject,
         canUndo: self.undoActions.has(key),
         message: self.messages.get(key),
         hasConflictSelection: self.conflictSelections.has(key),
@@ -575,7 +599,7 @@
     if (!items.length) {
       var omittedByLimit = this.filterState !== 'all' && this.reviewList.truncated
         && this.reviewList.counts[this.filterState] > 0;
-      this.empty.textContent = omittedByLimit ? scriptMessage('history_scripts_no_matches_within_the_display_limit_32', '表示上限内に該当なし') : scriptMessage('history_scripts_no_matches_33', '該当なし');
+      this.empty.textContent = omittedByLimit ? scriptMessage('history_scripts_no_matches_within_the_display_limit_32', '表示上限内に該当なし') : (this.env.emptyMessage || scriptMessage('history_scripts_no_matches_33', '該当なし'));
     }
     if (this.summary) {
       var globalSummary = this.reviewList.truncated

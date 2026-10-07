@@ -391,6 +391,9 @@
       text-align: center;
     }
     .credit-review-empty[hidden] { display: none; }
+    .credit-review-item > a { display: inline-flex; align-items: center; min-height: 44px; color: var(--accent); }
+    #creditReviewOpen { min-height: 44px; }
+    .credit-review-modal a:focus-visible,
     .credit-review-modal button:focus-visible {
       outline: 2px solid var(--accent);
       outline-offset: 2px;
@@ -1206,11 +1209,6 @@
       <button class="sort-btn" id="bulkRemoveWatchLater" data-i18n-title="history_bulkRemoveTitle" title="照合で見つかった視聴済みの動画を一覧で確認してから、まとめて削除する。取り消せない" disabled data-i18n="history_bulkRemove">まとめて削除</button>
     </div>
 
-    <!-- クレジット確認センターの入口は外した（2026-09-02）。実データでは意味を持つ
-         状態が要確認と未解決だけで、どちらもクレジット補完側の仕事だったため。
-         ダイアログの markup と credit_review.js は1版だけ残す（戻すならここへ
-         button#creditReviewOpen を書き戻すだけで復活する）。 -->
-
     <!-- Row 4: メンテナンスの開閉バー。進捗(#fixStatus)は畳んでも見えるようここに置く -->
     <div class="toolbar-row maint-bar">
       <button class="maint-toggle" id="maintToggle" type="button" aria-expanded="false" aria-controls="maintPanel">
@@ -1250,6 +1248,7 @@
         <div id="repairPanel" class="repair-panel" hidden>
           <p data-i18n="history_repairNote">保存済みのクレジットのうち人名でない値を空欄へ戻し、補完対象に復帰させます。元の値は記録に残り、元に戻せます。</p>
           <div class="repair-actions">
+            <button class="sort-btn" id="creditReviewOpen" type="button" data-i18n="history_correctionOpen">確認済みの誤登録を修正</button>
             <button class="sort-btn" id="repairCredits" data-i18n-title="history_repairCreditsHint" title="保存済みの作曲・作詞・編曲のうち、URL・権利表示・説明文の切れ端など人名でない値を空欄へ戻し、補完対象に復帰させる。元の値は記録に残す" data-i18n="history_repair_label">クレジットの不正値を修復</button>
             <button class="sort-btn" id="restoreCredits" data-i18n-title="history_restoreCreditsHint" title="修復で空欄にしたクレジットを記録から元に戻す。現在値が入っている役割は上書きしない" data-i18n="history_restore_label">修復を元に戻す</button>
           </div>
@@ -1279,8 +1278,8 @@
     <section class="credit-review-dialog" role="dialog" aria-modal="true" aria-labelledby="creditReviewTitle" aria-describedby="creditReviewNote">
       <div class="credit-review-header">
         <div class="credit-review-heading">
-          <h2 id="creditReviewTitle" data-i18n="history_reviewTitle">クレジット確認センター</h2>
-          <p class="credit-review-note" id="creditReviewNote" data-i18n="history_reviewNote">動画ごとの作曲・作詞・編曲を、現在値と候補を並べて確認し、役割ごとに1件ずつ採用できます。</p>
+          <h2 id="creditReviewTitle" data-i18n="history_correctionTitle">確認済みの誤登録を修正</h2>
+          <p class="credit-review-note" id="creditReviewNote" data-i18n="history_correctionNote">公式資料で確認できた修正だけを表示します。現在値と候補を確認して「採用」を押してください。手動で確定した値は変更しません。この履歴ページを再読み込みするまでは「元に戻す」で取り消せます。</p>
         </div>
         <button class="sort-btn credit-review-close" id="creditReviewClose" type="button" data-i18n-aria-label="history_reviewCloseLabel" aria-label="クレジット確認センターを閉じる" data-i18n="history_close">閉じる</button>
       </div>
@@ -1514,6 +1513,7 @@
   <script src="official_profile_store.js"></script>
   <script src="analyze_official_profiles.js"></script>
   <script src="enrich_credits.js"></script>
+  <script src="credit_corrections.js"></script>
   <script src="credit_review.js"></script>
   <script src="history.js"></script>
   <script src="analyzer.js"></script>

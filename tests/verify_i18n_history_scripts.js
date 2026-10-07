@@ -1,5 +1,6 @@
 // Frozen original Japanese and reviewed English.
 const golden = {
+  "history_correctionEvidence": ["確認元の資料を開く", "Open supporting source"],
   "history_scripts_mb_outcome_summary": ["外部DB：曲なし $1件／クレジットなし $2件／再検索待ち $3件／候補条件に合わず $4件／取得エラー $5件", "External DB: no song $1 / no credits $2 / waiting to retry $3 / candidate requirements not met $4 / fetch errors $5"],
   "history_scripts_conflict_1": [
     "競合",

@@ -290,7 +290,49 @@ async function testSaveFailureIsNotOptimistic() {
     && countFor(ui, 'verified') === verifiedBefore && ui.list.textContent.includes('採用の保存に失敗しました'));
 }
 
+
+async function testVerifiedCorrections() {
+  const corrections = require('../credit_corrections.js');
+  const rows = new Map();
+  corrections.rules.forEach(rule => {
+    if (!rows.has(rule.videoId)) rows.set(rule.videoId, {videoId: rule.videoId, title: 'Remix', creditsSource: 'general', channel: 'Official', watchedAt: 123, playCount: 9});
+    rows.get(rule.videoId)[rule.role] = rule.before;
+  });
+  const records = [...rows.values()];
+  const original = structuredClone(records);
+  check('six independently sourced corrections in four videos', corrections.candidates(records, CT).length === 6 && rows.size === 4);
+  const manual = structuredClone(records); manual.forEach(r => {r.creditsSource = 'manual';});
+  check('manual credits are excluded', corrections.candidates(manual, CT).length === 0);
+  check('matching titles on other video IDs cannot trigger corrections', corrections.candidates(records.map(r => ({...r, videoId: 'other'})), CT).length === 0);
+  const changed = structuredClone(records); changed.forEach(r => {for (const role of CT.CREDIT_ROLES || ['composer','lyricist','arranger']) r[role]='Other Artist';});
+  check('unknown values are not overwritten', corrections.candidates(changed, CT).length === 0);
+  const env = loadRealDb(records);
+  const ui = load(records, {});
+  ui.controller.env.getMaterials = () => ({candidates: corrections.candidates(records, CT)});
+  ui.controller.env.filterItem = item => item.candidates.some(c => c.source === 'verified-correction');
+  ui.controller.env.saveCreditRole = payload => env.api.setManualCreditRole(payload);
+  ui.controller.env.allowReject = false;
+  await ui.opener.trigger('click');
+  check('only six affected role rows are offered', ui.controller.reviewList.totalCount === 6);
+  check('verified correction screen has no irreversible dismissal', !actionFor(ui, records[0].videoId, 'composer', 'reject') && (await ui.controller.reject(records[0].videoId, 'composer')).error === 'not_rejectable');
+  check('official source links are visible', findAll(ui.list, e => e.tagName === 'A').length === 6);
+  for (const rule of corrections.rules) {
+    const result = await ui.controller.adopt(rule.videoId, rule.role);
+    check('adopt exact correction ' + rule.videoId + '/' + rule.role, result.updated === true && env.store.get(rule.videoId)[rule.role] === rule.value);
+  }
+  check('corrected rows retain undo after candidates disappear', corrections.candidates(records, CT).length === 0 && ui.controller.reviewList.counts.verified === 6);
+  for (const rule of corrections.rules) {
+    const result = await ui.controller.undo(rule.videoId, rule.role);
+    check('undo exact correction ' + rule.videoId + '/' + rule.role, result.updated === true);
+  }
+  check('undo restores all fields and attribution', JSON.stringify([...env.store.values()]) === JSON.stringify(original));
+  const rule = corrections.rules[0];
+  const current = env.store.get(rule.videoId); current[rule.role] = 'Concurrent Edit';
+  const result = await ui.controller.adopt(rule.videoId, rule.role);
+  check('concurrent edit is protected inside database transaction', result.conflict === true && env.store.get(rule.videoId)[rule.role] === 'Concurrent Edit');
+}
 async function main() {
+  await testVerifiedCorrections();
   await testAdoptUndoAndCounts();
   await testSafetyGuards();
   await testDatabaseAdoptionGuard();

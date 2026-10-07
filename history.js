@@ -1562,18 +1562,16 @@ if (enrichCreditsBtn && window.EnrichCredits) {
   });
 }
 
-// --- クレジット確認センター（N4） ---
-// 候補生成済みなら、その場のメモリ上の候補も表示材料にする。
+// Only source-verified corrections belong here; live enrichment candidates may refer to a different remix.
 const creditReviewBtn = document.getElementById('creditReviewOpen');
 let creditReviewController = null;
 if (creditReviewBtn && window.CreditReview) {
   creditReviewController = window.CreditReview.create({
-    getRecords: () => allData,
-    getMaterials: () => ({
-      candidates: enrichCreditsController && typeof enrichCreditsController.getAllCandidates === 'function'
-        ? enrichCreditsController.getAllCandidates()
-        : [],
-    }),
+    getRecords: () => allData.filter(record => window.CreditCorrections.rules.some(rule => rule.videoId === record.videoId)),
+    getMaterials: () => ({ candidates: window.CreditCorrections.candidates(allData, window.CreditTarget) }),
+    filterItem: item => item.candidates.some(candidate => candidate.source === 'verified-correction'),
+    allowReject: false,
+    emptyMessage: historyMessage('history_correctionEmpty', '確認済みの修正に該当する誤登録はありません。すべてのクレジットの正しさを保証するものではありません。'),
     saveCreditRole: (payload) => sendHistoryDbRpc('SET_MANUAL_CREDIT_ROLE', payload),
   });
 }
