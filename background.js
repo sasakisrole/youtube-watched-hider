@@ -1086,14 +1086,16 @@ async function enrichCreditsLookupMb(artist, title) {
   let chosen = null;
   let stage = '';
   const strictRecordings = strict.recordings || [];
-  chosen = strictRecordings.find((recording) => {
+  const strictMatches = strictRecordings.filter((recording) => {
+    if (!recording.id) return false;
     if (Number(recording.score || 0) < 90) return false;
     if (mbArtistMatchQuality(cleanArtist, recording) !== 'exact') return false;
     const candidateTitle = parseMbTitle(recording.title || '');
     const titleMatches = normalizeCreditLookupText(cleanTitle)
       === normalizeCreditLookupText(candidateTitle.baseWorkTitle);
     return titleMatches && mbRecordingVersionsMatch(requestedTitle, candidateTitle);
-  }) || null;
+  });
+  chosen = strictMatches[0] || null;
   if (chosen) {
     stage = 'strict';
   } else {
@@ -1118,14 +1120,32 @@ async function enrichCreditsLookupMb(artist, title) {
     return { success: true, artist: cleanArtist, title: cleanTitle, candidate: null, reason: 'no-recording' };
   }
 
-  const chosenTitle = parseMbTitle(chosen.title || '');
-  const versionMatch = mbRecordingVersionsMatch(requestedTitle, chosenTitle);
+  let chosenTitle = parseMbTitle(chosen.title || '');
+  let versionMatch = mbRecordingVersionsMatch(requestedTitle, chosenTitle);
   const roles = await getMbRecordingRoles(chosen.id);
-  const safeRoles = {
+  let safeRoles = {
     composer: roles.composer,
     lyricist: roles.lyricist,
     arranger: versionMatch ? roles.arranger : [],
   };
+  let alternateRecording = false;
+  if (!hasAnyMbRole(safeRoles) && stage === 'strict') {
+    const inspected = new Set([chosen.id]);
+    for (const alternate of strictMatches) {
+      if (inspected.size >= 3) break;
+      if (inspected.has(alternate.id)) continue;
+      inspected.add(alternate.id);
+      const alternateRoles = await getMbRecordingRoles(alternate.id);
+      // A matching title does not prove that a different recording shares its arrangement.
+      if (!alternateRoles.composer.length && !alternateRoles.lyricist.length) continue;
+      chosen = alternate;
+      chosenTitle = parseMbTitle(chosen.title || '');
+      versionMatch = mbRecordingVersionsMatch(requestedTitle, chosenTitle);
+      safeRoles = { composer: alternateRoles.composer, lyricist: alternateRoles.lyricist, arranger: [] };
+      alternateRecording = true;
+      break;
+    }
+  }
   if (!hasAnyMbRole(safeRoles)) {
     return { success: true, artist: cleanArtist, title: cleanTitle, candidate: null, reason: 'no-roles' };
   }
@@ -1133,11 +1153,13 @@ async function enrichCreditsLookupMb(artist, title) {
     normalizeCreditLookupText(cleanTitle),
     normalizeCreditLookupText(chosenTitle.baseWorkTitle)
   );
-  const requiresManualReview = stage !== 'strict'
+  const requiresManualReview = alternateRecording
+    || stage !== 'strict'
     || requestedTitle.requiresManualReview
     || chosenTitle.requiresManualReview
     || !versionMatch;
   const manualReviewReasons = [];
+  if (alternateRecording) manualReviewReasons.push('alternate-recording');
   if (stage !== 'strict') manualReviewReasons.push('non-strict-match');
   if (requestedTitle.requiresManualReview || chosenTitle.requiresManualReview) manualReviewReasons.push('recording-version');
   if (!versionMatch) manualReviewReasons.push('version-mismatch');

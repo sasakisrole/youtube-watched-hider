@@ -85,10 +85,10 @@
     return Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(count, parsedLimit) : count;
   }
 
-  // Each MusicBrainz lookup starts with one strict recording search. At most it
-  // also performs one fallback search, one recording fetch, and three work fetches.
+  // Strict lookup can inspect three recordings with three works each: 1 + 3 * 4.
+  // The title-only fallback still inspects one recording: 2 + 4.
   const ENRICH_REQUESTS_PER_VIDEO_MIN = 1;
-  const ENRICH_REQUESTS_PER_VIDEO_MAX = 6;
+  const ENRICH_REQUESTS_PER_VIDEO_MAX = 13;
 
   function estimateEnrichmentMinutes(videoCount, rateLimitMs, minimumRequestCount = null) {
     const count = Math.max(0, Math.floor(Number(videoCount) || 0));
