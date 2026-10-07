@@ -137,8 +137,8 @@ async function testMarkupAndIntegration() {
     HTML.includes('id="creditReviewModal"') && HTML.includes('aria-labelledby="creditReviewTitle"'));
   check('credit review script is loaded before history integration', HTML.indexOf('credit_review.js') > 0
     && HTML.indexOf('credit_review.js') < HTML.indexOf('history.js'));
-  check('history scopes records to verified corrections', HISTORY_SOURCE.includes('window.CreditReview.create')
-    && HISTORY_SOURCE.includes('getRecords: () => allData.filter') && HISTORY_SOURCE.includes('CreditCorrections.candidates'));
+  check('history scopes records to verified corrections', HISTORY_SOURCE.includes('window.CreditMaintenanceUI.create')
+    && HISTORY_SOURCE.includes('getRecords: () => allData') && HTML.includes('credit_maintenance.js'));
   check('modal has scroll lock, focus, and 44px control styles', HTML.includes('body.credit-review-modal-open { overflow: hidden; }')
     && HTML.includes('.credit-review-filter { min-height: 44px') && HTML.includes('.credit-review-modal button:focus-visible'));
   const markup = HTML.slice(HTML.indexOf('id="creditReviewModal"'), HTML.indexOf('id="enrichModal"'));

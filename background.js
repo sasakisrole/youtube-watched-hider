@@ -2,6 +2,7 @@
 // Handles: tab URL monitoring, message passing, auto-backup
 
 importScripts('credit_target.js');
+importScripts('credit_corrections.js');
 importScripts('official_search_filter_core.js');
 importScripts('watch_later_core.js');
 
@@ -2108,6 +2109,7 @@ function normalizeCreditLabelFormatting(line) {
 }
 
 function extractCreditSegments(line) {
+  const bullet = (line.match(/^[ \t]*[・•●■◆*\-][ \t]*/u) || [''])[0];
   line = normalizeCreditLabelFormatting(line);
   // Unrecognized wrappers may contain role words as prose, not credit labels.
   const wrappers = [];
@@ -2135,7 +2137,7 @@ function extractCreditSegments(line) {
     CREDIT_UNKNOWN_LABEL_BOUNDARY_RE.lastIndex = 0;
     const unknownBoundary = CREDIT_UNKNOWN_LABEL_BOUNDARY_RE.exec(value);
     if (unknownBoundary) value = value.slice(0, unknownBoundary.index);
-    return { roles: rolesForCreditLabel(item.label), value };
+    return { roles: rolesForCreditLabel(item.label), value, prefix: (line.slice(0, item.index).trim() ? bullet : '') + line.slice(0, item.index) };
   });
 }
 
@@ -2204,10 +2206,11 @@ function parseCreditsFromDescription(desc, videoTitle) {
     }
   }
 
-  return { composer, lyricist, arranger, creditsRaw };
+  const safe = self.CreditMaintenance && self.CreditMaintenance.analyze(desc, videoTitle, extractCreditSegments, cleanCreditLine, self.CreditTarget);
+  return safe ? { ...safe.credits, creditsRaw } : { composer, lyricist, arranger, creditsRaw };
 }
 
-async function fetchCreditsFromWatch(videoId, abortSignal) {
+async function fetchCreditsFromWatch(videoId, abortSignal, maintenance = false) {
   try {
     // Route through a YouTube tab so the request carries user cookies and
     // avoids the google.com/sorry bot challenge.
@@ -2231,6 +2234,12 @@ async function fetchCreditsFromWatch(videoId, abortSignal) {
     const title = titleMatch ? decodeJsonStringLiteral(titleMatch[1]) : '';
     const artist = authorMatch ? decodeJsonStringLiteral(authorMatch[1]) : '';
     const desc = decodeJsonStringLiteral(descMatch[1]);
+    if (maintenance) {
+      const identity = slice.match(/"videoId":"([^"]+)"/);
+      if (!identity || identity[1] !== videoId) return { videoId, ok: false, reason: 'video-identity-mismatch' };
+      return { videoId, ok: true, title, artist,
+        maintenance: self.CreditMaintenance.analyze(desc, title, extractCreditSegments, cleanCreditLine, self.CreditTarget) };
+    }
     const credits = parseCreditsFromDescription(desc, title);
     const hasAny = credits.composer || credits.lyricist || credits.arranger || credits.creditsRaw;
     if (!hasAny) return { videoId, ok: true, credits, hasAny: false, reason: 'no-credits', title, artist };
@@ -2501,6 +2510,16 @@ function registerJobPort({ portName, createJob, run, progressPatch, finishPatch 
     });
   });
 }
+
+registerJobPort({
+  portName: 'recheck-credits',
+  createJob: (msg) => ({ kind: 'recheckCredits', label: '保存済みクレジットを再点検', total: Math.min(500, (msg.videoIds || []).length), abortable: true }),
+  run: (msg, onProgress, signal) => self.CreditMaintenance.scan(msg.videoIds,
+    (id, abortSignal) => fetchCreditsFromWatch(id, abortSignal, true), onProgress, signal),
+  progressPatch: (progress) => ({ processed: progress.processed, total: progress.total, counters: { failed: progress.failed } }),
+  finishPatch: (result) => ({ processed: result.processed, total: result.total, counters: { failed: result.failed },
+    message: `クレジット再点検: ${result.processed}/${result.total}件（取得失敗${result.failed}件）。保存値は変更していません。` }),
+});
 
 registerJobPort({
   portName: 'fix-credits',

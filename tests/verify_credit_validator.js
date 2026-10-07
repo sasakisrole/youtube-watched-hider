@@ -20,14 +20,14 @@ function loadParser() {
   const end = source.indexOf('async function fetchCreditsFromWatch', start);
   if (start < 0 || end < 0) throw new Error('credit parser block not found');
   const block = source.slice(start, end);
-  return new Function('self', `${block}\nreturn { parseCreditsFromDescription, cleanCreditLine };`)({ CreditTarget: CT });
+  return new Function('self', `${block}\nreturn { parseCreditsFromDescription, cleanCreditLine };`)({ CreditTarget: CT, CreditMaintenance: require('../credit_corrections.js') });
 }
 
 function loadAnalyzerValidator() {
   const source = fs.readFileSync(path.join(ROOT, 'analyzer.js'), 'utf8');
   const match = source.match(/  function isCleanCreditName\(name\) \{[\s\S]*?\n  \}/);
   if (!match) throw new Error('isCleanCreditName not found');
-  return new Function('window', `${match[0]}\nreturn isCleanCreditName;`)({ CreditTarget: CT });
+  return new Function('window', `${match[0]}\nreturn isCleanCreditName;`)({ CreditTarget: CT, CreditMaintenance: require('../credit_corrections.js') });
 }
 
 function makeFakeIndexedDb(record) {

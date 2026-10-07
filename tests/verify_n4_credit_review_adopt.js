@@ -292,46 +292,49 @@ async function testSaveFailureIsNotOptimistic() {
 
 
 async function testVerifiedCorrections() {
-  const corrections = require('../credit_corrections.js');
-  const rows = new Map();
-  corrections.rules.forEach(rule => {
-    if (!rows.has(rule.videoId)) rows.set(rule.videoId, {videoId: rule.videoId, title: 'Remix', creditsSource: 'general', channel: 'Official', watchedAt: 123, playCount: 9});
-    rows.get(rule.videoId)[rule.role] = rule.before;
-  });
-  const records = [...rows.values()];
+  const maintenance = require('../credit_corrections.js');
+  const roles = ['composer', 'lyricist', 'arranger'];
+  const records = ['anyVideo001', 'anyVideo002'].map(videoId => ({videoId, title:'Example Remix', composer:'Old', lyricist:'Old', arranger:'Old', creditsSource:'general', watchedAt:123, playCount:9}));
   const original = structuredClone(records);
-  check('six independently sourced corrections in four videos', corrections.candidates(records, CT).length === 6 && rows.size === 4);
-  const manual = structuredClone(records); manual.forEach(r => {r.creditsSource = 'manual';});
-  check('manual credits are excluded', corrections.candidates(manual, CT).length === 0);
-  check('matching titles on other video IDs cannot trigger corrections', corrections.candidates(records.map(r => ({...r, videoId: 'other'})), CT).length === 0);
-  const changed = structuredClone(records); changed.forEach(r => {for (const role of CT.CREDIT_ROLES || ['composer','lyricist','arranger']) r[role]='Other Artist';});
-  check('unknown values are not overwritten', corrections.candidates(changed, CT).length === 0);
+  const results = records.map(r => ({ok:true,title:r.title,maintenance:{credits:{composer:'Alice',lyricist:'Bob',arranger:'Guest'},evidence:{composer:'Composer: Alice',lyricist:'Lyrics: Bob',arranger:'Arranger: Guest'}}}));
+  const getCandidates = () => records.flatMap((r,i) => maintenance.candidates(r,results[i],CT));
   const env = loadRealDb(records);
   const ui = load(records, {});
-  ui.controller.env.getMaterials = () => ({candidates: corrections.candidates(records, CT)});
-  ui.controller.env.filterItem = item => item.candidates.some(c => c.source === 'verified-correction');
+  ui.controller.env.getMaterials = () => ({candidates:getCandidates()});
+  ui.controller.env.filterItem = item => item.candidates.some(c => c.source === 'description-recheck');
   ui.controller.env.saveCreditRole = payload => env.api.setManualCreditRole(payload);
   ui.controller.env.allowReject = false;
   await ui.opener.trigger('click');
-  check('only six affected role rows are offered', ui.controller.reviewList.totalCount === 6);
-  check('verified correction screen has no irreversible dismissal', !actionFor(ui, records[0].videoId, 'composer', 'reject') && (await ui.controller.reject(records[0].videoId, 'composer')).error === 'not_rejectable');
-  check('official source links are visible', findAll(ui.list, e => e.tagName === 'A').length === 6);
-  for (const rule of corrections.rules) {
-    const result = await ui.controller.adopt(rule.videoId, rule.role);
-    check('adopt exact correction ' + rule.videoId + '/' + rule.role, result.updated === true && env.store.get(rule.videoId)[rule.role] === rule.value);
+  check('generic source-derived changes display six role rows',ui.controller.reviewList.totalCount===6);
+  check('source links and exact evidence lines are visible',findAll(ui.list,e=>e.tagName==='A').length===6 && ui.list.textContent.includes('Composer: Alice'));
+  for (const record of records) for (const role of roles) {
+    const result=await ui.controller.adopt(record.videoId,role);
+    check('adopt arbitrary video '+record.videoId+'/'+role,result.updated===true);
   }
-  check('corrected rows retain undo after candidates disappear', corrections.candidates(records, CT).length === 0 && ui.controller.reviewList.counts.verified === 6);
-  for (const rule of corrections.rules) {
-    const result = await ui.controller.undo(rule.videoId, rule.role);
-    check('undo exact correction ' + rule.videoId + '/' + rule.role, result.updated === true);
+  check('adoption retains all undo cards',getCandidates().length===0 && ui.controller.reviewList.counts.verified===6);
+  for (const record of records) for (const role of roles) {
+    const result=await ui.controller.undo(record.videoId,role);
+    check('undo arbitrary video '+record.videoId+'/'+role,result.updated===true);
   }
-  check('undo restores all fields and attribution', JSON.stringify([...env.store.values()]) === JSON.stringify(original));
-  const rule = corrections.rules[0];
-  const current = env.store.get(rule.videoId); current[rule.role] = 'Concurrent Edit';
-  const result = await ui.controller.adopt(rule.videoId, rule.role);
-  check('concurrent edit is protected inside database transaction', result.conflict === true && env.store.get(rule.videoId)[rule.role] === 'Concurrent Edit');
+  check('undo restores all fields',JSON.stringify([...env.store.values()])===JSON.stringify(original));
+  env.store.get(records[0].videoId).composer='Concurrent Edit';
+  const result=await ui.controller.adopt(records[0].videoId,'composer');
+  check('stale scan cannot overwrite concurrent edit',result.conflict===true && env.store.get(records[0].videoId).composer==='Concurrent Edit');
 }
+
+async function testInvalidValueUndo() {
+  const before={videoId:'invalid-old',title:'Example',composer:'https://example.com',creditsSource:'general'};
+  const env=loadRealDb([before]);
+  const result=await env.api.setManualCreditRole({videoId:before.videoId,role:'composer',value:'Alice',expectedCurrent:before.composer,expectedSource:'general',adoptCandidate:true});
+  check('invalid saved values can be replaced',result.updated===true);
+  const wrong=await env.api.setManualCreditRole({videoId:before.videoId,role:'composer',value:'https://other.example.com',expectedCurrent:'Alice',expectedSource:'manual',restoreRoleSource:null});
+  check('undo cannot forge an invalid value',wrong.error==='invalid_value');
+  const restored=await env.api.setManualCreditRole({videoId:before.videoId,role:'composer',value:before.composer,expectedCurrent:'Alice',expectedSource:'manual',restoreRoleSource:null});
+  check('recorded invalid original can be restored with exact provenance',restored.updated===true && JSON.stringify(env.store.get(before.videoId))===JSON.stringify(before));
+}
+
 async function main() {
+  await testInvalidValueUndo();
   await testVerifiedCorrections();
   await testAdoptUndoAndCounts();
   await testSafetyGuards();

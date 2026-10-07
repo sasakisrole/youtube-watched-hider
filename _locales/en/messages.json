@@ -3530,18 +3530,83 @@
     "message": "External DB: no song $1 / no credits $2 / waiting to retry $3 / candidate requirements not met $4 / fetch errors $5"
   },
   "history_correctionOpen": {
-    "message": "Correct known credit errors"
+    "message": "Recheck saved credits"
   },
   "history_correctionTitle": {
-    "message": "Correct known credit errors"
+    "message": "Recheck saved credits"
   },
   "history_correctionNote": {
-    "message": "Only corrections verified against official sources are shown. Compare the current value and candidate, then select Adopt. Manually confirmed values are protected. Undo remains available until you reload this history page."
+    "message": "Compare saved composers, lyricists and arrangers with current video descriptions. Scanning changes no credits. Review the evidence before adopting a change. Manual values are protected. Undo and scan progress remain available until this history page is reloaded."
   },
   "history_correctionEmpty": {
     "message": "No known credit errors match the verified corrections. This does not mean all credits have been verified."
   },
   "history_correctionEvidence": {
     "message": "Open supporting source"
+  },
+  "history_recheckEmpty": {
+    "message": "Proposed changes will appear here after scanning. No proposals does not mean all credits have been verified."
+  },
+  "history_recheckScope": {
+    "message": "Scope"
+  },
+  "history_recheckRemix": {
+    "message": "Remixes"
+  },
+  "history_recheckAll": {
+    "message": "All history"
+  },
+  "history_recheckLimit": {
+    "message": "Videos per batch"
+  },
+  "history_recheckStart": {
+    "message": "Scan unchecked videos"
+  },
+  "history_recheckStop": {
+    "message": "Stop scanning"
+  },
+  "history_recheckReset": {
+    "message": "Include previously scanned videos"
+  },
+  "history_recheckHelp": {
+    "message": "Keep a YouTube tab open while scanning. Requests use the shared rate limit. Unclear evidence, songs or versions are held for review; original arrangers and remixers are not assumed to be remix arrangers."
+  },
+  "history_recheckProgress": {
+    "message": "Scanned on this page: $n1$ / proposed roles: $n2$ / held: $n3$ / fetch failures: $n4$ / unchecked: $n5$",
+    "placeholders": {
+      "n1": {
+        "content": "$1"
+      },
+      "n2": {
+        "content": "$2"
+      },
+      "n3": {
+        "content": "$3"
+      },
+      "n4": {
+        "content": "$4"
+      },
+      "n5": {
+        "content": "$5"
+      }
+    }
+  },
+  "history_recheckConnection": {
+    "message": "Could not connect. Reload the extension and try again."
+  },
+  "history_recheckFetchFailed": {
+    "message": "Could not fetch the description. Open a YouTube tab and retry later."
+  },
+  "history_recheckHeld": {
+    "message": "The evidence does not identify the role, song or version clearly enough. Saved values are unchanged."
+  },
+  "history_recheckStopped": {
+    "message": "Scanning stopped. Fetched proposals remain available for review."
+  },
+  "history_recheckDone": {
+    "message": "This batch is complete. Continue to scan unchecked videos."
+  },
+  "history_recheckDisconnected": {
+    "message": "The connection ended. Fetched proposals remain available. You can resume unchecked videos."
   }
 }

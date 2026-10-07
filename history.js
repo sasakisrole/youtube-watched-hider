@@ -1562,17 +1562,18 @@ if (enrichCreditsBtn && window.EnrichCredits) {
   });
 }
 
-// Only source-verified corrections belong here; live enrichment candidates may refer to a different remix.
 const creditReviewBtn = document.getElementById('creditReviewOpen');
 let creditReviewController = null;
-if (creditReviewBtn && window.CreditReview) {
-  creditReviewController = window.CreditReview.create({
-    getRecords: () => allData.filter(record => window.CreditCorrections.rules.some(rule => rule.videoId === record.videoId)),
-    getMaterials: () => ({ candidates: window.CreditCorrections.candidates(allData, window.CreditTarget) }),
-    filterItem: item => item.candidates.some(candidate => candidate.source === 'verified-correction'),
-    allowReject: false,
-    emptyMessage: historyMessage('history_correctionEmpty', '確認済みの修正に該当する誤登録はありません。すべてのクレジットの正しさを保証するものではありません。'),
-    saveCreditRole: (payload) => sendHistoryDbRpc('SET_MANUAL_CREDIT_ROLE', payload),
+if (creditReviewBtn && window.CreditReview && window.CreditMaintenanceUI) {
+  creditReviewController = window.CreditMaintenanceUI.create({
+    getRecords: () => allData,
+    saveCreditRole: async payload => {
+      const result = await sendHistoryDbRpc('SET_MANUAL_CREDIT_ROLE', payload);
+      if (result && result.updated) loadData();
+      return result;
+    },
+    begin: () => beginMaintenance('recheckCredits', { allowAbort: true }),
+    end: () => endMaintenance('recheckCredits'),
   });
 }
 

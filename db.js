@@ -464,7 +464,11 @@ if (typeof WatchedDB === 'undefined') {
             result = { error: 'invalid_value' };
             return;
           }
-          if (!nextIsBlank && !globalThis.CreditTarget.isValidCreditValue(value)) {
+          const undoEntry = existing.creditReviewUndo && existing.creditReviewUndo[role];
+          const restoresRecordedValue = hasRestoreRoleSource && undoEntry
+            && currentSource === 'manual' && undoEntry.after === currentValue
+            && undoEntry.before === value && undoEntry.sourceBefore === restoreRoleSource;
+          if (!nextIsBlank && !globalThis.CreditTarget.isValidCreditValue(value) && !restoresRecordedValue) {
             result = { error: 'invalid_value' };
             return;
           }
@@ -492,6 +496,17 @@ if (typeof WatchedDB === 'undefined') {
             && Object.prototype.hasOwnProperty.call(priorSources, role));
           const previous = { value: currentValue, source: currentSource, sourcePresent };
           const roleSources = sanitizeCreditRoleSources(priorSources);
+          const undoLog = existing.creditReviewUndo && typeof existing.creditReviewUndo === 'object'
+            && !Array.isArray(existing.creditReviewUndo) ? { ...existing.creditReviewUndo } : {};
+          // Invalid automatic values also need reversible maintenance; only a
+          // value recorded by this transaction may bypass validation on undo.
+          if (adoptCandidate && typeof currentValue === 'string'
+            && !globalThis.CreditTarget.isValidCreditValue(currentValue)) {
+            undoLog[role] = { before: currentValue, after: value,
+              sourceBefore: sourcePresent ? priorSources[role] : null };
+          } else delete undoLog[role];
+          if (Object.keys(undoLog).length) existing.creditReviewUndo = undoLog;
+          else delete existing.creditReviewUndo;
 
           existing[role] = nextIsBlank ? '' : value;
           if (hasRestoreRoleSource) {

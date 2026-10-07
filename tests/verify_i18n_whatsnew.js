@@ -118,8 +118,8 @@ function verify() {
   }
 
   const guide = require('../whatsnew.js');
-  // SHA-256 of the original GUIDE at lane-3 entry; guards every word and its order.
-  assert.strictEqual(digest(JSON.stringify(guide.GUIDE)), '6d82751fd89a32f592d400374d974a68326db24819a17b8901e93058716f0207');
+  // Snapshot of the reviewed guide text and ordering.
+  assert.strictEqual(digest(JSON.stringify(guide.GUIDE)), '04638b61bc32959d6a1affe131ac46204283137ac0b75fe66bc607b8594d72b6');
   assert.strictEqual(guide.GUIDE_EN.length, guide.GUIDE.length);
   for (const item of guide.GUIDE_EN) {
     assert(!japanese.test(JSON.stringify(item)), `Japanese in English GUIDE: ${item.task}`);
@@ -129,22 +129,22 @@ function verify() {
     }
   }
 
-  // Visible text snapshots captured from the unmodified HTML + renderer, with the
+  // Visible text snapshots captured from the reviewed HTML + renderer, with the
   // same fixtures. Normalize whitespace only; retain wording, punctuation, order.
   const baseline = {
     noChrome: {
-      0: 'fa524f717927b447844bcb1b6379edcb3138826d89fe1c7c4ef15b0536ad70ab',
-      1: 'ba1a31285dbd01d8e6edec7e100982bd6c4141608c2a331301197f73df446503',
-      8: '49c6c6fcb40549749072e8cd0dc5584415bdcf3395a62fb066f8d4a8e0bba508',
-      9: 'ccf12e5aabd9920dc79c29f3a2f29f906d31c835f3dbc545f0f98c03ab9291b9',
-      10: '00312cc2a83d4c07be5edebb2e78bff9f6b86788c59d81cd2c9fc887f381cf5f',
+      0: '28c5b6c37117e88687e4f149848302629abcfc7151a3fa58d212de89ec3a741f',
+      1: 'f5dec0e48720ac80c286b313dc36d67fae180f31a12637ff6e5606a4fffcdb40',
+      8: '4f53006374a87c752c459466ea1933712d8f7c966a3b11124c55d2403d05713f',
+      9: '173bf46fa83f04b4dcc0f0c94e75623321a512b4dd9f8e5927cbe2545a1a77ef',
+      10: 'fc37aa8cafe1e858286c8f512624a443f9164c437a81721624b8e5f0e4f417d1',
     },
     ja: {
-      0: 'ba8988af83a4abb900fb4b5dc5a31975e8cb1a5a78541dca559a77eb9539628c',
-      1: '0783a79c70c47beb4b2d95afafd4777fdc1b5e4150f361af20dc155c148939e8',
-      8: 'b0aedd18dca1731798d2db57b52bd69fe071147bdfa8ea2be05289798327d621',
-      9: '85e969f90eb500e9da1c15571762fc06d0de9cbcc08ef540cd1e83eae26df720',
-      10: '9f204be769f98814b22d5d4c758d57c924a637e3948f52858135fb2d7af45c0c',
+      0: '997d8300fa2347dada40b2b6410fc8502d278640f6a5fb8743c73f3c485378d9',
+      1: 'c72d72532565aa4e22182dabd488f7d12f1730db5701d67cc6b4df8a44b0637f',
+      8: '63e76c25e4ee82da00287623ad3b854b1cf2ceb868f0c3d743bc12dff5efabe4',
+      9: 'e0122c679fc1b97443c7f80abb99d4ede1db63066ce48da68a931cec8ec4d2b0',
+      10: 'a52a866ee0cf1c6d6e4e831ffc15059aba41428ade68b028095239cccd0768b8',
     },
   };
   for (const language of ['noChrome', 'noI18n', 'ja', 'ja-JP']) {

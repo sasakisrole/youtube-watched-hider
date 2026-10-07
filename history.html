@@ -391,6 +391,15 @@
       text-align: center;
     }
     .credit-review-empty[hidden] { display: none; }
+    .credit-review-dialog { overflow-y: auto; }
+    .credit-review-dialog > * { flex-shrink: 0; }
+    .credit-review-dialog .credit-review-list { flex: none; max-height: 50vh; min-height: 180px; }
+    .credit-review-evidence { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; color: var(--text-muted); }
+    .credit-recheck-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .credit-recheck-controls select, .credit-recheck-controls input { min-height: 44px; max-width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+    .credit-recheck-controls input { width: 6em; }
+    .credit-review-dialog :is(select, input):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    #creditRecheckIssues { max-height: 6em; overflow: auto; font-size: 12px; overflow-wrap: anywhere; }
     .credit-review-item > a { display: inline-flex; align-items: center; min-height: 44px; color: var(--accent); }
     #creditReviewOpen { min-height: 44px; }
     .credit-review-modal a:focus-visible,
@@ -1248,7 +1257,7 @@
         <div id="repairPanel" class="repair-panel" hidden>
           <p data-i18n="history_repairNote">保存済みのクレジットのうち人名でない値を空欄へ戻し、補完対象に復帰させます。元の値は記録に残り、元に戻せます。</p>
           <div class="repair-actions">
-            <button class="sort-btn" id="creditReviewOpen" type="button" data-i18n="history_correctionOpen">確認済みの誤登録を修正</button>
+            <button class="sort-btn" id="creditReviewOpen" type="button" data-i18n="history_correctionOpen">保存済みクレジットを再点検</button>
             <button class="sort-btn" id="repairCredits" data-i18n-title="history_repairCreditsHint" title="保存済みの作曲・作詞・編曲のうち、URL・権利表示・説明文の切れ端など人名でない値を空欄へ戻し、補完対象に復帰させる。元の値は記録に残す" data-i18n="history_repair_label">クレジットの不正値を修復</button>
             <button class="sort-btn" id="restoreCredits" data-i18n-title="history_restoreCreditsHint" title="修復で空欄にしたクレジットを記録から元に戻す。現在値が入っている役割は上書きしない" data-i18n="history_restore_label">修復を元に戻す</button>
           </div>
@@ -1278,17 +1287,26 @@
     <section class="credit-review-dialog" role="dialog" aria-modal="true" aria-labelledby="creditReviewTitle" aria-describedby="creditReviewNote">
       <div class="credit-review-header">
         <div class="credit-review-heading">
-          <h2 id="creditReviewTitle" data-i18n="history_correctionTitle">確認済みの誤登録を修正</h2>
-          <p class="credit-review-note" id="creditReviewNote" data-i18n="history_correctionNote">公式資料で確認できた修正だけを表示します。現在値と候補を確認して「採用」を押してください。手動で確定した値は変更しません。この履歴ページを再読み込みするまでは「元に戻す」で取り消せます。</p>
+          <h2 id="creditReviewTitle" data-i18n="history_correctionTitle">保存済みクレジットを再点検</h2>
+          <p class="credit-review-note" id="creditReviewNote" data-i18n="history_correctionNote">保存済みの作曲・作詞・編曲を、現在の概要欄と照合します。点検だけでは値は変わりません。根拠を確認して変更案を採用してください。手動確定値は保護します。取り消しと点検の続きは、この履歴ページを再読み込みするまで利用できます。</p>
         </div>
         <button class="sort-btn credit-review-close" id="creditReviewClose" type="button" data-i18n-aria-label="history_reviewCloseLabel" aria-label="クレジット確認センターを閉じる" data-i18n="history_close">閉じる</button>
       </div>
+      <div class="credit-recheck-controls">
+        <label for="creditRecheckScope" data-i18n="history_recheckScope">点検対象</label>
+        <select id="creditRecheckScope"><option value="remix" data-i18n="history_recheckRemix">Remix系</option><option value="all" data-i18n="history_recheckAll">履歴全体</option></select>
+        <label for="creditRecheckLimit" data-i18n="history_recheckLimit">1回の件数</label>
+        <input id="creditRecheckLimit" type="number" min="1" max="500" step="1" value="50">
+        <button class="sort-btn" id="creditRecheckStart" type="button" data-i18n="history_recheckStart">未点検分を点検</button>
+        <button class="sort-btn" id="creditRecheckStop" type="button" disabled data-i18n="history_recheckStop">点検を中止</button>
+        <button class="sort-btn" id="creditRecheckReset" type="button" data-i18n="history_recheckReset">点検済みも再対象にする</button>
+      </div>
+      <p class="credit-review-note" data-i18n="history_recheckHelp">YouTubeタブを開いた状態で実行してください。取得間隔を守って処理します。根拠不足・複数曲・版の混在は保留し、原曲の編曲者やRemix担当者から推測しません。</p>
+      <p id="creditRecheckStatus" class="credit-review-summary" role="status" aria-live="polite"></p>
+      <div id="creditRecheckIssues"></div>
       <div class="credit-review-filters" id="creditReviewFilters" role="group" data-i18n-aria-label="history_reviewFilterLabel" aria-label="確認状態で絞り込み">
         <button class="sort-btn credit-review-filter active" type="button" data-credit-review-state="all" aria-pressed="true"><span data-i18n="history_all">すべて</span> <span data-credit-review-count="all">0</span></button>
-        <button class="sort-btn credit-review-filter" type="button" data-credit-review-state="conflict" aria-pressed="false"><span data-i18n="history_conflict">競合</span> <span data-credit-review-count="conflict">0</span></button>
         <button class="sort-btn credit-review-filter" type="button" data-credit-review-state="needs_review" aria-pressed="false"><span data-i18n="history_needsReview">要確認</span> <span data-credit-review-count="needs_review">0</span></button>
-        <button class="sort-btn credit-review-filter" type="button" data-credit-review-state="auto_candidate" aria-pressed="false"><span data-i18n="history_autoCandidate">自動候補</span> <span data-credit-review-count="auto_candidate">0</span></button>
-        <button class="sort-btn credit-review-filter" type="button" data-credit-review-state="unresolved" aria-pressed="false"><span data-i18n="history_unresolved">未解決</span> <span data-credit-review-count="unresolved">0</span></button>
         <button class="sort-btn credit-review-filter" type="button" data-credit-review-state="verified" aria-pressed="false"><span data-i18n="history_verified">確認済み</span> <span data-credit-review-count="verified">0</span></button>
       </div>
       <p class="credit-review-summary" id="creditReviewSummary" role="status" aria-live="polite"></p>
@@ -1515,6 +1533,7 @@
   <script src="enrich_credits.js"></script>
   <script src="credit_corrections.js"></script>
   <script src="credit_review.js"></script>
+  <script src="credit_maintenance.js"></script>
   <script src="history.js"></script>
   <script src="analyzer.js"></script>
   <script src="trends.js"></script>

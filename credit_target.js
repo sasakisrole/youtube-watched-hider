@@ -104,6 +104,7 @@
       value: String(rawValue).trim(),
       source: typeof candidate.source === 'string' ? candidate.source : defaultSource,
       sourceDetail: typeof candidate.sourceDetail === 'string' ? candidate.sourceDetail : '',
+      evidence: typeof candidate.evidence === 'string' ? candidate.evidence : '',
       selected: typeof candidate.selected === 'boolean' ? candidate.selected : defaultSelected,
     });
   }

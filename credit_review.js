@@ -103,7 +103,7 @@
     appendValueRow(values, scriptMessage('history_scripts_candidate_13', '候補'), candidates.length ? candidates.join(' / ') : scriptMessage('history_scripts_none_14', 'なし'));
     card.append(header, values);
     (item.candidates || []).filter(function (candidate) {
-      return candidate.source === 'verified-correction' && /^https:\/\//.test(candidate.sourceDetail);
+      return candidate.source === 'description-recheck' && /^https:\/\//.test(candidate.sourceDetail);
     }).forEach(function (candidate) {
       var link = document.createElement('a');
       link.href = candidate.sourceDetail;
@@ -111,6 +111,12 @@
       link.rel = 'noopener noreferrer';
       link.textContent = scriptMessage('history_correctionEvidence', '確認元の資料を開く');
       card.appendChild(link);
+      if (candidate.evidence) {
+        var evidence = document.createElement('pre');
+        evidence.className = 'credit-review-evidence';
+        evidence.textContent = candidate.evidence;
+        card.appendChild(evidence);
+      }
     });
 
     var message = options.message;
@@ -243,7 +249,7 @@
       if (!self.modal || self.modal.hidden) return;
       if (event.key === 'Escape') self.close();
       if (event.key === 'Tab') {
-        var focusable = Array.from(self.modal.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled)'));
+        var focusable = Array.from(self.modal.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled)'));
         if (!focusable.length) return;
         var first = focusable[0], last = focusable[focusable.length - 1];
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }

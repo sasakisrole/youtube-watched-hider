@@ -3530,18 +3530,83 @@
     "message": "外部DB：曲なし $1件／クレジットなし $2件／再検索待ち $3件／候補条件に合わず $4件／取得エラー $5件"
   },
   "history_correctionOpen": {
-    "message": "確認済みの誤登録を修正"
+    "message": "保存済みクレジットを再点検"
   },
   "history_correctionTitle": {
-    "message": "確認済みの誤登録を修正"
+    "message": "保存済みクレジットを再点検"
   },
   "history_correctionNote": {
-    "message": "公式資料で確認できた修正だけを表示します。現在値と候補を確認して「採用」を押してください。手動で確定した値は変更しません。この履歴ページを再読み込みするまでは「元に戻す」で取り消せます。"
+    "message": "保存済みの作曲・作詞・編曲を、現在の概要欄と照合します。点検だけでは値は変わりません。根拠を確認して変更案を採用してください。手動確定値は保護します。取り消しと点検の続きは、この履歴ページを再読み込みするまで利用できます。"
   },
   "history_correctionEmpty": {
     "message": "確認済みの修正に該当する誤登録はありません。すべてのクレジットの正しさを保証するものではありません。"
   },
   "history_correctionEvidence": {
     "message": "確認元の資料を開く"
+  },
+  "history_recheckEmpty": {
+    "message": "再点検で見つかった変更案をここに表示します。変更案がなくても、すべて正しいと確認できたわけではありません。"
+  },
+  "history_recheckScope": {
+    "message": "点検対象"
+  },
+  "history_recheckRemix": {
+    "message": "Remix系"
+  },
+  "history_recheckAll": {
+    "message": "履歴全体"
+  },
+  "history_recheckLimit": {
+    "message": "1回の件数"
+  },
+  "history_recheckStart": {
+    "message": "未点検分を点検"
+  },
+  "history_recheckStop": {
+    "message": "点検を中止"
+  },
+  "history_recheckReset": {
+    "message": "点検済みも再対象にする"
+  },
+  "history_recheckHelp": {
+    "message": "YouTubeタブを開いた状態で実行してください。取得間隔を守って処理します。根拠不足・複数曲・版の混在は保留し、原曲の編曲者やRemix担当者から推測しません。"
+  },
+  "history_recheckProgress": {
+    "message": "このページで点検 $n1$件／変更案 $n2$項目／保留 $n3$件／取得失敗 $n4$件／未点検 $n5$件",
+    "placeholders": {
+      "n1": {
+        "content": "$1"
+      },
+      "n2": {
+        "content": "$2"
+      },
+      "n3": {
+        "content": "$3"
+      },
+      "n4": {
+        "content": "$4"
+      },
+      "n5": {
+        "content": "$5"
+      }
+    }
+  },
+  "history_recheckConnection": {
+    "message": "接続できませんでした。拡張を再読み込みしてから再試行してください。"
+  },
+  "history_recheckFetchFailed": {
+    "message": "取得できませんでした。YouTubeタブを開き、時間を空けて再点検してください。"
+  },
+  "history_recheckHeld": {
+    "message": "役割または曲・版を特定できる根拠が不足しています。保存値は変更していません。"
+  },
+  "history_recheckStopped": {
+    "message": "点検を停止しました。取得済みの変更案は確認できます。"
+  },
+  "history_recheckDone": {
+    "message": "この範囲の点検が完了しました。続けると未点検の動画を調べます。"
+  },
+  "history_recheckDisconnected": {
+    "message": "通信が終了しました。取得済みの変更案は残っています。未点検分は再開できます。"
   }
 }
