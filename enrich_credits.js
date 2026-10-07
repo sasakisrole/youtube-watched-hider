@@ -232,8 +232,9 @@
     return chars.length > limit ? `${chars.slice(0, limit).join('')}…` : chars.join('');
   }
 
-  function getMbCacheKey(channel, title) {
-    return `${cleanArtistFromChannel(channel)}\n${title}`;
+  function getMbCacheKey(channel, title, missingRoles = CREDIT_ROLES) {
+    const roles = CREDIT_ROLES.filter(role => missingRoles.includes(role));
+    return `${cleanArtistFromChannel(channel)}\n${title}\n${roles.join(',')}`;
   }
 
   function getMinimumEnrichmentRequestCount(groups, rules, mbCache, records, opts = {}) {
@@ -263,7 +264,7 @@
             now,
             ignoreCooldown: opts.ignoreCooldown === true,
           });
-        if (missing.size && eligible && !(mbCache && mbCache.has(getMbCacheKey(channel, title)))) {
+        if (missing.size && eligible && !(mbCache && mbCache.has(getMbCacheKey(channel, title, Array.from(missing))))) {
           requestCount++;
         }
       }
@@ -480,7 +481,9 @@
       lyricist: song.lyricist || '',
       arranger: song.arranger || '',
       source,
-      sourceDetail: [detail, policy.manualReviewReason].filter(Boolean).join(' / '),
+      sourceDetail: [detail, policy.manualReviewReason, ...Object.entries(policy.roleRecordingIds || {})
+        .filter(([role]) => CREDIT_ROLES.includes(role))
+        .map(([role, id]) => `${CREDIT_ROLE_LABELS[role]}: https://musicbrainz.org/recording/${id}`)].filter(Boolean).join(' / '),
       matchedTitle: song.title || '',
       sim,
       autoEligible: autoEligible && sim >= AUTO_SIM_THRESHOLD,
@@ -1348,11 +1351,11 @@
       return true;
     }
 
-    async fetchMb(channel, title) {
+    async fetchMb(channel, title, missingRoles = CREDIT_ROLES) {
       const artist = cleanArtistFromChannel(channel);
-      const key = getMbCacheKey(channel, title);
+      const key = getMbCacheKey(channel, title, missingRoles);
       if (this.fetchCache.mb.has(key)) return this.fetchCache.mb.get(key);
-      const response = await sendRuntimeMessage({ type: 'enrichCreditsMb', artist, title });
+      const response = await sendRuntimeMessage({ type: 'enrichCreditsMb', artist, title, missingRoles });
       if (!response || !response.success) {
         throw new Error((response && (response.error || response.reason)) || 'MusicBrainz fetch failed');
       }
@@ -1438,6 +1441,7 @@
       this.errors = [];
       this.abortRequested = false;
       this.generating = true;
+      const outcomes = { noRecording: 0, noRoles: 0, cooldown: 0, filtered: 0, fetchError: 0 };
       this.updateButtons();
       this.setMessage(scriptMessage('history_scripts_matching_1_channels_228', `${groups.size}チャンネルを照合します。`, [groups.size]));
 
@@ -1462,6 +1466,7 @@
           if (!roles.length) return;
           if (this.addCandidate(limitCandidateToRoles(candidate, roles))) {
             roles.forEach((role) => state.missing.delete(role));
+            return true;
           }
         };
 
@@ -1515,14 +1520,15 @@
                 now: Date.now(),
                 ignoreCooldown: confirmation.ignoreCooldown === true,
               });
-            if (!shouldQuery) continue;
+            if (!shouldQuery) { outcomes.cooldown++; continue; }
             const queryFingerprint = api && typeof api.mbQueryFingerprint === 'function'
               ? api.mbQueryFingerprint(artist, title)
               : `${String(artist).normalize('NFKC').trim().replace(/\s+/gu, ' ').toLowerCase()}\u0000${String(title).normalize('NFKC').trim().replace(/\s+/gu, ' ').toLowerCase()}`;
             let mb = null;
             try {
-              mb = await this.fetchMb(channel, title);
+              mb = await this.fetchMb(channel, title, missingRoles);
             } catch (error) {
+              outcomes.fetchError++;
               try {
                 await this.recordMbLookup(state.video.videoId, {
                   status: 'error',
@@ -1536,6 +1542,10 @@
               }
               this.errors.push(`${channel}: MusicBrainz ${error.message}`);
               continue;
+            }
+            if (!mb || !mb.candidate) {
+              if (mb && mb.reason === 'no-roles') outcomes.noRoles++;
+              else outcomes.noRecording++;
             }
             const status = mb && mb.candidate
               ? 'found'
@@ -1559,6 +1569,7 @@
                 lyricist: m.lyricist || '',
                 arranger: m.arranger || '',
               }, typeof m.sim === 'number' ? m.sim : similarity(state.video.title || '', m.mbTitle || ''), 'mb', m.stage || '', {
+                roleRecordingIds: m.roleRecordingIds || {},
                 autoEligible: m.autoEligible === true,
                 requiresManualReview: m.requiresManualReview !== false,
                 recordingVersion: m.recordingVersion || '',
@@ -1566,7 +1577,7 @@
                 versionMatch: m.versionMatch === true,
                 manualReviewReason: m.manualReviewReason || '',
               });
-              applyCandidate(state, candidate);
+              if (m && !applyCandidate(state, candidate)) outcomes.filtered++;
             } catch (error) {
               this.errors.push(scriptMessage('history_scripts_1_musicbrainz_candidate_2_232', `${channel}: MusicBrainz 候補 ${error.message}`, [channel, error.message]));
             }
@@ -1578,7 +1589,10 @@
         const candidates = this.getAllCandidates().length;
         const selected = this.getSelectedCandidates().length;
         const suffix = this.errors.length ? scriptMessage('history_scripts_errors_1_233', ` / エラー ${this.errors.length}件`, [this.errors.length]) : '';
-        this.setMessage(scriptMessage('history_scripts_generated_1_candidates_2_selected_3_234', `候補 ${candidates}件、確定予定 ${selected}件を生成しました${suffix}。`, [candidates, selected, suffix]), this.errors.length ? undefined : 'success');
+        const summary = scriptMessage('history_scripts_mb_outcome_summary',
+          `外部DB：曲なし ${outcomes.noRecording}件／クレジットなし ${outcomes.noRoles}件／再検索待ち ${outcomes.cooldown}件／候補条件に合わず ${outcomes.filtered}件／取得エラー ${outcomes.fetchError}件`,
+          [outcomes.noRecording, outcomes.noRoles, outcomes.cooldown, outcomes.filtered, outcomes.fetchError]);
+        this.setMessage(scriptMessage('history_scripts_generated_1_candidates_2_selected_3_234', `候補 ${candidates}件、確定予定 ${selected}件を生成しました${suffix}。`, [candidates, selected, suffix]) + ' ' + summary, this.errors.length ? undefined : 'success');
       } catch (error) {
         this.setMessage(scriptMessage('history_scripts_candidate_generation_failed_1_235', `候補生成に失敗しました: ${error.message}`, [error.message]), 'error');
       } finally {
@@ -1992,6 +2006,7 @@
     getEnrichmentPreCount,
     getLimitedVideoCount,
     getMinimumEnrichmentRequestCount,
+    getMbCacheKey,
     ENRICH_REQUESTS_PER_VIDEO_MIN,
     ENRICH_REQUESTS_PER_VIDEO_MAX,
     estimateEnrichmentMinutes,

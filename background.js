@@ -1086,7 +1086,7 @@ function cleanMbArtistChannel(artist) {
   return cleaned && !/^(?:official|youtube|channel|公式|チャンネル)$/iu.test(cleaned) ? cleaned : original;
 }
 
-async function enrichCreditsLookupMb(artist, title) {
+async function enrichCreditsLookupMb(artist, title, missingRoles = null) {
   const originalArtist = self.CreditTarget.stripTopicChannelSuffix(artist);
   let cleanArtist = originalArtist;
   let artistNameCleaned = false;
@@ -1152,7 +1152,13 @@ async function enrichCreditsLookupMb(artist, title) {
     arranger: versionMatch ? roles.arranger : [],
   };
   let alternateRecording = false;
-  if (!hasAnyMbRole(safeRoles) && stage === 'strict') {
+  const roleRecordingIds = Object.fromEntries(Object.keys(safeRoles)
+    .filter(role => safeRoles[role].length).map(role => [role, chosen.id]));
+  const wanted = Array.isArray(missingRoles)
+    ? ['composer', 'lyricist'].filter(role => missingRoles.includes(role))
+    : (!hasAnyMbRole(safeRoles) ? ['composer', 'lyricist'] : []);
+  const needsAlternate = () => wanted.some(role => !safeRoles[role].length);
+  if (needsAlternate() && stage === 'strict') {
     const inspected = new Set([chosen.id]);
     for (const alternate of strictMatches) {
       if (inspected.size >= 3) break;
@@ -1160,13 +1166,19 @@ async function enrichCreditsLookupMb(artist, title) {
       inspected.add(alternate.id);
       const alternateRoles = await getMbRecordingRoles(alternate.id);
       // A matching title does not prove that a different recording shares its arrangement.
-      if (!alternateRoles.composer.length && !alternateRoles.lyricist.length) continue;
-      chosen = alternate;
-      chosenTitle = parseMbTitle(chosen.title || '');
-      versionMatch = mbRecordingVersionsMatch(requestedTitle, chosenTitle);
-      safeRoles = { composer: alternateRoles.composer, lyricist: alternateRoles.lyricist, arranger: [] };
+      const supplied = wanted.filter(role => !safeRoles[role].length && alternateRoles[role].length);
+      if (!supplied.length) continue;
+      if (!hasAnyMbRole(safeRoles)) {
+        chosen = alternate;
+        chosenTitle = parseMbTitle(chosen.title || '');
+        versionMatch = mbRecordingVersionsMatch(requestedTitle, chosenTitle);
+      }
+      for (const role of supplied) {
+        safeRoles[role] = alternateRoles[role];
+        roleRecordingIds[role] = alternate.id;
+      }
       alternateRecording = true;
-      break;
+      if (!needsAlternate()) break;
     }
   }
   if (!hasAnyMbRole(safeRoles)) {
@@ -1197,6 +1209,7 @@ async function enrichCreditsLookupMb(artist, title) {
       lyricist: joinMbRoles(safeRoles.lyricist),
       arranger: joinMbRoles(safeRoles.arranger),
       mbid: chosen.id,
+      roleRecordingIds,
       mbTitle: chosen.title || '',
       stage,
       score: chosen.score || 0,
@@ -1772,7 +1785,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'enrichCreditsMb') {
-    enrichCreditsLookupMb(message.artist || '', message.title || '')
+    enrichCreditsLookupMb(message.artist || '', message.title || '', message.missingRoles)
       .then(sendResponse)
       .catch((e) => sendResponse({ success: false, reason: 'fetch-error', error: e.message }));
     return true;

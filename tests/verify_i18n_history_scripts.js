@@ -1,5 +1,6 @@
 // Frozen original Japanese and reviewed English.
 const golden = {
+  "history_scripts_mb_outcome_summary": ["外部DB：曲なし $1件／クレジットなし $2件／再検索待ち $3件／候補条件に合わず $4件／取得エラー $5件", "External DB: no song $1 / no credits $2 / waiting to retry $3 / candidate requirements not met $4 / fetch errors $5"],
   "history_scripts_conflict_1": [
     "競合",
     "Conflict"
@@ -1199,8 +1200,8 @@ for (const [language, standalone] of [['ja', true], ['ja', false], ['en', false]
   assert.strictEqual(ctx.CreditReview.STATE_LABELS.conflict, english ? 'Conflict' : '競合', 'lazy state labels');
   // Four distinct templates, asymmetric substitutions, actual production builder.
   assert.strictEqual(hooks.buildEnrichmentConfirmText({ videoCount: 17, channelCount: 3 }, 60000, 5, 2, 4), english
-    ? 'Match 17 videos / 3 channels against fixed rules and MusicBrainz. Processing 5 items; estimated time: about 2–30 minutes (up to about 30 requests). Copy 4 items from other videos of the same song without network requests.'
-    : '17動画 / 3チャンネルを固定ルールとMusicBrainzで照合します。 処理予定 5件、推定所要時間 約2〜30分（最大 約30 回の通信）。 同一楽曲の別動画から 4件を通信なしで転記します。');
+    ? 'Match 17 videos / 3 channels against fixed rules and MusicBrainz. Processing 5 items; estimated time: about 2–70 minutes (up to about 70 requests). Copy 4 items from other videos of the same song without network requests.'
+    : '17動画 / 3チャンネルを固定ルールとMusicBrainzで照合します。 処理予定 5件、推定所要時間 約2〜70分（最大 約70 回の通信）。 同一楽曲の別動画から 4件を通信なしで転記します。');
   const candidates = ctx.YWHAnalyzeOfficialProfiles.buildCandidates(Array.from({ length: 7 }, (_, i) => ({ channel: 'Artist', videoId: 'v' + i, composer: i < 5 ? 'Creator' : '' })));
   assert.strictEqual(candidates[0].evidence, english ? 'With credits: 5/7 videos' : 'クレジット付き 5/7 件');
   const container = new Element();

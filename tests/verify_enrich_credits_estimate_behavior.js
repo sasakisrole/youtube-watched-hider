@@ -112,6 +112,7 @@ function mbResponse(record, arranger) {
       autoEligible: true,
       requiresManualReview: false,
       versionMatch: true,
+      roleRecordingIds: { arranger: 'recording-' + record.videoId },
     },
   };
 }
@@ -137,9 +138,9 @@ async function waitFor(findValue) {
   throw new Error('confirmation dialog did not appear');
 }
 
-async function exerciseGeneration({ records, rules, cachedVideoIds = [], ruleLoadFails = false, ignoreCooldown = false, limit = null }) {
+async function exerciseGeneration({ records, rules, cachedVideoIds = [], ruleLoadFails = false, ignoreCooldown = false, limit = null, responses = {} }) {
   const document = new FakeDocument();
-  const calls = { config: 0, mb: 0, recordMbLookup: 0, localRuleFetch: 0 };
+  const calls = { mbMessages: [], config: 0, mb: 0, recordMbLookup: 0, localRuleFetch: 0 };
   const byTitle = new Map(records.map((record) => [record.title, record]));
   const chrome = {
     runtime: {
@@ -154,6 +155,8 @@ async function exerciseGeneration({ records, rules, cachedVideoIds = [], ruleLoa
         }
         if (message.type === 'enrichCreditsMb') {
           calls.mb++;
+          calls.mbMessages.push(message);
+          if (Object.hasOwn(responses, message.title)) { callback(responses[message.title]); return; }
           const record = byTitle.get(message.title);
           callback(mbResponse(record, `Network Arranger ${record.videoId}`));
           return;
@@ -183,9 +186,10 @@ async function exerciseGeneration({ records, rules, cachedVideoIds = [], ruleLoa
     endMaintenance() {},
   });
 
+  controller.messageEl = new FakeElement('div', document);
   for (const record of records) {
     if (!cachedVideoIds.includes(record.videoId)) continue;
-    controller.fetchCache.mb.set(`${record.channel}\n${record.title}`,
+    controller.fetchCache.mb.set(window.EnrichCreditsTestHooks.getMbCacheKey(record.channel, record.title, ['arranger']),
       mbResponse(record, `Cached Arranger ${record.videoId}`));
   }
 
@@ -303,6 +307,9 @@ async function run() {
   check('REQ-5 rule-only confirmation displays a 0-side duration lower bound',
     ruleOnly.displayedEstimate.includes('推定所要時間 約0〜28分'));
 
+  check('ordinary strict candidates stay selected when role provenance is present',
+    cache.controller.getAllCandidates().every(candidate => candidate.selected && candidate.sourceDetail.includes('https://musicbrainz.org/recording/')));
+
   console.log('\nmixed generation paths');
   const mixedRecords = [
     makeRecord('mixed-rule', 'Mixed Rule Channel', 'Mixed Rule Song'),
@@ -376,6 +383,40 @@ async function run() {
   const bypass = await exerciseGeneration({ records: [cooldownRecord], rules: [], ignoreCooldown: true });
   check('confirmation checkbox bypass restores estimate, query, and persistent stamp',
     bypass.minimumRequestCount === 1 && bypass.calls.mb === 1 && bypass.calls.recordMbLookup === 1);
+
+  check('cooldown reason is visible without claiming a lookup miss',
+    cooldown.controller.messageEl.textContent.includes('再検索待ち 1件')
+      && cooldown.controller.messageEl.textContent.includes('曲なし 0件'));
+  const diagnosticRecords = ['noSong', 'noRoles', 'error', 'filtered'].map(id => makeRecord(id, id + ' Channel', id));
+  const diagnostics = await exerciseGeneration({ records: diagnosticRecords, rules: [], responses: {
+    noSong: { success: true, candidate: null, reason: 'no-recording' },
+    noRoles: { success: true, candidate: null, reason: 'no-roles' },
+    error: { success: false, error: 'HTTP 503' },
+    filtered: { success: true, candidate: { mbTitle: 'filtered', composer: 'Already filled', sim: 1, stage: 'strict' } },
+  } });
+  check('actual generation displays separate outcome counts',
+    ['曲なし 1件', 'クレジットなし 1件', '取得エラー 1件', '候補条件に合わず 1件', '再検索待ち 0件']
+      .every(text => diagnostics.controller.messageEl.textContent.includes(text)));
+  check('generation sends only remaining roles to backend',
+    diagnostics.calls.mbMessages.every(message => JSON.stringify(message.missingRoles) === '["arranger"]'));
+  check('cache keys distinguish requested roles and normalize their order',
+    mixed.hooks.getMbCacheKey('A', 'B', ['composer']) !== mixed.hooks.getMbCacheKey('A', 'B', ['lyricist'])
+      && mixed.hooks.getMbCacheKey('A', 'B', ['composer', 'lyricist']) === mixed.hooks.getMbCacheKey('A', 'B', ['lyricist', 'composer']));
+  const supplementRecord = { ...makeRecord('supplement', 'Separate Channel', 'Supplement'), composer: '', lyricist: '', arranger: 'Saved Arranger' };
+  const supplement = await exerciseGeneration({ records: [supplementRecord], rules: [], responses: {
+    Supplement: { success: true, candidate: { mbTitle: 'Supplement', composer: 'First Composer', lyricist: 'Other Writer', arranger: 'Unneeded Arranger', sim: 1,
+      stage: 'strict', autoEligible: false, requiresManualReview: true, versionMatch: true, manualReviewReason: 'alternate-recording',
+      roleRecordingIds: { composer: 'one', lyricist: 'two' } } },
+  } });
+  const supplementCandidate = supplement.controller.getAllCandidates()[0];
+  check('supplemental credits stay unselected and preserve existing role',
+    supplementCandidate && !supplementCandidate.selected && supplementCandidate.requiresManualReview
+      && supplementCandidate.arranger === '' && supplementRecord.arranger === 'Saved Arranger');
+  check('supplemental candidate exposes both recording sources',
+    supplementCandidate.sourceDetail.includes('/recording/one') && supplementCandidate.sourceDetail.includes('/recording/two'));
+  const before = cache.calls.mb;
+  await cache.controller.fetchMb(cacheRecords[0].channel, cacheRecords[0].title, ['lyricist']);
+  check('cached arrangement query cannot satisfy a lyricist query', cache.calls.mb === before + 1);
 
   console.log('\nfailed local-rule load confirmation path');
   let failedRuleLoad = null;

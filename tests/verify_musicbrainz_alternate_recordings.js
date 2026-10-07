@@ -10,7 +10,7 @@ const recording = (id, title = 'Morning', artist = 'Example Artist', score = 100
   id, title, score, 'artist-credit': [{ name: artist, artist: { name: artist } }],
 });
 const role = (type, name) => ({ type, artist: { name } });
-async function lookup(records, details, title = 'Morning', titleOnly = []) {
+async function lookup(records, details, title = 'Morning', titleOnly = [], missingRoles = null) {
   const calls = [];
   const mock = async (url, params) => {
     calls.push(url);
@@ -21,7 +21,7 @@ async function lookup(records, details, title = 'Morning', titleOnly = []) {
   const run = new Function('self', 'chrome', 'mock', block + '\nreturn enrichCreditsLookupMb;')(
     { CreditTarget: require(path.join(root, 'credit_target.js')) },
     { runtime: { getManifest: () => ({ version: 'test' }) } }, mock);
-  return { result: await run('Example Artist', title), calls };
+  return { result: await run('Example Artist', title, missingRoles), calls };
 }
 let passed = 0;
 let failed = 0;
@@ -95,6 +95,58 @@ async function check(name, test) {
     assert.equal(result.candidate.autoEligible, false);
     assert.equal(result.candidate.stage, 'fuzzy');
     assert.equal(calls.length, 3);
+  });
+  await check('missing lyricist is supplemented without overwriting first composer or arranger', async () => {
+    const { result, calls } = await lookup([recording('one'), recording('two')], {
+      'recording/one': { relations: [role('composer', 'First Composer'), role('arranger', 'First Arranger')] },
+      'recording/two': { relations: [role('composer', 'Different Composer'), role('lyricist', 'Second Writer'), role('arranger', 'Different Arranger')] },
+    }, 'Morning', [], ['composer', 'lyricist', 'arranger']);
+    assert.equal(result.candidate.composer, 'First Composer');
+    assert.equal(result.candidate.arranger, 'First Arranger');
+    assert.equal(result.candidate.lyricist, 'Second Writer');
+    assert.equal(result.candidate.autoEligible, false);
+    assert.deepEqual(result.candidate.roleRecordingIds, { composer: 'one', arranger: 'one', lyricist: 'two' });
+    assert.equal(calls.length, 3);
+  });
+  await check('only missing arrangement does not trigger alternate lookups', async () => {
+    const { result, calls } = await lookup([recording('one'), recording('two')], {
+      'recording/one': { relations: [role('composer', 'First Composer')] },
+      'recording/two': { relations: [role('arranger', 'Wrong Arranger')] },
+    }, 'Morning', [], ['arranger']);
+    assert.equal(result.candidate.arranger, '');
+    assert.equal(calls.length, 2);
+  });
+  await check('requested lyricist can come from third recording; unrelated roles never overwrite', async () => {
+    const { result, calls } = await lookup([recording('one'), recording('two'), recording('three'), recording('four')], {
+      'recording/one': { relations: [role('composer', 'First Composer')] },
+      'recording/two': { relations: [role('composer', 'Other Composer')] },
+      'recording/three': { relations: [role('lyricist', 'Third Writer')] },
+    }, 'Morning', [], ['lyricist']);
+    assert.equal(result.candidate.composer, 'First Composer');
+    assert.equal(result.candidate.lyricist, 'Third Writer');
+    assert.equal(calls.includes('recording/four'), false);
+  });
+  await check('no supplementary evidence preserves original automatic candidate', async () => {
+    const { result } = await lookup([recording('one'), recording('two')], {
+      'recording/one': { relations: [role('composer', 'First Composer')] },
+    }, 'Morning', [], ['composer', 'lyricist']);
+    assert.equal(result.candidate.composer, 'First Composer');
+    assert.equal(result.candidate.lyricist, '');
+    assert.equal(result.candidate.autoEligible, true);
+  });
+  await check('requested roles already supplied stop after original recording', async () => {
+    const { calls } = await lookup([recording('one'), recording('two')], {
+      'recording/one': { relations: [role('composer', 'First Composer')] },
+    }, 'Morning', [], ['composer']);
+    assert.equal(calls.length, 2);
+  });
+  await check('fuzzy result does not transfer missing roles across recordings', async () => {
+    const { result, calls } = await lookup([], {
+      'recording/one': { relations: [role('composer', 'First Composer')] },
+      'recording/two': { relations: [role('lyricist', 'Other Writer')] },
+    }, 'Morning', [recording('one'), recording('two')], ['lyricist']);
+    assert.equal(result.candidate.lyricist, '');
+    assert.equal(calls.includes('recording/two'), false);
   });
   console.log(`${passed} passed, ${failed} failed`);
   process.exitCode = failed ? 1 : 0;

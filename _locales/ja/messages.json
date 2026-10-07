@@ -3525,5 +3525,8 @@
   },
   "popup_playlistRefreshAllHidden": {
     "message": "再生リスト全体の非表示設定で「再生リスト一覧」をオフにしてから再確認してください。"
+  },
+  "history_scripts_mb_outcome_summary": {
+    "message": "外部DB：曲なし $1件／クレジットなし $2件／再検索待ち $3件／候補条件に合わず $4件／取得エラー $5件"
   }
 }

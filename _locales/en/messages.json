@@ -3525,5 +3525,8 @@
   },
   "popup_playlistRefreshAllHidden": {
     "message": "Turn off hiding all playlist cards on the Playlists list before rechecking."
+  },
+  "history_scripts_mb_outcome_summary": {
+    "message": "External DB: no song $1 / no credits $2 / waiting to retry $3 / candidate requirements not met $4 / fetch errors $5"
   }
 }
