@@ -2047,7 +2047,7 @@ const CREDIT_LABEL_TOKEN_RE = /(?:^|[\s/／|｜;；]\s*)((?:(?:作詞|作詩|作
 // A single ASCII label token followed by a colon is also a segment boundary,
 // even when it is not one of the credit roles above (for example Vocal: or
 // Mix:). It is a boundary only; unknown labels never create role values.
-const CREDIT_UNKNOWN_LABEL_BOUNDARY_RE = /(?:^|[\s/／|｜;；])(?=[A-Za-z][A-Za-z0-9_-]*\s*[:：])/gu;
+const CREDIT_UNKNOWN_LABEL_BOUNDARY_RE = /(?:^|[\s/／|｜;；])(?=(?:[A-Za-z][A-Za-z0-9_-]*|【[^】\r\n]+】|\[[^\]\r\n]+\])\s*[:：])/gu;
 
 function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -2080,11 +2080,40 @@ function rolesForCreditLabel(label) {
   return [...new Set(roles)];
 }
 
+function normalizeCreditLabelFormatting(line) {
+  const unbulleted = line.replace(/^[ \t]*[・•●■◆*\-][ \t]*/u, '');
+  return unbulleted.replace(/(^|[\s/／|｜;；])(?:【([^】\r\n]+)】|\[([^\]\r\n]+)\])\s*[:：]/gu,
+    (whole, boundary, japaneseLabel, asciiLabel) => {
+      const label = (japaneseLabel || asciiLabel).trim();
+      const probe = label + ':';
+      CREDIT_LABEL_TOKEN_RE.lastIndex = 0;
+      const match = CREDIT_LABEL_TOKEN_RE.exec(probe);
+      // Full-label matching prevents prose containing a role from becoming a credit.
+      return match && match.index === 0 && match[0].length === probe.length
+        ? boundary + probe : whole;
+    });
+}
+
 function extractCreditSegments(line) {
+  line = normalizeCreditLabelFormatting(line);
+  // Unrecognized wrappers may contain role words as prose, not credit labels.
+  const wrappers = [];
+  const wrapperStack = [];
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '[' || char === '【') wrapperStack.push({ char, start: i });
+    else if (wrapperStack.length && ((char === ']' && wrapperStack.at(-1).char === '[')
+      || (char === '】' && wrapperStack.at(-1).char === '【'))) {
+      const opened = wrapperStack.pop();
+      if (!wrapperStack.length) wrappers.push({ start: opened.start, end: i + 1 });
+    }
+  }
+  if (wrapperStack.length) wrappers.push({ start: wrapperStack[0].start, end: line.length });
   const matches = [];
   CREDIT_LABEL_TOKEN_RE.lastIndex = 0;
   let match;
   while ((match = CREDIT_LABEL_TOKEN_RE.exec(line))) {
+    if (wrappers.some(wrapper => match.index >= wrapper.start && match.index < wrapper.end)) continue;
     matches.push({ index: match.index, valueStart: CREDIT_LABEL_TOKEN_RE.lastIndex, label: match[1] });
   }
   return matches.map((item, index) => {
