@@ -928,13 +928,13 @@ const MB_SUFFIX_PATTERNS = [
   /\s*[-–—]\s*[\w\s]*Style.*$/i,
   /\s*〜.*?〜\s*$/i,
   /\s*~.*?~\s*$/i,
-  /\s*feat[.\s].*$/i,
-  /\s*ft[.\s].*$/i,
-  /\s*\(feat[^)]*\)/i,
-  /\s*\[.*?]\s*$/i,
-  /\s*【.*?】\s*$/i,
-  /\s*（.*?）\s*$/i,
-  /\s*\(.*?\)\s*$/i,
+  /\s*\((?:feat|ft)[.\s][^()]*\)/i,
+  /\s+feat[.\s].*$/i,
+  /\s+ft[.\s].*$/i,
+  /\s*\[[^\[\]]*]\s*$/i,
+  /\s*【[^【】]*】\s*$/i,
+  /\s*（[^（）]*）\s*$/i,
+  /\s*\([^()]*\)\s*$/i,
 ];
 
 // 版表記の境界について:
@@ -950,11 +950,26 @@ const MB_RECORDING_VERSION_RULES = [
   { label: 'Acoustic', pattern: /(?<![\p{L}])acoustic(?![\p{L}])|アコースティック/iu },
 ];
 
+function hasBalancedMbBrackets(value) {
+  const pairs = { '(': ')', '[': ']', '（': '）', '【': '】' };
+  const closing = new Set(Object.values(pairs));
+  const expected = [];
+  for (const char of value) {
+    if (pairs[char]) expected.push(pairs[char]);
+    else if (closing.has(char) && expected.pop() !== char) return false;
+  }
+  return expected.length === 0;
+}
+
 function cleanMbTitle(title) {
   let value = String(title || '');
   for (let pass = 0; pass < 3; pass++) {
     const prev = value;
-    for (const pattern of MB_SUFFIX_PATTERNS) value = value.replace(pattern, '');
+    for (const pattern of MB_SUFFIX_PATTERNS) {
+      const next = value.replace(pattern, '');
+      // Brackets can enclose the actual song title, not just a suffix.
+      if (next.replace(/^[\s-–—]+|[\s-–—]+$/g, '') && hasBalancedMbBrackets(next)) value = next;
+    }
     if (value === prev) break;
   }
   return value.replace(/^[\s-–—]+|[\s-–—]+$/g, '');
@@ -1981,7 +1996,7 @@ const CREDIT_ROLE_KEYWORDS = {
   arranger: ['arrangers', 'arranged by', 'arrangement', 'recording arranger', 'arranger', 'arrange', '編曲家', '編曲者', '編曲'],
 };
 
-const CREDIT_LABEL_TOKEN_RE = /(?:^|[\s/／|｜;；]\s*)((?:作曲\s*[・&＆/／]\s*編曲|作編曲|words\s*(?:&|and)\s*music|compose(?:r)?\s*(?:&|and|\/|／)\s*arrange(?:r)?|composer\s*[,，]?\s*(?:writer|lyricist)|composer\s+lyricist|composers?|composed\s+by|composition|compose|music\s+by|original\s+music|music\s+composer|lyricists?|lyrics\s+by|written\s+by|lyrics?|songwriters?|words|arrangers?|arranged\s+by|arrangement|recording\s+arranger|arrange|作詞家|作詞者|作詞|作詩|作曲家|作曲者|作曲|編曲家|編曲者|編曲))\s*[:：]/giu;
+const CREDIT_LABEL_TOKEN_RE = /(?:^|[\s/／|｜;；]\s*)((?:(?:作詞|作詩|作曲|編曲)(?:\s*[・&＆/／]?\s*(?:作詞|作詩|作曲|編曲))+|作編曲|(?:words|lyrics?)\s*(?:&|and|\/)\s*music|music\s*(?:&|and|\/)\s*(?:words|lyrics?)|compose(?:r)?\s*(?:&|and|\/|／)\s*arrange(?:r)?|composer\s*[,，]?\s*(?:writer|lyricist)|composer\s+lyricist|composers?|composed\s+by|composition|compose|music\s+by|original\s+music|music\s+composer|lyricists?|lyrics\s+by|written\s+by|lyrics?|songwriters?|words|arrangers?|arranged\s+by|arrangement|recording\s+arranger|arrange|作詞家|作詞者|作詞|作詩|作曲家|作曲者|作曲|編曲家|編曲者|編曲))\s*[:：]/giu;
 // A single ASCII label token followed by a colon is also a segment boundary,
 // even when it is not one of the credit roles above (for example Vocal: or
 // Mix:). It is a boundary only; unknown labels never create role values.
@@ -2004,9 +2019,11 @@ function rolesForCreditLabel(label) {
   const labelLower = label.toLowerCase();
   const roles = [];
   if (/作編曲|作曲\s*[・&＆/／]\s*編曲|compose(?:r)?\s*(?:&|and|\/|／)\s*arrange(?:r)?/iu.test(labelLower)) {
-    return ['composer', 'arranger'];
+    roles.push('composer', 'arranger');
   }
-  if (/words\s*(?:&|and)\s*music/iu.test(labelLower)) return ['composer', 'lyricist'];
+  if (/(?:words|lyrics?)\s*(?:&|and|\/)\s*music|music\s*(?:&|and|\/)\s*(?:words|lyrics?)/iu.test(labelLower)) {
+    roles.push('composer', 'lyricist');
+  }
   for (const role of Object.keys(CREDIT_ROLE_KEYWORDS)) {
     if (CREDIT_ROLE_KEYWORDS[role].some(kw => labelHasKeyword(labelLower, kw))) roles.push(role);
   }
