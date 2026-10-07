@@ -4,6 +4,18 @@
   function normalized(value) {
     return String(value || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
   }
+  function creditNames(value) {
+    var depth = 0, start = 0, names = [];
+    for (var i = 0; i < value.length; i++) {
+      if ('(（[【'.includes(value[i])) depth++;
+      else if (')）]】'.includes(value[i])) depth--;
+      else if (!depth && /[,，、]/u.test(value[i])) {
+        names.push(value.slice(start, i).trim()); start = i + 1;
+      }
+    }
+    names.push(value.slice(start).trim());
+    return names.filter(Boolean);
+  }
   function isRemix(title) { return /remix|リミックス/iu.test(title || ''); }
 
   // Headings bound evidence to a song/version. Unknown or conflicting sections
@@ -49,10 +61,18 @@
     var credits = {}, evidence = {}, held = [];
     ROLES.forEach(function (role) {
       var selected = entries.filter(function (entry) { return entry.role === role; });
-      var values = Array.from(new Set(selected.map(function (entry) { return entry.value; })));
-      var ambiguous = values.length > 1 || matchedSections.size > 1
+      // Repeated role lines in the same scope describe co-contributors.
+      // Split only list punctuation; preserve slashes and parenthesized band names.
+      var values = Array.from(new Set(selected.flatMap(function (entry) {
+        return creditNames(entry.value);
+      })));
+      var originals = Array.from(new Set(selected.map(function (entry) { return entry.value; })));
+      // Preserve existing punctuation when a single complete list needs no merge.
+      var joined = originals.length === 1 && creditNames(originals[0]).length === values.length
+        ? originals[0] : values.join(', ');
+      var ambiguous = matchedSections.size > 1
         || ((namedSections.size > 0 || hasVersionSections) && selected.some(function (entry) { return !entry.named; }));
-      credits[role] = !ambiguous && values.length === 1 ? values[0] : '';
+      credits[role] = !ambiguous && creditTarget.isValidCreditValue(joined, title) ? joined : '';
       evidence[role] = credits[role] ? selected.map(function (entry) { return entry.evidence; }).join('\n') : '';
       if (ambiguous || (!credits[role] && excluded.some(function (entry) { return entry.role === role; }))) held.push(role);
     });

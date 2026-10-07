@@ -2057,11 +2057,15 @@ const CREDIT_ROLE_KEYWORDS = {
   arranger: ['arrangers', 'arranged by', 'arrangement', 'recording arranger', 'arranger', 'arrange', '編曲家', '編曲者', '編曲'],
 };
 
-const CREDIT_LABEL_TOKEN_RE = /(?:^|[\s/／|｜;；]\s*)((?:(?:作詞|作詩|作曲|編曲)(?:\s*[・&＆/／]?\s*(?:作詞|作詩|作曲|編曲))+|作編曲|(?:words|lyrics?)\s*(?:&|and|\/)\s*music|music\s*(?:&|and|\/)\s*(?:words|lyrics?)|compose(?:r)?\s*(?:&|and|\/|／)\s*arrange(?:r)?|composer\s*[,，]?\s*(?:writer|lyricist)|composer\s+lyricist|composers?|composed\s+by|composition|compose|music\s+by|original\s+music|music\s+composer|lyricists?|lyrics\s+by|written\s+by|lyrics?|songwriters?|words|arrangers?|arranged\s+by|arrangement|recording\s+arranger|arrange|作詞家|作詞者|作詞|作詩|作曲家|作曲者|作曲|編曲家|編曲者|編曲))\s*[:：]/giu;
+const CREDIT_KNOWN_LABEL = String.raw`(?:(?:作詞|作詩|作曲|編曲)(?:\s*[・&＆/／]?\s*(?:作詞|作詩|作曲|編曲))+|作編曲|(?:words|lyrics?)\s*(?:&|and|\/)\s*music|music\s*(?:&|and|\/)\s*(?:words|lyrics?)|compose(?:r)?\s*(?:&|and|\/|／)\s*arrange(?:r)?|composer\s*[,，]?\s*(?:writer|lyricist)|composer\s+lyricist|composers?|composed\s+by|composition|compose|music\s+by|original\s+music|music\s+composer|lyricists?|lyrics\s+by|written\s+by|lyrics?|songwriters?|words|arrangers?|arranged\s+by|arrangement|recording\s+arranger|arrange|作詞家|作詞者|作詞|作詩|作曲家|作曲者|作曲|編曲家|編曲者|編曲)`;
+// Unknown role tokens can delimit a list but never imply a musical role.
+const CREDIT_LIST_ITEM = String.raw`(?:${CREDIT_KNOWN_LABEL}|associated\s+performer|re-\s*mixer|[a-z][a-z0-9_-]*)`;
+const CREDIT_LABEL_TOKEN_RE = new RegExp(String.raw`(?:^|[\s/／|｜;；]\s*)((?:${CREDIT_LIST_ITEM}\s*[,，、]\s*)+${CREDIT_LIST_ITEM}|${CREDIT_KNOWN_LABEL})\s*[:：]`, 'giu');
+const CREDIT_KNOWN_LABEL_RE = new RegExp(String.raw`^(?:${CREDIT_KNOWN_LABEL})$`, 'iu');
 // A single ASCII label token followed by a colon is also a segment boundary,
 // even when it is not one of the credit roles above (for example Vocal: or
 // Mix:). It is a boundary only; unknown labels never create role values.
-const CREDIT_UNKNOWN_LABEL_BOUNDARY_RE = /(?:^|[\s/／|｜;；])(?=(?:[A-Za-z][A-Za-z0-9_-]*|【[^】\r\n]+】|\[[^\]\r\n]+\])\s*[:：])/gu;
+const CREDIT_UNKNOWN_LABEL_BOUNDARY_RE = /(?:^|[\s/／|｜;；])(?=(?:associated\s+performer|re-\s*mixer|[A-Za-z][A-Za-z0-9_-]*|【[^】\r\n]+】|\[[^\]\r\n]+\])\s*[:：])/giu;
 
 function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -2077,6 +2081,12 @@ function labelHasKeyword(labelLower, kw) {
 }
 
 function rolesForCreditLabel(label) {
+  if (/[,，、]/u.test(label)) {
+    const parts = label.split(/[,，、]/u).map(part => part.trim());
+    const roles = parts.flatMap(part => CREDIT_KNOWN_LABEL_RE.test(part) ? rolesForCreditLabel(part) : []);
+    if (roles.includes('composer') && parts.some(part => /^writer$/iu.test(part))) roles.push('lyricist');
+    return [...new Set(roles)];
+  }
   const labelLower = label.toLowerCase();
   const roles = [];
   if (/作編曲|作曲\s*[・&＆/／]\s*編曲|compose(?:r)?\s*(?:&|and|\/|／)\s*arrange(?:r)?/iu.test(labelLower)) {
@@ -2129,6 +2139,11 @@ function extractCreditSegments(line) {
   let match;
   while ((match = CREDIT_LABEL_TOKEN_RE.exec(line))) {
     if (wrappers.some(wrapper => match.index >= wrapper.start && match.index < wrapper.end)) continue;
+    // A list embedded in prose is not a full label. Explicit heading/segment
+    // separators and preceding credit segments remain eligible.
+    const prefix = (line.slice(0, match.index) + match[0].slice(0, match[0].indexOf(match[1]))).trim();
+    if (/[,，、]/u.test(match[1]) && prefix && !matches.length
+      && !/[/／|｜;；」』\]】]$/u.test(prefix)) continue;
     matches.push({ index: match.index, valueStart: CREDIT_LABEL_TOKEN_RE.lastIndex, label: match[1] });
   }
   return matches.map((item, index) => {

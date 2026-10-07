@@ -49,9 +49,9 @@ check('song matching is not substring matching', () => {
   assert.equal(analyze('Song: RAIN (Bob Remix)\nComposer: Alice','BRAIN (Bob Remix)').credits.composer,'');
 });
 check('base song heading does not identify a remix', () => assert.equal(analyze('「Example」\nArranger: Original').credits.arranger,''));
-check('conflicting unscoped credits are held', () => {
+check('repeated unscoped role lines collect co-contributors', () => {
   const result=analyze('Composer: One\nComposer: Two');
-  assert.equal(result.credits.composer,''); assert(result.held.includes('composer'));
+  assert.equal(result.credits.composer,'One, Two'); assert(!result.held.includes('composer'));
 });
 check('manual and unchanged values are not proposed', () => {
   const result={ok:true,title:record.title,maintenance:analyze('Composer: Old\nArranger: Guest')};

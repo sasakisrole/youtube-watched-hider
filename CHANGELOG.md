@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.27 (2026-10-08)
+
+- Fix missing roles in comma-separated credit labels and preserve co-contributors across lines during enrichment and rechecking, while keeping song/version boundaries and excluding remix-only credits from arrangement.
+
 ## v1.60.26 (2026-10-08)
 
 **保存済みクレジットを再点検する共通機能に変更しました。** 特定の動画の修正表を廃止し、どの利用者の履歴でも現在の概要欄から変更案を生成します。「データ管理・一括処理 → データ修復 → 保存済みクレジットを再点検」でRemix系・履歴全体と1回の件数を選べます。
