@@ -297,7 +297,7 @@ async function testGenerationPreCount() {
   const limitedMinutes = limited.win.EnrichCreditsTestHooks.estimateEnrichmentMinutes(2, ENRICH_RATE_LIMIT_MS);
   check('limited selection updates request-range estimate from selected count',
     limitedPanel.textContent.includes(`処理予定 2件、推定所要時間 約${limitedMinutes.minMinutes}〜${limitedMinutes.maxMinutes}分`
-      + '（最大 約12 回の通信）'));
+      + `（最大 約${2 * limited.win.EnrichCreditsTestHooks.ENRICH_REQUESTS_PER_VIDEO_MAX} 回の通信）`));
   await find(limitedPanel, (e) => e.dataset.enrichPrecountAction === 'start').trigger('click');
   await limitedPromise;
   const limitedMbMessages = limited.counters.runtime.filter((message) => message.type === 'enrichCreditsMb');
