@@ -85,10 +85,10 @@
     return Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(count, parsedLimit) : count;
   }
 
-  // Strict lookup can inspect three recordings with three works each: 1 + 3 * 4.
-  // The title-only fallback still inspects one recording: 2 + 4.
+  // Channel-name retry plus three recordings with three works each: 2 + 3 * 4.
+  // The title-only fallback still inspects one recording: at most 3 + 4.
   const ENRICH_REQUESTS_PER_VIDEO_MIN = 1;
-  const ENRICH_REQUESTS_PER_VIDEO_MAX = 13;
+  const ENRICH_REQUESTS_PER_VIDEO_MAX = 14;
 
   function estimateEnrichmentMinutes(videoCount, rateLimitMs, minimumRequestCount = null) {
     const count = Math.max(0, Math.floor(Number(videoCount) || 0));

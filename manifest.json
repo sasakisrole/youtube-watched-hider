@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "default_locale": "ja",
   "name": "YouTube Watched Hider",
-  "version": "1.60.21",
+  "version": "1.60.22",
   "description": "__MSG_extensionDescription__",
   "permissions": [
     "storage",

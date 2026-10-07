@@ -284,7 +284,7 @@ async function run() {
     cache.controller.getAllCandidates().length === 2
       && cache.controller.getAllCandidates().every((candidate) => candidate.source === 'mb'));
   check('REQ-5 cache-hit confirmation displays a 0-side duration lower bound',
-    cache.displayedEstimate.includes('推定所要時間 約0〜26分'));
+    cache.displayedEstimate.includes('推定所要時間 約0〜28分'));
 
   console.log('\nrule-only generation path');
   const ruleRecords = [
@@ -301,7 +301,7 @@ async function run() {
     ruleOnly.controller.getAllCandidates().length === 2
       && ruleOnly.controller.getAllCandidates().every((candidate) => candidate.source === 'rule'));
   check('REQ-5 rule-only confirmation displays a 0-side duration lower bound',
-    ruleOnly.displayedEstimate.includes('推定所要時間 約0〜26分'));
+    ruleOnly.displayedEstimate.includes('推定所要時間 約0〜28分'));
 
   console.log('\nmixed generation paths');
   const mixedRecords = [
@@ -321,15 +321,15 @@ async function run() {
       && mixed.controller.getAllCandidates().filter((candidate) => candidate.source === 'rule').length === 1
       && mixed.controller.getAllCandidates().filter((candidate) => candidate.source === 'mb').length === 2);
   check('REQ-3 mixed confirmation uses the communicating-video count for its lower bound',
-    mixed.displayedEstimate.includes('推定所要時間 約1〜39分'));
+    mixed.displayedEstimate.includes('推定所要時間 約1〜42分'));
 
   const legacyBounds = mixed.hooks.estimateEnrichmentMinutes(3, 60000);
   const adjustedBounds = mixed.hooks.estimateEnrichmentMinutes(3, 60000, 1);
   check('REQ-4 maximum duration is unchanged between legacy/default and adjusted minimum inputs',
-    legacyBounds.maxMinutes === 39 && adjustedBounds.maxMinutes === 39);
+    legacyBounds.maxMinutes === 42 && adjustedBounds.maxMinutes === 42);
   check('REQ-4 confirmation keeps the unchanged maximum request count and maximum duration',
-    mixed.displayedEstimate.includes('約1〜39分')
-      && mixed.displayedEstimate.includes('最大 約39 回の通信'));
+    mixed.displayedEstimate.includes('約1〜42分')
+      && mixed.displayedEstimate.includes('最大 約42 回の通信'));
 
   check('all generation cases loaded local rules once and requested config once',
     [cache, ruleOnly, mixed].every((result) => result.calls.localRuleFetch === 1 && result.calls.config === 1));
@@ -351,8 +351,8 @@ async function run() {
       && limited.controller.getAllCandidates().filter((candidate) => candidate.source === 'same-song').length === 12);
   check('local transfer count does not increase minimum requests or duration bounds',
     limited.minimumRequestCount === 10
-      && limited.displayedEstimate.includes('推定所要時間 約10〜130分')
-      && limited.displayedEstimate.includes('最大 約130 回の通信'));
+      && limited.displayedEstimate.includes('推定所要時間 約10〜140分')
+      && limited.displayedEstimate.includes('最大 約140 回の通信'));
   const donorOnly = await exerciseGeneration({ records: [donor, ...localRecords], rules: [] });
   check('donor-only dialog confirms local transfers with zero network work',
     donorOnly.displayedEstimate.includes('処理予定 0件')
@@ -389,7 +389,7 @@ async function run() {
   });
   if (failedRuleLoad) {
     check('REQ-D failed rule load keeps the legacy one-request-per-video estimate lower bound',
-      failedRuleLoad.displayedEstimate.includes('推定所要時間 約1〜13分'));
+      failedRuleLoad.displayedEstimate.includes('推定所要時間 約1〜14分'));
     check('REQ-D failed rule load confirmation remains cancelable without MusicBrainz communication',
       failedRuleLoad.calls.mb === 0 && failedRuleLoad.controller.confirmingGeneration === false);
   }

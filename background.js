@@ -1075,8 +1075,21 @@ function mbArtistMatches(artist, recording) {
   return mbArtistMatchQuality(artist, recording) !== 'none';
 }
 
+function cleanMbArtistChannel(artist) {
+  const original = self.CreditTarget.stripTopicChannelSuffix(artist);
+  const cleaned = original
+    .replace(/^【公式】\s*/u, '')
+    .replace(/(?:\s*[|｜–—-]\s*|\s+)(?:official(?:\s+youtube)?(?:\s+channel)?|youtube\s+official(?:\s+channel)?|youtube(?:\s+channel)?|channel)\s*$/iu, '')
+    .replace(/\s*(?:公式(?:\s*YouTube)?(?:\s*チャンネル)?|チャンネル)\s*$/iu, '')
+    .trim();
+  // A channel decoration alone is not evidence of an artist identity.
+  return cleaned && !/^(?:official|youtube|channel|公式|チャンネル)$/iu.test(cleaned) ? cleaned : original;
+}
+
 async function enrichCreditsLookupMb(artist, title) {
-  const cleanArtist = self.CreditTarget.stripTopicChannelSuffix(artist);
+  const originalArtist = self.CreditTarget.stripTopicChannelSuffix(artist);
+  let cleanArtist = originalArtist;
+  let artistNameCleaned = false;
   const requestedTitle = parseMbTitle(title);
   const cleanTitle = requestedTitle.baseWorkTitle;
   if (!cleanArtist || !cleanTitle) return { success: false, reason: 'empty-query' };
@@ -1086,7 +1099,7 @@ async function enrichCreditsLookupMb(artist, title) {
   let chosen = null;
   let stage = '';
   const strictRecordings = strict.recordings || [];
-  const strictMatches = strictRecordings.filter((recording) => {
+  const findStrictMatches = (recordings) => recordings.filter((recording) => {
     if (!recording.id) return false;
     if (Number(recording.score || 0) < 90) return false;
     if (mbArtistMatchQuality(cleanArtist, recording) !== 'exact') return false;
@@ -1095,6 +1108,16 @@ async function enrichCreditsLookupMb(artist, title) {
       === normalizeCreditLookupText(candidateTitle.baseWorkTitle);
     return titleMatches && mbRecordingVersionsMatch(requestedTitle, candidateTitle);
   });
+  let strictMatches = findStrictMatches(strictRecordings);
+  const channelArtist = cleanMbArtistChannel(originalArtist);
+  if (!strictMatches.length && channelArtist !== originalArtist) {
+    cleanArtist = channelArtist;
+    artistNameCleaned = true;
+    const refined = await mbGet('recording/', {
+      query: `artist:"${cleanArtist}" AND recording:"${cleanTitle}"`, fmt: 'json', limit: '5',
+    });
+    strictMatches = findStrictMatches(refined.recordings || []);
+  }
   chosen = strictMatches[0] || null;
   if (chosen) {
     stage = 'strict';
@@ -1153,12 +1176,14 @@ async function enrichCreditsLookupMb(artist, title) {
     normalizeCreditLookupText(cleanTitle),
     normalizeCreditLookupText(chosenTitle.baseWorkTitle)
   );
-  const requiresManualReview = alternateRecording
+  const requiresManualReview = artistNameCleaned
+    || alternateRecording
     || stage !== 'strict'
     || requestedTitle.requiresManualReview
     || chosenTitle.requiresManualReview
     || !versionMatch;
   const manualReviewReasons = [];
+  if (artistNameCleaned) manualReviewReasons.push('artist-name-cleanup');
   if (alternateRecording) manualReviewReasons.push('alternate-recording');
   if (stage !== 'strict') manualReviewReasons.push('non-strict-match');
   if (requestedTitle.requiresManualReview || chosenTitle.requiresManualReview) manualReviewReasons.push('recording-version');
