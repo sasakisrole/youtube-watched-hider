@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.29 (2026-10-08)
+
+- Copy credit recheck results as JSON with role-specific evidence, held reasons, and retrieval failures for troubleshooting.
+
 ## v1.60.28 (2026-10-08)
 
 - Show role-specific reasons for held credit rechecks and distinct retrieval failure messages, keeping proposed roles out of the held list.

@@ -3672,5 +3672,14 @@
         "content": "$2"
       }
     }
+  },
+  "history_recheckCopy": {
+    "message": "結果をコピー"
+  },
+  "history_recheckCopySuccess": {
+    "message": "結果をコピーしました。"
+  },
+  "history_recheckCopyFailure": {
+    "message": "結果をコピーできませんでした。"
   }
 }

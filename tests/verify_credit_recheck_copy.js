@@ -1,0 +1,175 @@
+const assert = require('assert/strict');
+const fs = require('fs');
+const vm = require('vm');
+const CM = require('../credit_corrections.js');
+const CT = require('../credit_target.js');
+const read = file => fs.readFileSync(require.resolve('../' + file), 'utf8');
+const background = read('background.js');
+const block = background.slice(background.indexOf('function cleanCreditLine'), background.indexOf('async function fetchCreditsFromWatch'));
+const parser = new Function('self', block + '\nreturn {extractCreditSegments,cleanCreditLine};')({CreditTarget: CT, CreditMaintenance: CM});
+const analyze = description => CM.analyze(description, 'Alpha', parser.extractCreditSegments, parser.cleanCreditLine, CT);
+const row = (id = 'sampleVid01') => ({videoId: id, title: 'Alpha', channel: 'Example channel', composer: 'Saved credit', creditsSource: 'general'});
+const success = description => ({ok: true, title: 'Alpha', maintenance: analyze(description), description});
+let passed = 0, failed = 0;
+async function check(name, fn) {
+  try { await fn(); passed++; console.log('PASS ' + name); }
+  catch (error) { failed++; console.error('FAIL ' + name + '\n' + error.stack); }
+}
+
+function boot(locale = 'en', clipboardMode = 'success') {
+  const elements = {}, copied = [], ports = [], keys = new Set();
+  let records = [], saves = 0;
+  const element = () => ({value: '', textContent: '', disabled: false, children: [], listeners: {},
+    append(...items) { this.children.push(...items); }, appendChild(item) { this.children.push(item); },
+    addEventListener(type, fn) { this.listeners[type] = fn; }, checkValidity() { return true; }});
+  const catalog = locale && JSON.parse(read('_locales/' + locale + '/messages.json'));
+  const ctx = {CreditMaintenance: CM, CreditTarget: CT, structuredClone,
+    CreditReview: {create() { return {busy: new Set(), refreshReviewList() {}}; }},
+    document: {getElementById(id) { return elements[id] ||= element(); }, createElement: element},
+    chrome: {runtime: {getManifest: () => JSON.parse(read('manifest.json')), connect() {
+      const port = {onMessage: {addListener(fn) { port.receive = fn; }},
+        onDisconnect: {addListener(fn) { port.disconnect = fn; }}, postMessage() {}};
+      ports.push(port); return port;
+    }}},
+    navigator: clipboardMode === 'missing' ? {} : {clipboard: {writeText(text) {
+      if (clipboardMode === 'throw') throw Error('unavailable');
+      if (clipboardMode === 'reject') return Promise.reject(Error('denied'));
+      copied.push(text); return Promise.resolve();
+    }}},
+  };
+  if (catalog) ctx.historyMessage = (key, fallback, values = []) => {
+    keys.add(key); assert(catalog[key], 'missing locale key ' + key);
+    return catalog[key].message.replace(/\$([a-z_]+)\$/gi, (_, name) => catalog[key].placeholders[name.toLowerCase()].content)
+      .replace(/\$(\d+)/g, (_, n) => values[n - 1]);
+  };
+  vm.runInNewContext(read('credit_maintenance.js'), ctx);
+  ctx.CreditMaintenanceUI.create({getRecords: () => records, begin: () => true, end() {}, saveCreditRole() { saves++; }});
+  const click = id => elements[id].listeners.click();
+  return {elements, keys, copied, click, get saves() { return saves; },
+    start(rows, scope = 'all') {
+      records = rows; elements.creditRecheckScope.value = scope; elements.creditRecheckLimit.value = '50';
+      click('creditRecheckStart'); return ports.at(-1);
+    },
+    progress(port, record, result) { port.receive({type: 'PROGRESS', videoId: record.videoId, result}); },
+    done(port) { port.receive({type: 'DONE'}); },
+    async report() { await click('creditRecheckCopy'); return JSON.parse(copied.at(-1)); },
+  };
+}
+
+async function main() {
+  await check('REQ-1: markup and zero checked disable copying', async () => {
+    assert.match(read('history.html'), /<button[^>]+id="creditRecheckCopy"[^>]+disabled[^>]+data-i18n="history_recheckCopy"/);
+    assert.match(read('history.html'), /id="creditRecheckCopyStatus"[^>]+role="status"/);
+    const ui = boot();
+    assert.equal(ui.elements.creditRecheckCopy.disabled, true);
+    await ui.click('creditRecheckCopy'); assert.equal(ui.copied.length, 0);
+    ui.start([row()]); assert.equal(ui.elements.creditRecheckCopy.disabled, true);
+  });
+  await check('REQ-2: complete JSON shape, counts, statuses, role sources, snapshot and evidence', async () => {
+    const ui = boot();
+    const rows = [row(), row('sampleVid02'), row('sampleVid03'), row('sampleVid04')];
+    rows[0].lyricist = 'Manual credit'; rows[0].creditRoleSources = {lyricist: 'manual'};
+    const port = ui.start(rows);
+    const first = success('Composer: New credit\nLyricist: Suggested credit\nUnrelated promotional text');
+    ui.progress(port, rows[0], first);
+    ui.progress(port, rows[1], success('[Original]\nComposer: Original credit'));
+    ui.progress(port, rows[2], success('Composer: Saved credit'));
+    ui.progress(port, rows[3], {ok: false, reason: 'http-429', html: 'Never export raw response'});
+    rows[0].composer = 'Later saved value';
+    assert.equal(ui.elements.creditRecheckCopy.disabled, false);
+    const report = await ui.report();
+    assert.deepEqual(Object.keys(report).sort(), ['version', 'exportedAt', 'scope', 'counts', 'items'].sort());
+    assert.equal(report.version, '1.60.29'); assert.equal(new Date(report.exportedAt).toISOString(), report.exportedAt);
+    assert.equal(report.scope, 'all');
+    assert.deepEqual(report.counts, {checked: 4, proposals: 1, held: 1, failed: 1});
+    assert.deepEqual(report.items.map(item => item.status), ['proposal', 'held', 'ok', 'failed']);
+    const item = report.items[0];
+    assert.deepEqual(Object.keys(item).sort(), ['videoId', 'title', 'channel', 'status', 'fetchReason', 'roles'].sort());
+    assert.equal(item.videoId, 'sampleVid01'); assert.equal(item.title, 'Alpha'); assert.equal(item.channel, 'Example channel');
+    assert.equal(item.fetchReason, '');
+    assert.deepEqual(item.roles.composer, {current: 'Saved credit', currentSource: 'auto', candidate: 'New credit', heldReason: '', evidence: ['Composer: New credit']});
+    assert.deepEqual(item.roles.lyricist, {current: 'Manual credit', currentSource: 'manual', candidate: 'Suggested credit', heldReason: '', evidence: ['Lyricist: Suggested credit']});
+    assert.deepEqual(item.roles.arranger, {current: '', currentSource: 'auto', candidate: '', heldReason: '', evidence: []});
+    assert.equal(report.items[3].fetchReason, 'http-429');
+    assert.equal(report.items[3].roles.composer.heldReason, '');
+    assert.deepEqual(report.items[3].roles.composer.evidence, []);
+    assert.doesNotMatch(ui.copied.at(-1), /Unrelated promotional text|Never export raw response|description|html/);
+    assert.equal(ui.saves, 0);
+  });
+  const heldCases = [
+    ['no-evidence', 'Unrelated text', []],
+    ['unparsed', 'Composer: https://example.com', ['Composer: https://example.com']],
+    ['unparsed', 'Composer:', ['Composer:']],
+    ['scope-mismatch', '[Original]\nComposer: Original credit', ['[Original]', 'Composer: Original credit']],
+    ['scope-mismatch', 'Song: Beta\nComposer: Other credit', ['Song: Beta', 'Composer: Other credit']],
+    ['conflict', 'Song: Alpha\nComposer: First credit\nSong: Alpha\nComposer: Second credit', ['Song: Alpha', 'Composer: First credit', 'Song: Alpha', 'Composer: Second credit']],
+    ['unknown', 'Composer - Unsupported credit', ['Composer - Unsupported credit']],
+  ];
+  for (const [reason, description, evidence] of heldCases) {
+    await check('REQ-2/4: held reason and evidence ' + reason + ' / ' + description.split('\n')[0], async () => {
+      const ui = boot(), record = row(), port = ui.start([record]);
+      ui.progress(port, record, success(description));
+      const item = (await ui.report()).items[0];
+      assert.equal(item.status, 'held'); assert.equal(item.roles.composer.heldReason, reason);
+      assert.deepEqual(item.roles.composer.evidence, evidence);
+      assert.equal(item.roles.composer.candidate, '');
+    });
+  }
+  await check('REQ-2: mixed proposal/held counts and all role evidence', async () => {
+    const record = {...row(), lyricist: 'Saved lyric', arranger: 'Saved arrangement'};
+    const ui = boot(), port = ui.start([record]);
+    ui.progress(port, record, success('Composer: New credit\nLyricist: https://example.com\nArranger: New contributor'));
+    const report = await ui.report();
+    assert.deepEqual(report.counts, {checked: 1, proposals: 2, held: 1, failed: 0});
+    assert.equal(report.items[0].status, 'proposal');
+    assert.equal(report.items[0].roles.lyricist.heldReason, 'unparsed');
+    assert.deepEqual(report.items[0].roles.lyricist.evidence, ['Lyricist: https://example.com']);
+    assert.deepEqual(report.items[0].roles.arranger.evidence, ['Arranger: New contributor']);
+  });
+  await check('REQ-2: continuation, scope changes, reset, and retry replace stale results', async () => {
+    const ui = boot(), first = {...row(), title: 'Alpha Remix'}, second = row('sampleVid02');
+    let port = ui.start([first], 'remix');
+    ui.progress(port, first, {ok: false, reason: 'timeout'}); ui.done(port);
+    ui.elements.creditRecheckScope.value = 'all'; ui.elements.creditRecheckScope.listeners.change();
+    assert.equal((await ui.report()).scope, 'remix');
+    port = ui.start([first, second]); ui.progress(port, second, success('Composer: Saved credit')); ui.done(port);
+    assert.equal((await ui.report()).items.length, 2);
+    ui.click('creditRecheckReset'); assert.equal(ui.elements.creditRecheckCopy.disabled, true);
+    const before = ui.copied.length; await ui.click('creditRecheckCopy'); assert.equal(ui.copied.length, before);
+    port = ui.start([first, second]); ui.progress(port, first, success('Composer: Saved credit'));
+    const report = await ui.report();
+    assert.equal(report.scope, 'all'); assert.equal(report.items.length, 2);
+    assert.deepEqual(report.counts, {checked: 2, proposals: 0, held: 0, failed: 0});
+    assert.equal(report.items[0].fetchReason, '');
+  });
+  await check('REQ-2/4: absent fetch result and unknown reason use empty strings', async () => {
+    const ui = boot(), record = {...row(), title: '', channel: ''}, port = ui.start([record]);
+    ui.progress(port, record, undefined);
+    const item = (await ui.report()).items[0];
+    assert.equal(item.status, 'failed'); assert.equal(item.fetchReason, ''); assert.equal(item.channel, ''); assert.equal(item.title, '');
+  });
+  for (const locale of ['ja', 'en', null]) {
+    for (const mode of ['success', 'missing', 'throw', 'reject']) {
+      await check('REQ-3: clipboard feedback ' + locale + '/' + mode, async () => {
+        const ui = boot(locale, mode), record = row(), port = ui.start([record]);
+        ui.progress(port, record, success('Composer: Saved credit'));
+        await ui.click('creditRecheckCopy');
+        const key = mode === 'success' ? 'history_recheckCopySuccess' : 'history_recheckCopyFailure';
+        const catalog = JSON.parse(read('_locales/' + (locale || 'ja') + '/messages.json'));
+        assert.equal(ui.elements.creditRecheckCopyStatus.textContent, catalog[key].message);
+        assert.equal(ui.copied.length, mode === 'success' ? 1 : 0);
+        if (locale) assert(ui.keys.has(key));
+      });
+    }
+  }
+  await check('REQ-6: release and locale metadata', () => {
+    assert.equal(JSON.parse(read('manifest.json')).version, '1.60.29');
+    assert.match(read('CHANGELOG.md'), /## v1\.60\.29[^]*?Copy credit recheck results as JSON/);
+    const ja = JSON.parse(read('_locales/ja/messages.json')), en = JSON.parse(read('_locales/en/messages.json'));
+    assert.deepEqual(Object.keys(ja).sort(), Object.keys(en).sort());
+    for (const key of ['history_recheckCopy', 'history_recheckCopySuccess', 'history_recheckCopyFailure']) assert(ja[key] && en[key]);
+  });
+  console.log(`RESULT: ${passed} passed / ${failed} failed / 0 skipped`);
+  process.exitCode = failed ? 1 : 0;
+}
+main().catch(error => { console.error(error); process.exitCode = 1; });

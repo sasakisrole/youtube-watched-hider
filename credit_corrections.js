@@ -31,6 +31,7 @@
     };
     var namedSections = new Set(), matchedSections = new Set();
     var entries = [], excluded = [], hasVersionSections = false;
+    var candidateLines = { composer: [], lyricist: [], arranger: [] };
     String(description || '').split(/\r?\n/).forEach(function (line) {
       var trimmed = line.trim();
       var segments = extract(line);
@@ -56,6 +57,14 @@
           }
         }
       }
+      // Preserve only role-related lines and their section heading, including
+      // rejected values and role-like text that could not be tokenized.
+      ROLES.forEach(function (role) {
+        if (segments.some(function (segment) { return segment.roles.includes(role); }) || roleHints[role].test(line)) {
+          if (heading && heading !== trimmed) candidateLines[role].push(heading);
+          candidateLines[role].push(trimmed);
+        }
+      });
       segments.forEach(function (segment) {
         var value = clean(segment.value);
         segment.roles.forEach(function (role) { labels.add(role); });
@@ -107,7 +116,7 @@
           : 'unknown';
       }
     });
-    return { credits: credits, evidence: evidence, held: held, reasons: reasons };
+    return { credits: credits, evidence: evidence, held: held, reasons: reasons, candidateLines: candidateLines };
   }
 
   function targets(records, scope, checked, limit, creditTarget) {
@@ -132,6 +141,28 @@
     });
   }
 
+  // A diagnostic snapshot; never include the full description or fetch payload.
+  function exportItem(record, result, creditTarget) {
+    var ok = !!(result && result.ok), maintenance = ok && result.maintenance || {};
+    var proposed = candidates(record, result, creditTarget);
+    var roles = {}, hasHeld = false;
+    ROLES.forEach(function (role) {
+      var current = record[role] || '';
+      var source = creditTarget.effectiveRoleSource(record, role) === 'manual' ? 'manual' : 'auto';
+      var candidate = (maintenance.credits || {})[role] || '';
+      var isHeld = ok && !creditTarget.creditIsBlank(current) && source !== 'manual' && !candidate;
+      hasHeld = hasHeld || isHeld;
+      var lines = (maintenance.candidateLines || {})[role];
+      if (!Array.isArray(lines)) lines = ((maintenance.evidence || {})[role] || '').split(/\r?\n/).filter(Boolean);
+      roles[role] = { current: current, currentSource: source, candidate: candidate,
+        heldReason: isHeld ? (maintenance.reasons || {})[role] || 'unknown' : '',
+        evidence: lines.slice() };
+    });
+    return { videoId: record.videoId || '', title: record.title || '', channel: record.channel || '',
+      status: !ok ? 'failed' : proposed.length ? 'proposal' : hasHeld ? 'held' : 'ok',
+      fetchReason: !ok && result && result.reason || '', roles: roles };
+  }
+
   async function scan(videoIds, fetchCredits, onProgress, signal) {
     var ids = Array.from(new Set((videoIds || []).filter(function (id) { return /^[\w-]{11}$/.test(id); }))).slice(0, 500);
     var processed = 0, failed = 0, stopped = '';
@@ -147,7 +178,7 @@
     }
     return { success: true, processed: processed, total: ids.length, failed: failed, stopped: stopped, aborted: !!(signal && signal.aborted) };
   }
-  var api = { analyze: analyze, targets: targets, candidates: candidates, scan: scan, isRemix: isRemix };
+  var api = { exportItem: exportItem, analyze: analyze, targets: targets, candidates: candidates, scan: scan, isRemix: isRemix };
   if (root) root.CreditMaintenance = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

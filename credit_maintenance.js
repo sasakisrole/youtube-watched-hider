@@ -35,6 +35,7 @@
   function create(env) {
     var checked = new Set(), snapshots = new Map(), candidates = new Map();
     var port = null, failed = 0, held = 0;
+    var exports = new Map(), exportScopes = new Set();
     var start = document.getElementById('creditRecheckStart');
     var stop = document.getElementById('creditRecheckStop');
     var reset = document.getElementById('creditRecheckReset');
@@ -42,6 +43,8 @@
     var limit = document.getElementById('creditRecheckLimit');
     var status = document.getElementById('creditRecheckStatus');
     var issues = document.getElementById('creditRecheckIssues');
+    var copy = document.getElementById('creditRecheckCopy');
+    var copyStatus = document.getElementById('creditRecheckCopyStatus');
     var review = root.CreditReview.create({
       getRecords: function () { return Array.from(snapshots.values()); },
       getMaterials: function () { return { candidates: Array.from(candidates.values()) }; },
@@ -56,6 +59,7 @@
       stop.disabled = !running;
     }
     function summary() {
+      copy.disabled = checked.size === 0;
       var remaining = root.CreditMaintenance.targets(env.getRecords(), scope.value, checked, 500, root.CreditTarget).length;
       status.textContent = message('history_recheckProgress',
         'このページで点検 ' + checked.size + '件／変更案 ' + candidates.size + '項目／保留 ' + held + '件／取得失敗 ' + failed + '件／未点検 ' + (remaining === 500 ? '500+' : remaining) + '件',
@@ -86,6 +90,7 @@
         status.textContent = message('history_enrich_busy', '他のメンテナンス処理が実行中'); return;
       }
       var batch = new Map(records.map(function (record) { return [record.videoId, structuredClone(record)]; }));
+      var batchScope = scope.value;
       var activePort;
       try { activePort = chrome.runtime.connect({ name: 'recheck-credits' }); }
       catch (_error) { env.end(); status.textContent = message('history_recheckConnection', '接続できませんでした。拡張を再読み込みしてから再試行してください。'); return; }
@@ -99,6 +104,9 @@
           ['composer', 'lyricist', 'arranger'].forEach(function (role) { candidates.delete(record.videoId + ':' + role); });
           snapshots.set(record.videoId, record);
           var result = data.result;
+          exports.set(record.videoId, root.CreditMaintenance.exportItem(record, result, root.CreditTarget));
+          exportScopes.add(batchScope);
+          copyStatus.textContent = '';
           if (!result || !result.ok) {
             failed++;
             issue(record, fetchFailure(result && result.reason), false);
@@ -146,11 +154,32 @@
     });
     reset.addEventListener('click', function () {
       if (port) return;
-      checked.clear(); summary();
+      checked.clear(); copyStatus.textContent = ''; summary();
+    });
+    copy.addEventListener('click', async function () {
+      if (!checked.size) return;
+      try {
+        // Keep the latest snapshot for every video seen on this page, even
+        // after resetting the target queue. Proposals count roles; held/failed
+        // count videos, and a proposed video may also have a held role.
+        var items = Array.from(exports.values());
+        var counts = { checked: items.length, proposals: candidates.size, held: 0, failed: 0 };
+        items.forEach(function (item) {
+          if (item.status === 'failed') counts.failed++;
+          if (Object.values(item.roles).some(function (role) { return !!role.heldReason; })) counts.held++;
+        });
+        var report = { version: chrome.runtime.getManifest().version, exportedAt: new Date().toISOString(),
+          scope: exportScopes.has('all') ? 'all' : 'remix', counts: counts, items: items };
+        await root.navigator.clipboard.writeText(JSON.stringify(report, null, 2));
+        copyStatus.textContent = message('history_recheckCopySuccess', '結果をコピーしました。');
+      } catch (_error) {
+        copyStatus.textContent = message('history_recheckCopyFailure', '結果をコピーできませんでした。');
+      }
     });
     scope.addEventListener('change', summary);
     document.getElementById('creditReviewOpen').addEventListener('click', summary);
     controls(false);
+    copy.disabled = true;
     return review;
   }
   root.CreditMaintenanceUI = { create: create };

@@ -3672,5 +3672,14 @@
         "content": "$2"
       }
     }
+  },
+  "history_recheckCopy": {
+    "message": "Copy results"
+  },
+  "history_recheckCopySuccess": {
+    "message": "Results copied."
+  },
+  "history_recheckCopyFailure": {
+    "message": "Could not copy results."
   }
 }

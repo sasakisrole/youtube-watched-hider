@@ -135,7 +135,7 @@ for (const locale of [null, 'ja', 'en']) {
   });
 }
 check('release metadata is updated', () => {
-  assert.equal(JSON.parse(read('manifest.json')).version, '1.60.28');
+  assert.equal(JSON.parse(read('manifest.json')).version, '1.60.29');
   assert.match(read('CHANGELOG.md'), /## v1\.60\.28/);
 });
 console.log(`${passed} passed`);
