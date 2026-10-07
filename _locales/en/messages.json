@@ -3595,7 +3595,7 @@
     "message": "Could not connect. Reload the extension and try again."
   },
   "history_recheckFetchFailed": {
-    "message": "Could not fetch the description. Open a YouTube tab and retry later."
+    "message": "Retrieval failed for an unknown reason. Wait before rechecking."
   },
   "history_recheckHeld": {
     "message": "The evidence does not identify the role, song or version clearly enough. Saved values are unchanged."
@@ -3608,5 +3608,69 @@
   },
   "history_recheckDisconnected": {
     "message": "The connection ended. Fetched proposals remain available. You can resume unchecked videos."
+  },
+  "history_recheckNoEvidence": {
+    "message": "Not listed"
+  },
+  "history_recheckUnparsed": {
+    "message": "Could not parse"
+  },
+  "history_recheckConflict": {
+    "message": "Conflicting credits"
+  },
+  "history_recheckScopeMismatch": {
+    "message": "Song/version mismatch"
+  },
+  "history_recheckUnknown": {
+    "message": "Unknown reason"
+  },
+  "history_recheckBot": {
+    "message": "YouTube blocked the request with a bot check. Wait before rechecking."
+  },
+  "history_recheckIdentity": {
+    "message": "The fetched page could not be matched to the requested video. Check the target video."
+  },
+  "history_recheckNoTab": {
+    "message": "No available YouTube tab. Open a YouTube tab and recheck."
+  },
+  "history_recheckProxy": {
+    "message": "Could not get a response from the YouTube tab. Wait before rechecking."
+  },
+  "history_recheckNoPlayer": {
+    "message": "Could not read player information from the page."
+  },
+  "history_recheckNoDetails": {
+    "message": "Could not read video details from the page."
+  },
+  "history_recheckNoDescription": {
+    "message": "Could not read the description from the page."
+  },
+  "history_recheckTimeout": {
+    "message": "The request timed out. Wait before rechecking."
+  },
+  "history_recheckAborted": {
+    "message": "The request was cancelled."
+  },
+  "history_recheckNetwork": {
+    "message": "A network error prevented retrieval. Wait before rechecking."
+  },
+  "history_recheckHttp": {
+    "message": "YouTube returned HTTP error $CODE$. Wait before rechecking.",
+    "placeholders": {
+      "code": {
+        "content": "$1"
+      }
+    }
+  },
+  "history_recheckRoleReason": {
+    "message": "$ROLE$: $REASON$",
+    "placeholders": {
+      "role": {
+        "content": "$1"
+      },
+      "reason": {
+        "content": "$2"
+      }
+    }
   }
 }

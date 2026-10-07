@@ -21,7 +21,14 @@
   // Headings bound evidence to a song/version. Unknown or conflicting sections
   // are held for review instead of concatenating everybody in the description.
   function analyze(description, title, extract, clean, creditTarget) {
-    var scope = 'current', heading = '';
+    var scope = 'current', heading = '', section = 0;
+    var labels = new Set(), rejected = new Set();
+    // Role-like text that the tokenizer cannot establish is not proof of absence.
+    var roleHints = {
+      composer: /作曲|作編曲|\b(?:composers?|compose|composition|composed\s+by|music)\b/iu,
+      lyricist: /作詞|作詩|\b(?:lyricists?|lyrics?|words|songwriters?|written\s+by)\b/iu,
+      arranger: /編曲|\b(?:arrangers?|arrange|arrangement|arranged\s+by)\b/iu
+    };
     var namedSections = new Set(), matchedSections = new Set();
     var entries = [], excluded = [], hasVersionSections = false;
     String(description || '').split(/\r?\n/).forEach(function (line) {
@@ -32,9 +39,9 @@
       var marker = headingLine.normalize('NFKC').replace(/^[\s#■◆●・*\[【「『(]+|[\s\]】」』):：]+$/gu, '').trim();
       var original = /^(?:original(?:\s+(?:song|version|credits?))?|原曲(?:情報|クレジット)?)(?=\s*(?:[:：/|]|$))/iu.test(marker);
       if (original) {
-        scope = 'original'; heading = trimmed; hasVersionSections = true;
+        section++; scope = 'original'; heading = trimmed; hasVersionSections = true;
       } else if (/^(?:remix(?:\s+(?:version|credits?))?|リミックス(?:クレジット)?)$/iu.test(marker)) {
-        scope = isRemix(title) ? 'current' : 'unknown'; heading = trimmed; hasVersionSections = true;
+        section++; scope = isRemix(title) ? 'current' : 'unknown'; heading = trimmed; hasVersionSections = true;
       } else {
         var match = headingLine.match(/^(?:[「『【\[]([^」』】\]]+)[」』】\]](?:\s*[:：/|\-]?\s*.*)?|(?:曲名|楽曲|song|track|title)\s*[:：]\s*(.+)|[■◆#●•・*\-]+\s*(.+)|(?:\d{1,3}[.)．、]\s*|\d{1,3}\s+|\d{1,2}:\d{2}\s+)(.+))\s*$/iu);
         if (match) {
@@ -45,20 +52,24 @@
             if (isRemix(title) && !isRemix(name)) matches = false;
             namedSections.add(key);
             if (matches) matchedSections.add(key);
-            scope = matches ? 'current' : 'other'; heading = trimmed;
+            section++; scope = matches ? 'current' : 'other'; heading = trimmed;
           }
         }
       }
       segments.forEach(function (segment) {
         var value = clean(segment.value);
-        if (!creditTarget.isValidCreditValue(value, title)) return;
+        segment.roles.forEach(function (role) { labels.add(role); });
+        if (!creditTarget.isValidCreditValue(value, title)) {
+          segment.roles.forEach(function (role) { rejected.add(role); });
+          return;
+        }
         segment.roles.forEach(function (role) {
-          var entry = { role: role, value: value, evidence: (heading ? heading + '\n' : '') + trimmed, scope: scope, named: !!heading };
+          var entry = { role: role, value: value, evidence: (heading ? heading + '\n' : '') + trimmed, scope: scope, named: !!heading, section: section };
           if (scope === 'current') entries.push(entry); else excluded.push(entry);
         });
       });
     });
-    var credits = {}, evidence = {}, held = [];
+    var credits = {}, evidence = {}, held = [], reasons = {};
     ROLES.forEach(function (role) {
       var selected = entries.filter(function (entry) { return entry.role === role; });
       // Repeated role lines in the same scope describe co-contributors.
@@ -72,11 +83,31 @@
         ? originals[0] : values.join(', ');
       var ambiguous = matchedSections.size > 1
         || ((namedSections.size > 0 || hasVersionSections) && selected.some(function (entry) { return !entry.named; }));
-      credits[role] = !ambiguous && creditTarget.isValidCreditValue(joined, title) ? joined : '';
+      // Different complete lists under repeated matching headings disagree.
+      // Multiple lines inside one section still describe co-contributors.
+      var sections = new Map();
+      selected.forEach(function (entry) {
+        if (!entry.named) return;
+        if (!sections.has(entry.section)) sections.set(entry.section, new Set());
+        creditNames(entry.value).forEach(function (name) { sections.get(entry.section).add(normalized(name)); });
+      });
+      var conflict = new Set(Array.from(sections.values()).map(function (names) {
+        return Array.from(names).sort().join('|');
+      })).size > 1;
+      credits[role] = !conflict && !ambiguous && creditTarget.isValidCreditValue(joined, title) ? joined : '';
       evidence[role] = credits[role] ? selected.map(function (entry) { return entry.evidence; }).join('\n') : '';
-      if (ambiguous || (!credits[role] && excluded.some(function (entry) { return entry.role === role; }))) held.push(role);
+      if (conflict || ambiguous || (!credits[role] && excluded.some(function (entry) { return entry.role === role; }))) held.push(role);
+      if (!credits[role]) {
+        var outside = excluded.some(function (entry) { return entry.role === role; });
+        reasons[role] = conflict ? 'conflict'
+          : !labels.has(role) ? (roleHints[role].test(description || '') ? 'unknown' : 'no-evidence')
+          : ambiguous ? 'unknown'
+          : outside && !selected.length && !rejected.has(role) ? 'scope-mismatch'
+          : !outside && (rejected.has(role) || selected.length) ? 'unparsed'
+          : 'unknown';
+      }
     });
-    return { credits: credits, evidence: evidence, held: held };
+    return { credits: credits, evidence: evidence, held: held, reasons: reasons };
   }
 
   function targets(records, scope, checked, limit, creditTarget) {

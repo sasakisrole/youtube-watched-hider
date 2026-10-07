@@ -3595,7 +3595,7 @@
     "message": "接続できませんでした。拡張を再読み込みしてから再試行してください。"
   },
   "history_recheckFetchFailed": {
-    "message": "取得できませんでした。YouTubeタブを開き、時間を空けて再点検してください。"
+    "message": "原因を特定できないため取得できませんでした。時間を空けて再点検してください。"
   },
   "history_recheckHeld": {
     "message": "役割または曲・版を特定できる根拠が不足しています。保存値は変更していません。"
@@ -3608,5 +3608,69 @@
   },
   "history_recheckDisconnected": {
     "message": "通信が終了しました。取得済みの変更案は残っています。未点検分は再開できます。"
+  },
+  "history_recheckNoEvidence": {
+    "message": "記載なし"
+  },
+  "history_recheckUnparsed": {
+    "message": "解析できない"
+  },
+  "history_recheckConflict": {
+    "message": "競合"
+  },
+  "history_recheckScopeMismatch": {
+    "message": "曲・版の照合不一致"
+  },
+  "history_recheckUnknown": {
+    "message": "理由不明"
+  },
+  "history_recheckBot": {
+    "message": "YouTubeのボット確認により取得できませんでした。時間を空けて再点検してください。"
+  },
+  "history_recheckIdentity": {
+    "message": "取得したページの動画を照合できませんでした。対象の動画を確認してください。"
+  },
+  "history_recheckNoTab": {
+    "message": "利用できるYouTubeタブがありません。YouTubeタブを開いて再点検してください。"
+  },
+  "history_recheckProxy": {
+    "message": "YouTubeタブから応答を取得できませんでした。時間を空けて再点検してください。"
+  },
+  "history_recheckNoPlayer": {
+    "message": "ページから動画の再生情報を取得できませんでした。"
+  },
+  "history_recheckNoDetails": {
+    "message": "ページから動画の詳細情報を取得できませんでした。"
+  },
+  "history_recheckNoDescription": {
+    "message": "ページから概要欄を取得できませんでした。"
+  },
+  "history_recheckTimeout": {
+    "message": "取得がタイムアウトしました。時間を空けて再点検してください。"
+  },
+  "history_recheckAborted": {
+    "message": "取得が中止されました。"
+  },
+  "history_recheckNetwork": {
+    "message": "通信エラーで取得できませんでした。時間を空けて再点検してください。"
+  },
+  "history_recheckHttp": {
+    "message": "YouTubeがHTTPエラー $CODE$ を返しました。時間を空けて再点検してください。",
+    "placeholders": {
+      "code": {
+        "content": "$1"
+      }
+    }
+  },
+  "history_recheckRoleReason": {
+    "message": "$ROLE$: $REASON$",
+    "placeholders": {
+      "role": {
+        "content": "$1"
+      },
+      "reason": {
+        "content": "$2"
+      }
+    }
   }
 }

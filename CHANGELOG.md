@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.28 (2026-10-08)
+
+- Show role-specific reasons for held credit rechecks and distinct retrieval failure messages, keeping proposed roles out of the held list.
+
 ## v1.60.27 (2026-10-08)
 
 - Fix missing roles in comma-separated credit labels and preserve co-contributors across lines during enrichment and rechecking, while keeping song/version boundaries and excluding remix-only credits from arrangement.

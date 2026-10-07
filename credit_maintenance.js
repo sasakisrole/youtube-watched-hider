@@ -3,6 +3,35 @@
   function message(key, fallback, values) {
     return typeof historyMessage === 'function' ? historyMessage(key, fallback, values || []) : fallback;
   }
+  function heldReason(reason) {
+    switch (reason) {
+      case 'no-evidence': return message('history_recheckNoEvidence', '記載なし');
+      case 'unparsed': return message('history_recheckUnparsed', '解析できない');
+      case 'conflict': return message('history_recheckConflict', '競合');
+      case 'scope-mismatch': return message('history_recheckScopeMismatch', '曲・版の照合不一致');
+      default: return message('history_recheckUnknown', '理由不明');
+    }
+  }
+  function fetchFailure(reason) {
+    switch (reason) {
+      case 'sorry-redirect': return message('history_recheckBot', 'YouTubeのボット確認により取得できませんでした。時間を空けて再点検してください。');
+      case 'video-identity-mismatch': return message('history_recheckIdentity', '取得したページの動画を照合できませんでした。対象の動画を確認してください。');
+      case 'no-youtube-tab': return message('history_recheckNoTab', '利用できるYouTubeタブがありません。YouTubeタブを開いて再点検してください。');
+      case 'proxy-failed': return message('history_recheckProxy', 'YouTubeタブから応答を取得できませんでした。時間を空けて再点検してください。');
+      case 'no-playerResponse': return message('history_recheckNoPlayer', 'ページから動画の再生情報を取得できませんでした。');
+      case 'no-videoDetails': return message('history_recheckNoDetails', 'ページから動画の詳細情報を取得できませんでした。');
+      case 'no-description': return message('history_recheckNoDescription', 'ページから概要欄を取得できませんでした。');
+      case 'timeout': return message('history_recheckTimeout', '取得がタイムアウトしました。時間を空けて再点検してください。');
+      case 'aborted': return message('history_recheckAborted', '取得が中止されました。');
+      case 'fetch-error': return message('history_recheckNetwork', '通信エラーで取得できませんでした。時間を空けて再点検してください。');
+      default:
+        if (/^http-\d{3}$/.test(reason || '')) {
+          var code = reason.slice(5);
+          return message('history_recheckHttp', 'YouTubeがHTTPエラー ' + code + ' を返しました。時間を空けて再点検してください。', [code]);
+        }
+        return message('history_recheckFetchFailed', '原因を特定できないため取得できませんでした。時間を空けて再点検してください。');
+    }
+  }
   function create(env) {
     var checked = new Set(), snapshots = new Map(), candidates = new Map();
     var port = null, failed = 0, held = 0;
@@ -32,8 +61,8 @@
         'このページで点検 ' + checked.size + '件／変更案 ' + candidates.size + '項目／保留 ' + held + '件／取得失敗 ' + failed + '件／未点検 ' + (remaining === 500 ? '500+' : remaining) + '件',
         [checked.size, candidates.size, held, failed, remaining === 500 ? '500+' : remaining]);
     }
-    function issue(record, reason) {
-      held++;
+    function issue(record, reason, isHeld) {
+      if (isHeld) held++;
       var item = document.createElement('div');
       var link = document.createElement('a');
       link.href = 'https://www.youtube.com/watch?v=' + record.videoId;
@@ -72,7 +101,7 @@
           var result = data.result;
           if (!result || !result.ok) {
             failed++;
-            issue(record, message('history_recheckFetchFailed', '取得できませんでした。YouTubeタブを開き、時間を空けて再点検してください。'));
+            issue(record, fetchFailure(result && result.reason), false);
           } else {
             var proposed = root.CreditMaintenance.candidates(record, result, root.CreditTarget);
             var changed = new Set(proposed.map(function (candidate) { return candidate.role; }));
@@ -82,11 +111,20 @@
               
               proposed.forEach(function (candidate) { candidates.set(candidate.videoId + ':' + candidate.role, candidate); });
             }
-            var missingEvidence = ['composer', 'lyricist', 'arranger'].some(function (role) {
-              return record[role] && root.CreditTarget.effectiveRoleSource(record, role) !== 'manual'
-                && !changed.has(role) && !result.maintenance.credits[role];
+            var maintenance = result.maintenance || {};
+            var roleLabels = {
+              composer: message('history_scripts_composer_6', '作曲'),
+              lyricist: message('history_scripts_lyricist_7', '作詞'),
+              arranger: message('history_scripts_arranger_8', '編曲')
+            };
+            var heldRoles = ['composer', 'lyricist', 'arranger'].filter(function (role) {
+              return !root.CreditTarget.creditIsBlank(record[role]) && root.CreditTarget.effectiveRoleSource(record, role) !== 'manual'
+                && !changed.has(role) && !(maintenance.credits || {})[role];
+            }).map(function (role) {
+              var reason = heldReason((maintenance.reasons || {})[role]);
+              return message('history_recheckRoleReason', roleLabels[role] + ': ' + reason, [roleLabels[role], reason]);
             });
-            if (missingEvidence) issue(record, message('history_recheckHeld', '役割または曲・版を特定できる根拠が不足しています。保存値は変更していません。'));
+            if (heldRoles.length) issue(record, heldRoles.join(' / '), true);
           }
           review.refreshReviewList(); summary(); return;
         }
