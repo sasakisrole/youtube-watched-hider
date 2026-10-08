@@ -79,7 +79,7 @@ async function main() {
     assert.equal(ui.elements.creditRecheckCopy.disabled, false);
     const report = await ui.report();
     assert.deepEqual(Object.keys(report).sort(), ['version', 'exportedAt', 'scope', 'counts', 'items'].sort());
-    assert.equal(report.version, '1.60.29'); assert.equal(new Date(report.exportedAt).toISOString(), report.exportedAt);
+    assert.equal(report.version, JSON.parse(read('manifest.json')).version); assert.equal(new Date(report.exportedAt).toISOString(), report.exportedAt);
     assert.equal(report.scope, 'all');
     assert.deepEqual(report.counts, {checked: 4, proposals: 1, held: 1, failed: 1});
     assert.deepEqual(report.items.map(item => item.status), ['proposal', 'held', 'ok', 'failed']);
@@ -163,7 +163,7 @@ async function main() {
     }
   }
   await check('REQ-6: release and locale metadata', () => {
-    assert.equal(JSON.parse(read('manifest.json')).version, '1.60.29');
+    assert.equal(JSON.parse(read('manifest.json')).version, read('CHANGELOG.md').match(/^## v(\d+\.\d+\.\d+)/m)[1]);
     assert.match(read('CHANGELOG.md'), /## v1\.60\.29[^]*?Copy credit recheck results as JSON/);
     const ja = JSON.parse(read('_locales/ja/messages.json')), en = JSON.parse(read('_locales/en/messages.json'));
     assert.deepEqual(Object.keys(ja).sort(), Object.keys(en).sort());

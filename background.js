@@ -2057,7 +2057,7 @@ const CREDIT_ROLE_KEYWORDS = {
   arranger: ['arrangers', 'arranged by', 'arrangement', 'recording arranger', 'arranger', 'arrange', '編曲家', '編曲者', '編曲'],
 };
 
-const CREDIT_KNOWN_LABEL = String.raw`(?:(?:作詞|作詩|作曲|編曲)(?:\s*[・&＆/／]?\s*(?:作詞|作詩|作曲|編曲))+|作編曲|(?:words|lyrics?)\s*(?:&|and|\/)\s*music|music\s*(?:&|and|\/)\s*(?:words|lyrics?)|compose(?:r)?\s*(?:&|and|\/|／)\s*arrange(?:r)?|composer\s*[,，]?\s*(?:writer|lyricist)|composer\s+lyricist|composers?|composed\s+by|composition|compose|music\s+by|original\s+music|music\s+composer|lyricists?|lyrics\s+by|written\s+by|lyrics?|songwriters?|words|arrangers?|arranged\s+by|arrangement|recording\s+arranger|arrange|作詞家|作詞者|作詞|作詩|作曲家|作曲者|作曲|編曲家|編曲者|編曲)`;
+const CREDIT_KNOWN_LABEL = String.raw`(?:(?:作詞|作詩|作曲|編曲)(?:(?:作詞|作詩|作曲|編曲)|絵|動画|映像|イラスト)+|(?:作詞|作詩|作曲|編曲)(?:\s*[・&＆/／]?\s*(?:作詞|作詩|作曲|編曲))+|作編曲|(?:words|lyrics?)\s*(?:&|and|\/)\s*music|music\s*(?:&|and|\/)\s*(?:words|lyrics?)|compose(?:r)?\s*(?:&|and|\/|／)\s*arrange(?:r)?|composer\s*[,，]?\s*(?:writer|lyricist)|composer\s+lyricist|composers?|composed\s+by|composition|compose|music\s+by|original\s+music|music\s+composer|lyricists?|lyrics\s+by|written\s+by|lyrics?|songwriters?|words|arrangers?|arranged\s+by|arrangement|recording\s+arranger|arrange|作詞家|作詞者|作詞|作詩|作曲家|作曲者|作曲|編曲家|編曲者|編曲)`;
 // Unknown role tokens can delimit a list but never imply a musical role.
 const CREDIT_LIST_ITEM = String.raw`(?:${CREDIT_KNOWN_LABEL}|associated\s+performer|re-\s*mixer|[a-z][a-z0-9_-]*)`;
 const CREDIT_LABEL_TOKEN_RE = new RegExp(String.raw`(?:^|[\s/／|｜;；]\s*)((?:${CREDIT_LIST_ITEM}\s*[,，、]\s*)+${CREDIT_LIST_ITEM}|${CREDIT_KNOWN_LABEL})\s*[:：]`, 'giu');
@@ -2084,6 +2084,7 @@ function rolesForCreditLabel(label) {
   if (/[,，、]/u.test(label)) {
     const parts = label.split(/[,，、]/u).map(part => part.trim());
     const roles = parts.flatMap(part => CREDIT_KNOWN_LABEL_RE.test(part) ? rolesForCreditLabel(part) : []);
+    if (parts.some(part => /^music$/iu.test(part)) && roles.includes('lyricist')) roles.push('composer');
     if (roles.includes('composer') && parts.some(part => /^writer$/iu.test(part))) roles.push('lyricist');
     return [...new Set(roles)];
   }
@@ -2105,7 +2106,7 @@ function rolesForCreditLabel(label) {
 }
 
 function normalizeCreditLabelFormatting(line) {
-  const unbulleted = line.replace(/^[ \t]*[・•●■◆*\-][ \t]*/u, '');
+  const unbulleted = line.replace(/^[ \t]*[・•●■◆▶*\-]\uFE0F?\uFE0E?[ \t]*/u, '');
   return unbulleted.replace(/(^|[\s/／|｜;；])(?:【([^】\r\n]+)】|\[([^\]\r\n]+)\])\s*[:：]/gu,
     (whole, boundary, japaneseLabel, asciiLabel) => {
       const label = (japaneseLabel || asciiLabel).trim();
@@ -2119,7 +2120,7 @@ function normalizeCreditLabelFormatting(line) {
 }
 
 function extractCreditSegments(line) {
-  const bullet = (line.match(/^[ \t]*[・•●■◆*\-][ \t]*/u) || [''])[0];
+  const bullet = (line.match(/^[ \t]*[・•●■◆▶*\-]\uFE0F?\uFE0E?[ \t]*/u) || [''])[0];
   line = normalizeCreditLabelFormatting(line);
   // Unrecognized wrappers may contain role words as prose, not credit labels.
   const wrappers = [];

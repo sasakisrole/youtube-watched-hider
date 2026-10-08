@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.30 (2026-10-08)
+
+- Recover remix composition and lyrics from original credits, recognize decorated role lists and exact song-title variants, and keep notices and hashtags out of song scoping without inheriting original arrangement credits.
+
 ## v1.60.29 (2026-10-08)
 
 - Copy credit recheck results as JSON with role-specific evidence, held reasons, and retrieval failures for troubleshooting.

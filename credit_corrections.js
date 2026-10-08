@@ -18,10 +18,34 @@
   }
   function isRemix(title) { return /remix|リミックス/iu.test(title || ''); }
 
+  // Compare complete title candidates, never substrings of song names.
+  function titleKeys(title) {
+    var candidates = [String(title || '').normalize('NFKC')];
+    for (var quote of candidates[0].matchAll(/[「『]([^」』]+)[」』]/gu)) candidates.push(quote[1]);
+    for (var i = 0; i < candidates.length; i++) {
+      var value = candidates[i];
+      var shorter = value.replace(/\s*#[^\s#]+(?:\s+#[^\s#]+)*\s*$/u, '').trim()
+        .replace(/\s*【[^】]*】\s*$/u, '').trim();
+      if (shorter && !candidates.includes(shorter)) candidates.push(shorter);
+      var song = value.split(/\s+[\/／-]\s+/u)[0].trim();
+      if (song && !candidates.includes(song)) candidates.push(song);
+    }
+    return new Set(candidates.map(normalized));
+  }
+
+  function nonSongHeading(line) {
+    // Nested decoration, hashtags, and explicit notices are not song titles.
+    // Ordinary bracketed/numbered titles still establish a section boundary.
+    return /[\[【][\[【]|[\]】][\]】]/u.test(line)
+      || /^#[^\s#]+(?:\s+#[^\s#]+)*$/u.test(line)
+      || /^(?:[■◆●▶︎\s\[【]+)?(?:this\s+remix\s+is\s+unofficial|配信\s*\((?:subscribe|download)[^)]*\)|(?:en|jp)\s+credits\.?)[\]】\s]*$/iu.test(line);
+  }
+
   // Headings bound evidence to a song/version. Unknown or conflicting sections
   // are held for review instead of concatenating everybody in the description.
   function analyze(description, title, extract, clean, creditTarget) {
     var scope = 'current', heading = '', section = 0;
+    var targetKeys = titleKeys(title);
     var labels = new Set(), rejected = new Set();
     // Role-like text that the tokenizer cannot establish is not proof of absence.
     var roleHints = {
@@ -30,6 +54,7 @@
       arranger: /編曲|\b(?:arrangers?|arrange|arrangement|arranged\s+by)\b/iu
     };
     var namedSections = new Set(), matchedSections = new Set();
+    var namedKey = '';
     var entries = [], excluded = [], hasVersionSections = false;
     var candidateLines = { composer: [], lyricist: [], arranger: [] };
     String(description || '').split(/\r?\n/).forEach(function (line) {
@@ -38,21 +63,20 @@
       var headingLine = segments.length && typeof segments[0].prefix === 'string'
         ? segments[0].prefix.trim().replace(/[/／|｜;；]+\s*$/u, '').trim() : trimmed;
       var marker = headingLine.normalize('NFKC').replace(/^[\s#■◆●・*\[【「『(]+|[\s\]】」』):：]+$/gu, '').trim();
-      var original = /^(?:original(?:\s+(?:song|version|credits?))?|原曲(?:情報|クレジット)?)(?=\s*(?:[:：/|]|$))/iu.test(marker);
+      var original = /^(?:original(?:\s+(?:song|version|credits?))?|原曲(?:情報|クレジット)?)(?=\s*(?:[:：/|]|https?:\/\/|$))/iu.test(marker);
       if (original) {
-        section++; scope = 'original'; heading = trimmed; hasVersionSections = true;
+        namedKey = ''; section++; scope = 'original'; heading = trimmed; hasVersionSections = true;
       } else if (/^(?:remix(?:\s+(?:version|credits?))?|リミックス(?:クレジット)?)$/iu.test(marker)) {
-        section++; scope = isRemix(title) ? 'current' : 'unknown'; heading = trimmed; hasVersionSections = true;
+        namedKey = ''; section++; scope = isRemix(title) ? 'current' : 'unknown'; heading = trimmed; hasVersionSections = true;
       } else {
         var match = headingLine.match(/^(?:[「『【\[]([^」』】\]]+)[」』】\]](?:\s*[:：/|\-]?\s*.*)?|(?:曲名|楽曲|song|track|title)\s*[:：]\s*(.+)|[■◆#●•・*\-]+\s*(.+)|(?:\d{1,3}[.)．、]\s*|\d{1,3}\s+|\d{1,2}:\d{2}\s+)(.+))\s*$/iu);
-        if (match) {
+        if (match && !nonSongHeading(headingLine)) {
           var name = (match[1] || match[2] || match[3] || match[4]).trim();
           if (!/^(?:credits?|クレジット|staff|スタッフ)$/iu.test(name) && !(match[1] && extract('[' + name + ']: Example Person').length)) {
-            var key = normalized(name), target = normalized(title);
-            var matches = key.length > 0 && target === key;
+            var key = normalized(name);
+            var matches = key.length > 0 && targetKeys.has(key);
             if (isRemix(title) && !isRemix(name)) matches = false;
-            namedSections.add(key);
-            if (matches) matchedSections.add(key);
+            namedKey = key;
             section++; scope = matches ? 'current' : 'other'; heading = trimmed;
           }
         }
@@ -72,6 +96,11 @@
           segment.roles.forEach(function (role) { rejected.add(role); });
           return;
         }
+        // A caption without credit evidence does not make earlier roles ambiguous.
+        if (segment.roles.length && namedKey) {
+          namedSections.add(namedKey);
+          if (scope === 'current') matchedSections.add(namedKey);
+        }
         segment.roles.forEach(function (role) {
           var entry = { role: role, value: value, evidence: (heading ? heading + '\n' : '') + trimmed, scope: scope, named: !!heading, section: section };
           if (scope === 'current') entries.push(entry); else excluded.push(entry);
@@ -81,6 +110,10 @@
     var credits = {}, evidence = {}, held = [], reasons = {};
     ROLES.forEach(function (role) {
       var selected = entries.filter(function (entry) { return entry.role === role; });
+      // Only composition and lyrics survive a remix; explicit current roles win.
+      if (!selected.length && isRemix(title) && role !== 'arranger') {
+        selected = excluded.filter(function (entry) { return entry.role === role && entry.scope === 'original'; });
+      }
       // Repeated role lines in the same scope describe co-contributors.
       // Split only list punctuation; preserve slashes and parenthesized band names.
       var values = Array.from(new Set(selected.flatMap(function (entry) {
