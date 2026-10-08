@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.31 (2026-10-08)
+
+- Avoid credit recheck proposals when contributor lists differ only in separator spacing, comma style, or order. Preserve meaningful differences within names and continue showing actual contributor additions and removals.
+
 ## v1.60.30 (2026-10-08)
 
 - Recover remix composition and lyrics from original credits, recognize decorated role lists and exact song-title variants, and keep notices and hashtags out of song scoping without inheriting original arrangement credits.

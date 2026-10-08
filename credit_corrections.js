@@ -16,6 +16,12 @@
     names.push(value.slice(start).trim());
     return names.filter(Boolean);
   }
+  function sameContributors(left, right) {
+    // List formatting and order do not change attribution; punctuation within names can.
+    var a = creditNames(String(left || '')).sort();
+    var b = creditNames(String(right || '')).sort();
+    return a.length === b.length && a.every(function (name, index) { return name === b[index]; });
+  }
   function isRemix(title) { return /remix|リミックス/iu.test(title || ''); }
 
   // Compare complete title candidates, never substrings of song names.
@@ -164,7 +170,7 @@
     if (!result || !result.ok || !result.maintenance) return [];
     return ROLES.filter(function (role) {
       var value = result.maintenance.credits[role];
-      return value && value !== record[role] && !creditTarget.creditIsBlank(record[role])
+      return value && !sameContributors(value, record[role]) && !creditTarget.creditIsBlank(record[role])
         && creditTarget.effectiveRoleSource(record, role) !== 'manual'
         && creditTarget.isValidCreditValue(value, result.title);
     }).map(function (role) {

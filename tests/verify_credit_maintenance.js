@@ -74,6 +74,41 @@ check('critical title-as-composer regressions remain in tests only', () => {
   assert.deepEqual(result.credits,{composer:'ryo (supercell)',lyricist:'ryo (supercell)',arranger:'ryo (supercell)'});
 });
 
+check('recheck ignores list spacing, separators and order without changing names', () => {
+  const result = {ok:true,title:record.title,maintenance:analyze('Composer: Alice\nComposer: Bob')};
+  for (const value of ['Alice,Bob', 'Alice，Bob', 'Alice、Bob', 'Bob, Alice']) {
+    const saved = {...record,composer:value,arranger:''};
+    const snapshot = JSON.stringify(saved);
+    assert.deepEqual(CM.candidates(saved,result,CT),[],value);
+    assert.equal(CM.exportItem(saved,result,CT).status,'ok');
+    assert.equal(JSON.stringify(saved),snapshot);
+  }
+});
+check('list equivalence preserves real additions, removals and distinct names', () => {
+  for (const [current,next] of [
+    ['Alice','Alice, Bob'], ['Alice, Bob','Alice'], ['A B','AB'],
+    ['A/B','AB'], ['Alice','ALICE'], ['AC/DC','AC, DC'],
+    ['Alice (Band, Duo)','Alice (Band), Duo']
+  ]) {
+    const saved = {...record,composer:current,arranger:''};
+    const result = {ok:true,title:record.title,maintenance:{credits:{composer:next},evidence:{composer:'Composer: '+next}}};
+    assert.equal(CM.candidates(saved,result,CT).length,1,current+' -> '+next);
+  }
+});
+check('commas inside affiliations are not contributor separators', () => {
+  const saved = {...record,composer:'Bob,Alice (Band, Duo)',arranger:''};
+  const result = {ok:true,title:record.title,maintenance:{credits:{composer:'Alice (Band, Duo), Bob'},evidence:{}}};
+  assert.deepEqual(CM.candidates(saved,result,CT),[]);
+});
+check('multi-role co-arrangers do not produce a spacing-only correction', () => {
+  const description = 'Composer, Arranger, Associated Performer, Vocal, Producer, Lyricist: 米津玄師\nProducer, Arranger: 常田大希\nRe- Mixer: Hudson Mohawke';
+  const saved = {...record,title:'KICK BACK (Hudson Mohawke Remix)',composer:'米津玄師',lyricist:'米津玄師',arranger:'米津玄師,常田大希'};
+  const result = {ok:true,title:saved.title,maintenance:analyze(description,saved.title)};
+  assert.equal(result.maintenance.credits.arranger,'米津玄師, 常田大希');
+  assert.deepEqual(CM.candidates(saved,result,CT),[]);
+  assert.equal(CM.exportItem(saved,result,CT).status,'ok');
+});
+
 async function main() {
   const calls=[], progress=[], signal={aborted:false};
   const result=await CM.scan(['anyVideo001','anyVideo001','bad','anyVideo002'], async id => {calls.push(id);return {ok:true};}, p => {progress.push(p);signal.aborted=true;},signal);
