@@ -84,6 +84,21 @@
     var b = unifyReading(right, sortNames) || String(right || '');
     return compareNames(a, b) === 'same';
   }
+  // True when an added or removed name sits beside a name in the other script
+  // (romanized vs Japanese). Descriptions often credit one person twice, as
+  // "Lyricist: Eiko Shimamiya" and "Lyricist: 島みやえい子"; without a reading
+  // that may be the same person, so such a change is reviewed one by one.
+  function scriptMixedChange(saved, proposed) {
+    function script(name) { return isLatinName(name) ? 'latin' : JAPANESE_SCRIPT.test(name) ? 'ja' : ''; }
+    var before = creditNames(String(saved || '')), after = creditNames(String(proposed || ''));
+    var keysBefore = before.map(normalized), keysAfter = after.map(normalized);
+    var changed = after.filter(function (name, i) { return keysBefore.indexOf(keysAfter[i]) === -1; })
+      .concat(before.filter(function (name, i) { return keysAfter.indexOf(keysBefore[i]) === -1; }));
+    return changed.some(function (name) {
+      var own = script(name);
+      return own && after.some(function (other) { var s = script(other); return s && s !== own; });
+    });
+  }
   function topicLineNames(description) {
     var lines = String(description || '').split(/\r?\n/), provided = false;
     for (var i = 0; i < lines.length; i++) {
@@ -335,7 +350,7 @@
   var api = { exportItem: exportItem, analyze: analyze, targets: targets, candidates: candidates, scan: scan, isRemix: isRemix,
     recheckStamp: recheckStamp, PARSER_REVISION: PARSER_REVISION, sameContributors: sameContributors,
     compareNames: compareNames, namesOnTopicLine: namesOnTopicLine, topicLineNames: topicLineNames,
-    unifyReading: unifyReading, sameByReading: sameByReading, isLatinName: isLatinName };
+    unifyReading: unifyReading, sameByReading: sameByReading, isLatinName: isLatinName, scriptMixedChange: scriptMixedChange };
   if (root) root.CreditMaintenance = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

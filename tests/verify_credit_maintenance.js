@@ -109,6 +109,15 @@ check('credits keep the credited name; other spellings are different, not correc
   assert.equal(CM.compareNames('sky_delta','sky_delta, 藍月なくる'),'adds');
   assert.equal(CM.compareNames('Alice, Bob','Alice'),'different');
 });
+check('a change beside a name in the other script is not bulk-adoptable', () => {
+  assert.equal(CM.scriptMixedChange('Eiko Shimamiya','Eiko Shimamiya, 島みやえい子'),true);
+  assert.equal(CM.scriptMixedChange('斎藤真也','Satoshi Yaginuma, 斎藤真也'),true);
+  assert.equal(CM.scriptMixedChange('Satoshi Yaginuma,八木沼悟志','八木沼悟志'),true);
+  assert.equal(CM.scriptMixedChange('Bushiroad Music,Junpei Fujita','Junpei Fujita'),false);
+  assert.equal(CM.scriptMixedChange('KAZUYA TAKASE','KAZUYA TAKASE, SORMA No.1'),false);
+  assert.equal(CM.scriptMixedChange('米津玄師','米津玄師, 常田大希'),false);
+  assert.equal(CM.scriptMixedChange('米津玄師,常田大希','米津玄師, 常田大希'),false);
+});
 check('topic row names are found without assigning roles', () => {
   const desc='Provided to YouTube by Sony Music Marketing\n\nワルモノウィル · Shiina Natsukawa · 夏川椎菜 · HAMA-kgn · HAMA-kgn\n\nEp01';
   const result=analyze(desc,'ワルモノウィル');

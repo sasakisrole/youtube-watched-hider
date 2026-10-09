@@ -95,7 +95,7 @@
       if (!record) return true;
       var forward = root.CreditMaintenance.compareNames(record[item.role], value);
       var backward = root.CreditMaintenance.compareNames(value, record[item.role]);
-      return forward === 'adds' || backward === 'adds';
+      return (forward === 'adds' || backward === 'adds') && !root.CreditMaintenance.scriptMixedChange(record[item.role], value);
     }
     function summary() {
       copy.disabled = checked.size === 0;

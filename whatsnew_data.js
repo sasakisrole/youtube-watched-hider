@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.56",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "Adopt-all no longer adds or removes a name that sits beside a name in the other script (romanized vs Japanese). Descriptions sometimes credit one person twice, such as \"Eiko Shimamiya\" and a Japanese spelling, so these changes are reviewed one by one."
+    ]
+  },
+  {
     "version": "1.60.55",
     "date": "2026-10-09",
     "summary": "",

@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.56 (2026-10-09)
+
+- Adopt-all no longer adds or removes a name that sits beside a name in the other script (romanized vs Japanese). Descriptions sometimes credit one person twice, such as "Eiko Shimamiya" and a Japanese spelling, so these changes are reviewed one by one.
+
 ## v1.60.55 (2026-10-09)
 
 - Unify romanized names into the Japanese spelling only when the browser language is Japanese. In other languages, names stay as credited and a MusicBrainz name in another script is only reported.
