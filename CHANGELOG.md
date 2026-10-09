@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.37 (2026-10-09)
+
+- Disable "Adopt all proposals" when nothing is left to adopt, and keep the batch undo available after an empty run.
+
 ## v1.60.36 (2026-10-09)
 
 - Ask for confirmation before undoing a batch of adopted credit proposals.

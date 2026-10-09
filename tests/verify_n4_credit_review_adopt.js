@@ -354,6 +354,9 @@ async function testAdoptAll() {
   await ui3.opener.trigger('click');
   const snapshot = structuredClone(third.records);
   await ui3.controller.adoptAll();
+  const again = await ui3.controller.adoptAll();
+  check('an empty bulk run keeps the previous batch undo', again.targets === 0 && ui3.controller.lastBatch.length === 2
+    && ui3.controller.adoptable().length === 0);
   const undone = await ui3.controller.undoBatch();
   check('batch undo restores every bulk adoption', undone.undone === 2 && undone.failed === 0
     && JSON.stringify(third.records) === JSON.stringify(snapshot) && ui3.controller.lastBatch.length === 0 && before.length === 4);

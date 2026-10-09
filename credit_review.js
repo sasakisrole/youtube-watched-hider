@@ -409,7 +409,7 @@
 
   // Sequential, through the same CAS route as a single adoption: a role whose
   // stored value changed meanwhile fails and stays listed instead of being overwritten.
-  CreditReviewController.prototype.adoptAll = async function (accept) {
+  CreditReviewController.prototype.adoptable = function (accept) {
     if (!this.reviewList) this.refreshReviewList();
     var targets = [];
     this.reviewList.groups.forEach(function (group) {
@@ -419,7 +419,14 @@
           && (typeof accept !== 'function' || accept(item, value))) targets.push(item);
       });
     });
+    return targets;
+  };
+
+  CreditReviewController.prototype.adoptAll = async function (accept) {
+    var targets = this.adoptable(accept);
     var summary = { targets: targets.length, adopted: 0, failed: 0 };
+    // An empty run must not discard the previous batch's undo.
+    if (!targets.length) return summary;
     this.lastBatch = [];
     for (var i = 0; i < targets.length; i++) {
       var result = await this.adopt(targets[i].videoId, targets[i].role);

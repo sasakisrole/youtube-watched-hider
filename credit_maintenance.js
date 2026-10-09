@@ -62,10 +62,15 @@
       start.disabled = running; scope.disabled = running; limit.disabled = running; reset.disabled = running;
       stop.disabled = !running;
     }
+    // Only roles whose sole proposal came from this recheck; other sources need their own review.
+    function ownProposal(item, value) {
+      var own = item.candidates.filter(function (candidate) { return candidate.source === 'description-recheck'; });
+      return own.length === 1 && own[0].value === value;
+    }
     function summary() {
       copy.disabled = checked.size === 0;
       save.disabled = copy.disabled;
-      adoptAll.disabled = !!port || adopting || candidates.size === 0;
+      adoptAll.disabled = !!port || adopting || !review.adoptable(ownProposal).length;
       undoAll.disabled = !!port || adopting || !(review.lastBatch && review.lastBatch.length);
       var remaining = root.CreditMaintenance.targets(env.getRecords(), scope.value, checked, 500, root.CreditTarget).length;
       status.textContent = message('history_recheckProgress',
@@ -160,17 +165,13 @@
       if (port) { port.postMessage({ type: 'ABORT' }); stop.disabled = true; }
     });
     adoptAll.addEventListener('click', async function () {
-      if (port || adopting || !candidates.size) return;
+      if (port || adopting || !review.adoptable(ownProposal).length) return;
       if (typeof root.confirm === 'function' && !root.confirm(message('history_recheckAdoptAllConfirm',
         '一覧の変更案をまとめて採用します。手動確定値は変更しません。採用した項目は1件ずつ元に戻せます。よろしいですか？'))) return;
       adopting = true; summary();
       copyStatus.textContent = message('history_recheckAdoptAllRunning', 'まとめて採用しています。');
       try {
-        // Only roles whose sole proposal came from this recheck; other sources need their own review.
-        var result = await review.adoptAll(function (item, value) {
-          var own = item.candidates.filter(function (candidate) { return candidate.source === 'description-recheck'; });
-          return own.length === 1 && own[0].value === value;
-        });
+        var result = await review.adoptAll(ownProposal);
         copyStatus.textContent = result.failed
           ? message('history_recheckAdoptAllPartial', result.adopted + '件を採用しました。採用できなかった' + result.failed + '件は一覧に残っています。', [result.adopted, result.failed])
           : message('history_recheckAdoptAllDone', result.adopted + '件を採用しました。', [result.adopted]);

@@ -21,15 +21,16 @@ function boot(locale = 'en', clipboardMode = 'success', downloadMode = 'success'
   const runtime = {lastError: undefined};
   const confirms = [], accepted = [];
   let confirmAnswer = true;
-  const review = {busy: new Set(), refreshReviewList() {}, lastBatch: [],
+  const review = {busy: new Set(), refreshReviewList() {}, lastBatch: [], pending: 0,
+    adoptable(accept) { return Array.from({length: this.pending}, () => ({})); },
     async adoptAll(accept) {
       const own = {candidates: [{source: 'description-recheck', value: 'New credit'}]};
       const other = {candidates: [{source: 'description-recheck', value: 'New credit'}, {source: 'rule', value: 'Other'}]};
       accepted.push(accept(own, 'New credit'), accept(other, 'Other'));
-      this.lastBatch = [{videoId: 'sampleVid01', role: 'composer'}];
+      this.lastBatch = [{videoId: 'sampleVid01', role: 'composer'}]; this.pending = 0;
       return {targets: 1, adopted: 1, failed: 0};
     },
-    async undoBatch() { this.lastBatch = []; return {targets: 1, undone: 1, failed: 0}; }};
+    async undoBatch() { this.lastBatch = []; this.pending = 1; return {targets: 1, undone: 1, failed: 0}; }};
   let records = [], saves = 0;
   const element = () => ({value: '', textContent: '', disabled: false, children: [], listeners: {},
     append(...items) { this.children.push(...items); }, appendChild(item) { this.children.push(item); },
@@ -225,7 +226,7 @@ async function main() {
     ui.done(port);
     assert.equal(ui.elements.creditRecheckAdoptAll.disabled, true);
     const next = row('sampleVid02'), port2 = ui.start([next]);
-    ui.progress(port2, next, success('Composer: New credit'));
+    ui.progress(port2, next, success('Composer: New credit')); ui.review.pending = 1;
     assert.equal(ui.elements.creditRecheckAdoptAll.disabled, true, 'disabled while scanning');
     ui.done(port2);
     assert.equal(ui.elements.creditRecheckAdoptAll.disabled, false);
@@ -238,6 +239,7 @@ async function main() {
     assert.deepEqual(ui.accepted, [true, false]);
     assert.equal(ui.elements.creditRecheckCopyStatus.textContent, '1件を採用しました。');
     assert.equal(ui.elements.creditRecheckUndoAll.disabled, false);
+    assert.equal(ui.elements.creditRecheckAdoptAll.disabled, true, 'nothing left to adopt');
     ui.confirmAnswer = false;
     await ui.click('creditRecheckUndoAll');
     assert.equal(ui.review.lastBatch.length, 1, 'cancelled undo keeps the batch');
