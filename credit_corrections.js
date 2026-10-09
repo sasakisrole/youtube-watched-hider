@@ -3,7 +3,7 @@
   var ROLES = ['composer', 'lyricist', 'arranger'];
   // Bump whenever description parsing or candidate rules change, so every
   // stored recheck stamp expires and those videos become recheck targets again.
-  var PARSER_REVISION = '2026-10-09.3';
+  var PARSER_REVISION = '2026-10-09.2';
   function normalized(value) {
     return String(value || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
   }
@@ -240,11 +240,21 @@
   // edit to any role makes the video a target again.
   // ':mb' marks a check that also consulted MusicBrainz; it satisfies a plain
   // check, but a MusicBrainz check still revisits videos stamped without it.
-  function recheckStamp(record, withMb) {
+  // ':src' marks a check that also looked at confirmed values (since v1.60.51);
+  // only videos that have one are revisited for it, not the whole history.
+  function recheckStamp(record, withMb, withSource) {
     var text = PARSER_REVISION + '\u001f' + ROLES.map(function (role) { return String((record && record[role]) || ''); }).join('\u001f');
     var hash = 5381;
     for (var i = 0; i < text.length; i++) hash = ((hash * 33) ^ text.charCodeAt(i)) >>> 0;
-    return PARSER_REVISION + ':' + hash.toString(16) + (withMb ? ':mb' : '');
+    return PARSER_REVISION + ':' + hash.toString(16) + (withMb ? ':mb' : '') + (withSource ? ':src' : '');
+  }
+  // Flags of a stamp for the record's current values, or null when stale.
+  function stampFlags(record) {
+    var stamp = String((record && record.creditsRecheck) || ''), base = recheckStamp(record);
+    if (stamp.indexOf(base) !== 0) return null;
+    var rest = stamp.slice(base.length);
+    if (['', ':mb', ':src', ':mb:src'].indexOf(rest) === -1) return null;
+    return { mb: rest.indexOf(':mb') !== -1, source: rest.indexOf(':src') !== -1 };
   }
   // Confirmed (manual) roles are only revisited by a MusicBrainz check, and
   // only when romanized, since the sole change allowed to them is the same
@@ -256,13 +266,13 @@
   }
   function targets(records, scope, checked, limit, creditTarget, includeStamped, withMb) {
     return (records || []).filter(function (record) {
-      var stamp = record.creditsRecheck, base = recheckStamp(record);
+      var flags = stampFlags(record);
       var manualReading = !!withMb && hasManualRomanized(record, creditTarget);
       var auto = ROLES.some(function (role) { return !creditTarget.creditIsBlank(record[role]) && creditTarget.effectiveRoleSource(record, role) !== 'manual'; });
       // A confirmed value may be one adopted before adoptions kept the recheck
       // source; checking it once lets a description-backed one become correctable.
       var manualValue = ROLES.some(function (role) { return !creditTarget.creditIsBlank(record[role]) && creditTarget.effectiveRoleSource(record, role) === 'manual'; });
-      var due = includeStamped || (stamp !== base && stamp !== base + ':mb') || (manualReading && stamp !== base + ':mb');
+      var due = includeStamped || !flags || (manualReading && !flags.mb) || (manualValue && !flags.source);
       return /^[\w-]{11}$/.test(record.videoId || '') && (!checked || !checked.has(record.videoId))
         && due && (scope !== 'remix' || isRemix(record.title)) && (auto || manualReading || manualValue);
     }).slice(0, Math.max(1, Math.min(500, Number(limit) || 50)));

@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.52 (2026-10-09)
+
+- Keep earlier recheck results: instead of marking every video unchecked, only videos that have confirmed values are checked once more for the recheck-source change.
+
 ## v1.60.51 (2026-10-09)
 
 - Values adopted from a credit recheck now keep the source "Recheck" instead of becoming manual, so later rechecks can still correct them. Only values a person enters are protected as manual.

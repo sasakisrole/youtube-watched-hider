@@ -63,7 +63,11 @@ check('scope and same-page continuation cover arbitrary history', () => {
   const rows=[record,{...record,videoId:'anyVideo002',title:'Other Song'},{...record,videoId:'anyVideo003',creditsSource:'manual'}];
   assert.equal(CM.targets(rows,'remix',new Set(),50,CT).length,2);
   assert.equal(CM.targets(rows,'all',new Set(),50,CT).length,3,'a confirmed value is checked once');
-  const stampedManual={...rows[2],creditsRecheck:CM.recheckStamp(rows[2])};
+  const oldStamp={...rows[2],creditsRecheck:CM.recheckStamp(rows[2])};
+  assert.equal(CM.targets([rows[0],rows[1],oldStamp],'all',new Set(),50,CT).length,3,'a stamp from before confirmed values were checked is revisited');
+  const stampedManual={...rows[2],creditsRecheck:CM.recheckStamp(rows[2],false,true)};
+  const autoOld={...rows[0],creditsRecheck:CM.recheckStamp(rows[0])};
+  assert.equal(CM.targets([autoOld],'all',new Set(),50,CT).length,0,'videos without confirmed values keep their earlier stamp');
   assert.equal(CM.targets([rows[0],rows[1],stampedManual],'all',new Set(),50,CT).length,2,'and not again once stamped');
   assert.equal(CM.targets(rows,'all',new Set([record.videoId]),1,CT)[0].videoId,'anyVideo002');
 });
@@ -73,13 +77,13 @@ check('multi-word unknown roles in a list keep the composer', () => {
 });
 check('confirmed values are checked once; romanized ones again only by a MusicBrainz check', () => {
   const plain={videoId:'manualVid01',title:'Song (X Remix)',composer:'Satoshi Yaginuma',creditRoleSources:{composer:'manual'}};
-  const manual={...plain,creditsRecheck:CM.recheckStamp(plain)};
+  const manual={...plain,creditsRecheck:CM.recheckStamp(plain,false,true)};
   const kanji={...manual,videoId:'manualVid02',composer:'八木沼悟志'};
-  kanji.creditsRecheck=CM.recheckStamp(kanji);
+  kanji.creditsRecheck=CM.recheckStamp(kanji,false,true);
   assert.equal(CM.targets([plain],'remix',new Set(),50,CT).length,1,'an unchecked confirmed value is checked once');
   assert.equal(CM.targets([manual,kanji],'remix',new Set(),50,CT).length,0);
   assert.deepEqual(CM.targets([manual,kanji],'remix',new Set(),50,CT,false,true).map(r=>r.videoId),['manualVid01']);
-  const stamped={...manual,creditsRecheck:CM.recheckStamp(manual,true)};
+  const stamped={...manual,creditsRecheck:CM.recheckStamp(manual,true,true)};
   assert.equal(CM.targets([stamped],'remix',new Set(),50,CT,false,true).length,0,'a MusicBrainz stamp settles it');
   const auto={videoId:'autoVid0001',title:'Song (X Remix)',composer:'Alice',creditsRecheck:CM.recheckStamp({composer:'Alice'},true)};
   assert.equal(CM.targets([{...auto,creditsRecheck:CM.recheckStamp(auto,true)}],'remix',new Set(),50,CT).length,0,'an :mb stamp satisfies a plain check');

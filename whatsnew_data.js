@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.52",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "Keep earlier recheck results: instead of marking every video unchecked, only videos that have confirmed values are checked once more for the recheck-source change."
+    ]
+  },
+  {
     "version": "1.60.51",
     "date": "2026-10-09",
     "summary": "",

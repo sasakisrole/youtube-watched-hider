@@ -261,7 +261,7 @@ async function main() {
     ui.progress(port, ok, success('Composer: Saved credit'));
     ui.progress(port, bad, {ok: false, reason: 'timeout'});
     ui.done(port);
-    assert.deepEqual(ui.marked, [['sampleVid01', CM.recheckStamp(ok)]]);
+    assert.deepEqual(ui.marked, [['sampleVid01', CM.recheckStamp(ok, false, true)]]);
     assert.equal(CM.targets([ok, bad], 'all', new Set(), 50, CT).map(r => r.videoId).join(), 'sampleVid02');
     ui.includeChecked(true);
     port = ui.start([ok, bad]);

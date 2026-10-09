@@ -57,7 +57,7 @@
     function mbOn() { return !!(mbToggle && mbToggle.checked); }
     function stampRecord(record, withMb) {
       if (typeof env.markRechecked !== 'function') return;
-      Promise.resolve(env.markRechecked(record.videoId, root.CreditMaintenance.recheckStamp(record, withMb))).catch(function () {});
+      Promise.resolve(env.markRechecked(record.videoId, root.CreditMaintenance.recheckStamp(record, withMb, true))).catch(function () {});
     }
     var review = root.CreditReview.create({
       getRecords: function () { return Array.from(snapshots.values()); },
