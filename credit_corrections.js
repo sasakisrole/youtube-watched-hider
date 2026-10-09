@@ -7,12 +7,13 @@
   function normalized(value) {
     return String(value || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
   }
-  function creditNames(value) {
+  function creditNames(value, separators) {
     var depth = 0, start = 0, names = [];
     for (var i = 0; i < value.length; i++) {
       if ('(（[【'.includes(value[i])) depth++;
       else if (')）]】'.includes(value[i])) depth--;
       else if (!depth && /[,，、]/u.test(value[i])) {
+        if (separators) separators.push(value[i]);
         names.push(value.slice(start, i).trim()); start = i + 1;
       }
     }
@@ -330,16 +331,21 @@
 
   function candidates(record, result, creditTarget) {
     if (!result || !result.ok || !result.maintenance) return [];
-    return ROLES.filter(function (role) {
-      var value = result.maintenance.credits[role];
-      return value && !sameContributors(value, record[role]) && !creditTarget.creditIsBlank(record[role])
-        && creditTarget.effectiveRoleSource(record, role) !== 'manual'
-        && creditTarget.isValidCreditValue(value, result.title);
-    }).map(function (role) {
-      return { videoId: record.videoId, role: role, value: result.maintenance.credits[role],
-        source: 'description-recheck', sourceDetail: 'https://www.youtube.com/watch?v=' + record.videoId,
+    return ROLES.map(function (role) {
+      var value = result.maintenance.credits[role], saved = record[role];
+      if (creditTarget.creditIsBlank(saved) || creditTarget.effectiveRoleSource(record, role) === 'manual') return null;
+      var source = 'description-recheck';
+      if (!value || sameContributors(value, saved)) {
+        var separators = [], names = creditNames(saved, separators);
+        if (!separators.some(function (separator) { return /[、，]/u.test(separator); })) return null;
+        value = names.join(', ');
+        source = 'description-format';
+      }
+      if (!creditTarget.isValidCreditValue(value, result.title)) return null;
+      return { videoId: record.videoId, role: role, value: value,
+        source: source, sourceDetail: 'https://www.youtube.com/watch?v=' + record.videoId,
         evidence: result.maintenance.evidence[role], selected: false };
-    });
+    }).filter(Boolean);
   }
 
   // A diagnostic snapshot; never include the full description or fetch payload.

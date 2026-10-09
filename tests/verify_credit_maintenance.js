@@ -139,13 +139,15 @@ check('critical title-as-composer regressions remain in tests only', () => {
   assert.deepEqual(result.credits,{composer:'ryo (supercell)',lyricist:'ryo (supercell)',arranger:'ryo (supercell)'});
 });
 
-check('recheck ignores list spacing, separators and order without changing names', () => {
+check('recheck ignores ASCII spacing and order but proposes non-ASCII separators', () => {
   const result = {ok:true,title:record.title,maintenance:analyze('Composer: Alice\nComposer: Bob')};
   for (const value of ['Alice,Bob', 'Alice，Bob', 'Alice、Bob', 'Bob, Alice']) {
     const saved = {...record,composer:value,arranger:''};
     const snapshot = JSON.stringify(saved);
-    assert.deepEqual(CM.candidates(saved,result,CT),[],value);
-    assert.equal(CM.exportItem(saved,result,CT).status,'ok');
+    const proposals = CM.candidates(saved,result,CT);
+    const formatting = /[、，]/u.test(value);
+    assert.deepEqual(proposals.map(p => [p.value, p.source]), formatting ? [['Alice, Bob', 'description-format']] : [], value);
+    assert.equal(CM.exportItem(saved,result,CT).status, formatting ? 'proposal' : 'ok');
     assert.equal(JSON.stringify(saved),snapshot);
   }
 });

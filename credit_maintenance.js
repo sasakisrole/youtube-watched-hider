@@ -71,7 +71,7 @@
     var review = root.CreditReview.create({
       getRecords: function () { return Array.from(snapshots.values()); },
       getMaterials: function () { return { candidates: Array.from(candidates.values()) }; },
-      filterItem: function (item) { return item.candidates.some(function (candidate) { return /^(?:description-recheck|musicbrainz-recheck|musicbrainz-reading)$/.test(candidate.source); }); },
+      filterItem: function (item) { return item.candidates.some(function (candidate) { return /^(?:description-recheck|description-format|musicbrainz-recheck|musicbrainz-reading)$/.test(candidate.source); }); },
       allowReject: false,
       limit: 1500,
       emptyMessage: message('history_recheckEmpty', '再点検で見つかった変更案をここに表示します。変更案がなくても、すべて正しいと確認できたわけではありません。'),
@@ -87,8 +87,8 @@
     // of spelling, case or script may only restyle the same person, and a
     // replacement sharing no name may be another alias; both are reviewed one by one.
     function ownProposal(item, value) {
-      // Same person written in Japanese, proven by the MusicBrainz reading.
-      if (item.candidates.length === 1 && item.candidates[0].source === 'musicbrainz-reading') return item.candidates[0].value === value;
+      // Same person proven by the MusicBrainz reading, or separator-only cleanup.
+      if (item.candidates.length === 1 && /^(?:musicbrainz-reading|description-format)$/.test(item.candidates[0].source)) return item.candidates[0].value === value;
       var own = item.candidates.filter(function (candidate) { return candidate.source === 'description-recheck'; });
       if (own.length !== 1 || own[0].value !== value) return false;
       var record = snapshots.get(item.videoId);
@@ -476,9 +476,17 @@
       // Keep the latest snapshot for every video seen on this page, even
       // after resetting the target queue. Proposals count roles; held/failed
       // count videos, and a proposed video may also have a held role.
-      var items = Array.from(exports.values());
-      var counts = { checked: items.length, proposals: candidates.size, held: 0, failed: 0 };
+      var items = structuredClone(Array.from(exports.values()));
+      var counts = { checked: items.length, proposals: candidates.size, adoptable: 0, held: 0, failed: 0 };
       items.forEach(function (item) {
+        Object.keys(item.roles).forEach(function (role) {
+          var key = item.videoId + ':' + role, fix = readingFixes.get(key), candidate = candidates.get(key);
+          var proposal = fix ? { value: fix.to, source: fix.kind === 'source' ? 'description-recheck' : 'musicbrainz-reading', adoptable: true }
+            : candidate ? { value: candidate.value, source: candidate.source,
+              adoptable: ownProposal({ videoId: item.videoId, role: role, candidates: [candidate] }, candidate.value) } : null;
+          item.roles[role].proposal = proposal;
+          if (proposal && proposal.adoptable) counts.adoptable++;
+        });
         if (item.status === 'failed') counts.failed++;
         if (Object.values(item.roles).some(function (role) { return !!role.heldReason; })) counts.held++;
       });

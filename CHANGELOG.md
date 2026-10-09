@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.58 (2026-10-09)
+
+- Export current recheck proposals and their adopt-all eligibility, including MusicBrainz readings and confirmed-value fixes. Offer bulk-adoptable comma separator cleanup while preserving contributor order, separators inside parentheses, and confirmed values.
+
 ## v1.60.57 (2026-10-09)
 
 - Merge romanized and Japanese names in the same credit when an exact-name MusicBrainz artist search confirms the same reading. Japanese-language rechecks with MusicBrainz enabled also revisit mixed-script credits, including confirmed values, without resetting other recheck results.

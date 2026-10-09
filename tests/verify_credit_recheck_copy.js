@@ -111,19 +111,19 @@ async function main() {
     assert.deepEqual(Object.keys(report).sort(), ['version', 'exportedAt', 'scope', 'counts', 'items'].sort());
     assert.equal(report.version, JSON.parse(read('manifest.json')).version); assert.equal(new Date(report.exportedAt).toISOString(), report.exportedAt);
     assert.equal(report.scope, 'all');
-    assert.deepEqual(report.counts, {checked: 4, proposals: 1, held: 1, failed: 1});
+    assert.deepEqual(report.counts, {checked: 4, proposals: 1, adoptable: 0, held: 1, failed: 1});
     assert.deepEqual(report.items.map(item => item.status), ['proposal', 'held', 'ok', 'failed']);
     const item = report.items[0];
     assert.deepEqual(Object.keys(item).sort(), ['videoId', 'title', 'channel', 'status', 'fetchReason', 'roles'].sort());
     assert.equal(item.videoId, 'sampleVid01'); assert.equal(item.title, 'Alpha'); assert.equal(item.channel, 'Example channel');
     assert.equal(item.fetchReason, '');
-    assert.deepEqual(item.roles.composer, {current: 'Saved credit', currentSource: 'auto', candidate: 'New credit', heldReason: '', evidence: ['Composer: New credit']});
-    assert.deepEqual(item.roles.lyricist, {current: 'Manual credit', currentSource: 'manual', candidate: 'Suggested credit', heldReason: '', evidence: ['Lyricist: Suggested credit']});
-    assert.deepEqual(item.roles.arranger, {current: '', currentSource: 'auto', candidate: '', heldReason: '', evidence: []});
+    assert.deepEqual(item.roles.composer, {current: 'Saved credit', currentSource: 'auto', candidate: 'New credit', proposal: {value: 'New credit', source: 'description-recheck', adoptable: false}, heldReason: '', evidence: ['Composer: New credit']});
+    assert.deepEqual(item.roles.lyricist, {current: 'Manual credit', currentSource: 'manual', candidate: 'Suggested credit', proposal: null, heldReason: '', evidence: ['Lyricist: Suggested credit']});
+    assert.deepEqual(item.roles.arranger, {current: '', currentSource: 'auto', candidate: '', proposal: null, heldReason: '', evidence: []});
     assert.equal(report.items[3].fetchReason, 'http-429');
     assert.equal(report.items[3].roles.composer.heldReason, '');
     assert.deepEqual(report.items[3].roles.composer.evidence, []);
-    assert.doesNotMatch(ui.copied.at(-1), /Unrelated promotional text|Never export raw response|description|html/);
+    assert.doesNotMatch(ui.copied.at(-1), /Unrelated promotional text|Never export raw response|"description"|"html"/);
     assert.equal(ui.saves, 0);
   });
   const heldCases = [
@@ -150,7 +150,7 @@ async function main() {
     const ui = boot(), port = ui.start([record]);
     ui.progress(port, record, success('Composer: New credit\nLyricist: https://example.com\nArranger: New contributor'));
     const report = await ui.report();
-    assert.deepEqual(report.counts, {checked: 1, proposals: 2, held: 1, failed: 0});
+    assert.deepEqual(report.counts, {checked: 1, proposals: 2, adoptable: 0, held: 1, failed: 0});
     assert.equal(report.items[0].status, 'proposal');
     assert.equal(report.items[0].roles.lyricist.heldReason, 'unparsed');
     assert.deepEqual(report.items[0].roles.lyricist.evidence, ['Lyricist: https://example.com']);
@@ -169,7 +169,7 @@ async function main() {
     port = ui.start([first, second]); ui.progress(port, first, success('Composer: Saved credit'));
     const report = await ui.report();
     assert.equal(report.scope, 'all'); assert.equal(report.items.length, 2);
-    assert.deepEqual(report.counts, {checked: 2, proposals: 0, held: 0, failed: 0});
+    assert.deepEqual(report.counts, {checked: 2, proposals: 0, adoptable: 0, held: 0, failed: 0});
     assert.equal(report.items[0].fetchReason, '');
   });
   await check('REQ-2/4: absent fetch result and unknown reason use empty strings', async () => {
@@ -288,6 +288,8 @@ async function main() {
       assert.equal(JSON.stringify(ui.runtime.mbSent), JSON.stringify([{type: 'enrichCreditsMb', artist: 'Example channel', title: 'Alpha'}]));
       const report = await ui.report();
       assert.equal(report.counts.proposals, proposals, stage);
+      assert.deepEqual(report.items[0].roles.lyricist.proposal, proposals ? {value: 'Carol, Dave', source: 'musicbrainz-recheck', adoptable: false} : null);
+      assert.equal(report.counts.adoptable, 0);
       assert.equal(report.items[0].musicbrainz.status, 'found');
       assert.equal(report.items[0].musicbrainz.stage, stage);
     }
@@ -351,6 +353,9 @@ async function main() {
     ui.done(port);
     await ui.click('creditRecheckAdoptAll');
     assert.deepEqual(seen, [true, false, false]);
+    const report = await ui.report();
+    assert.deepEqual(report.items.map(item => item.roles.composer.proposal.adoptable), seen);
+    assert.equal(report.counts.adoptable, 1);
   });
   const readingFound = {success: true, candidate: {composer: '八木沼悟志', lyricist: '', arranger: '', mbid: 'mb-9', roleRecordingIds: {},
     mbTitle: 'Alpha', stage: 'strict', manualReviewReason: '', sortNames: {'八木沼悟志': 'Yaginuma, Satoshi'}}};
@@ -365,6 +370,8 @@ async function main() {
     const report = await ui.report();
     assert.equal(report.counts.proposals, 1);
     assert.equal(report.items[0].roles.composer.musicbrainz, 'reading');
+    assert.deepEqual(report.items[0].roles.composer.proposal, {value: readingFound.candidate.composer, source: 'musicbrainz-reading', adoptable: true});
+    assert.equal(report.counts.adoptable, 1);
     ui.review.pending = 1;
     await ui.click('creditRecheckAdoptAll');
     assert.equal(accepted, true);
@@ -377,7 +384,11 @@ async function main() {
     ui.progress(port, record, success('Composer: Satoshi Yaginuma'));
     assert.equal((await ui.report()).counts.proposals, 1, 'proposed until MusicBrainz answers');
     await settle();
-    assert.equal((await ui.report()).counts.proposals, 0);
+    const after = await ui.report();
+    assert.equal(after.counts.proposals, 0);
+    assert.equal(after.items[0].roles.composer.proposal, null);
+    assert.equal(after.items[0].roles.composer.candidate, 'Satoshi Yaginuma');
+    assert.equal(after.counts.adoptable, 0);
   });
   await check('READING-3: a confirmed romanized value is rewritten only to its Japanese reading, and undone', async () => {
     const writes = [];
@@ -387,6 +398,9 @@ async function main() {
     ui.elements.creditRecheckMb.checked = true;
     const port = ui.start([record]);
     ui.progress(port, record, success('Unrelated text')); await settle(); ui.done(port);
+    const exported = await ui.report();
+    assert.deepEqual(exported.items[0].roles.composer.proposal, {value: readingFound.candidate.composer, source: 'musicbrainz-reading', adoptable: true});
+    assert.equal(exported.counts.adoptable, 1);
     assert.equal(ui.elements.creditRecheckAdoptAll.disabled, false);
     await ui.click('creditRecheckAdoptAll');
     assert.match(ui.confirms.at(-1), /1/);
@@ -462,6 +476,31 @@ async function main() {
     assert.equal(report.counts.proposals, 0);
     assert.equal(report.items[0].roles.composer.musicbrainz, 'different');
     assert.equal(ui.elements.creditRecheckAdoptAll.disabled, true);
+  });
+  await check('FORMAT-1: separator proposals preserve names, order and parentheses; ASCII and manual stay unchanged', async () => {
+    const cases = [
+      ['Naoki Itai\uff0c\u30c1\u30e7\u30fc\u30ad\u30e5\u30fc\u30e1\u30a4', 'Naoki Itai, \u30c1\u30e7\u30fc\u30ad\u30e5\u30fc\u30e1\u30a4'],
+      ['\u677e\u5742\u5eb7\u53f8(SUPA LOVE)\u3001Diggy-MO\u2019', '\u677e\u5742\u5eb7\u53f8(SUPA LOVE), Diggy-MO\u2019'],
+      ['Zed (One\u3001Two)\uff0cAlice', 'Zed (One\u3001Two), Alice'],
+      ['Zed\uff08One\uff0cTwo\uff09\u3001Alice', 'Zed\uff08One\uff0cTwo\uff09, Alice'],
+      ['Zed (One\u3001Two),Alice', null], ['Zed,Alice', null], ['Zed, Alice', null],
+      ['Zed\u3001Alice', null, true]
+    ];
+    for (const [saved, expected, manual] of cases) {
+      const ui = boot(), record = {...row(), composer: saved, ...(manual ? {creditRoleSources: {composer: 'manual'}} : {})};
+      const port = ui.start([record]);
+      ui.progress(port, record, success(manual ? 'Unrelated text' : 'Composer: ' + (expected || saved))); ui.done(port);
+      const report = await ui.report(), proposal = report.items[0].roles.composer.proposal;
+      assert.deepEqual(proposal, expected ? {value: expected, source: 'description-format', adoptable: true} : null, saved);
+      if (!manual) assert.equal(report.counts.adoptable, expected ? 1 : 0);
+      if (expected) {
+        let accepted;
+        ui.review.pending = 1;
+        ui.review.adoptAll = async accept => { accepted = accept({videoId: record.videoId, role: 'composer', candidates: [{value: expected, source: 'description-format'}]}, expected); return {targets: 0, adopted: 0, failed: 0}; };
+        await ui.click('creditRecheckAdoptAll');
+        assert.equal(accepted, proposal.adoptable);
+      }
+    }
   });
   await check('REQ-6: release and locale metadata', () => {
     assert.equal(JSON.parse(read('manifest.json')).version, read('CHANGELOG.md').match(/^## v(\d+\.\d+\.\d+)/m)[1]);

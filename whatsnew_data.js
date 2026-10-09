@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.58",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "Export current recheck proposals and their adopt-all eligibility, including MusicBrainz readings and confirmed-value fixes. Offer bulk-adoptable comma separator cleanup while preserving contributor order, separators inside parentheses, and confirmed values."
+    ]
+  },
+  {
     "version": "1.60.57",
     "date": "2026-10-09",
     "summary": "",
