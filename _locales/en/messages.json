@@ -3829,5 +3829,28 @@
         "content": "$1"
       }
     }
+  },
+  "history_recheckBucketBulk": {
+    "message": "Bulk adoption"
+  },
+  "history_recheckBucketVisual": {
+    "message": "Visual review"
+  },
+  "history_recheckBucketAdopted": {
+    "message": "Adopted"
+  },
+  "history_recheckBucketConfirm": {
+    "message": "Adopt $COUNT$ bulk proposals? $VISUAL$ proposals will remain for visual review.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "visual": {
+        "content": "$2"
+      }
+    }
+  },
+  "history_recheckStorageError": {
+    "message": "Could not save or restore proposals. Keep this page open and retry."
   }
 }

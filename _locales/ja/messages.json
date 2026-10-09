@@ -3829,5 +3829,28 @@
         "content": "$1"
       }
     }
+  },
+  "history_recheckBucketBulk": {
+    "message": "まとめて採用"
+  },
+  "history_recheckBucketVisual": {
+    "message": "要目視"
+  },
+  "history_recheckBucketAdopted": {
+    "message": "採用済み"
+  },
+  "history_recheckBucketConfirm": {
+    "message": "まとめて採用 $COUNT$件を採用します。要目視 $VISUAL$件は残ります。よろしいですか？",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "visual": {
+        "content": "$2"
+      }
+    }
+  },
+  "history_recheckStorageError": {
+    "message": "変更案を保存・復元できませんでした。画面を閉じずに再試行してください。"
   }
 }

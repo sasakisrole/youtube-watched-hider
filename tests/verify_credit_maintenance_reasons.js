@@ -51,7 +51,7 @@ check('identical repeated lists are not conflicts', () => {
 const record = {videoId: 'sampleVid01', title: 'Alpha', composer: 'Saved One', arranger: 'Saved Two', creditsSource: 'general'};
 function boot(locale, row = record) {
   const elements = {}, keys = new Set();
-  const element = () => ({children: [], textContent: '', value: 'all', listeners: {}, disabled: false,
+  const element = () => ({dataset:{},children: [], textContent: '', value: 'all', listeners: {}, disabled: false,
     append(...items) { this.children.push(...items); }, appendChild(item) { this.children.push(item); },
     addEventListener(type, fn) { this.listeners[type] = fn; }, checkValidity() { return true; }});
   let listener, materials;

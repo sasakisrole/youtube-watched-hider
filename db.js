@@ -466,7 +466,7 @@ if (typeof WatchedDB === 'undefined') {
           }
           const undoEntry = existing.creditReviewUndo && existing.creditReviewUndo[role];
           const restoresRecordedValue = hasRestoreRoleSource && undoEntry
-            && currentSource === 'manual' && undoEntry.after === currentValue
+            && (currentSource === 'manual' || (currentSource === 'recheck' && undoEntry.sourceAfter === 'recheck')) && undoEntry.after === currentValue
             && undoEntry.before === value && undoEntry.sourceBefore === restoreRoleSource;
           if (!nextIsBlank && !globalThis.CreditTarget.isValidCreditValue(value) && !restoresRecordedValue) {
             result = { error: 'invalid_value' };
@@ -478,14 +478,15 @@ if (typeof WatchedDB === 'undefined') {
             result = { error: currentSource === 'manual' ? 'already_verified' : 'invalid_value' };
             return;
           }
-          if (!adoptCandidate && (!currentIsBlank || nextIsBlank) && currentSource !== 'manual') {
+          if (!adoptCandidate && (!currentIsBlank || nextIsBlank) && currentSource !== 'manual' && !restoresRecordedValue) {
             result = { error: 'not_manual' };
             return;
           }
           // Undoing a cancel is the sole restore whose just-written state is
           // blank/non-manual (the cancel removed its manual key). It may only
-          // restore a nonblank manual value; every other restore requires manual.
-          if (hasRestoreRoleSource && currentSource !== 'manual'
+          // restore a nonblank manual value. Recheck undo must match the recorded adoption;
+          // every other restore requires manual.
+          if (hasRestoreRoleSource && currentSource !== 'manual' && !restoresRecordedValue
             && !(currentIsBlank && !nextIsBlank && restoreRoleSource === 'manual')) {
             result = { error: 'not_manual' };
             return;
@@ -503,6 +504,11 @@ if (typeof WatchedDB === 'undefined') {
           if (adoptCandidate && typeof currentValue === 'string'
             && !globalThis.CreditTarget.isValidCreditValue(currentValue)) {
             undoLog[role] = { before: currentValue, after: value,
+              sourceBefore: sourcePresent ? priorSources[role] : null };
+            if (args.adoptSource === 'recheck') undoLog[role].sourceAfter = 'recheck';
+          } else if ((adoptCandidate && args.adoptSource === 'recheck')
+            || (hasRestoreRoleSource && restoreRoleSource === 'recheck' && currentSource === 'manual')) {
+            undoLog[role] = { before: currentValue, after: value, sourceAfter: 'recheck',
               sourceBefore: sourcePresent ? priorSources[role] : null };
           } else delete undoLog[role];
           if (Object.keys(undoLog).length) existing.creditReviewUndo = undoLog;

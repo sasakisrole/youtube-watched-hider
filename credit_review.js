@@ -93,7 +93,7 @@
     channel.textContent = text(item.channel, scriptMessage('history_scripts_unknown_channel_10', 'チャンネル不明'));
     var badge = document.createElement('span');
     badge.className = 'credit-review-badge';
-    badge.textContent = text(ROLE_LABELS[item.role], item.role) + ' / ' + text(STATE_LABELS[item.state], item.state);
+    badge.textContent = text(ROLE_LABELS[item.role], item.role) + ' / ' + (options.bucketLabel || text(STATE_LABELS[item.state], item.state));
     header.append(title, channel, badge);
 
     var values = document.createElement('dl');
@@ -115,7 +115,7 @@
         var evidence = document.createElement('pre');
         evidence.className = 'credit-review-evidence';
         evidence.textContent = candidate.source === 'description-cleanup'
-          ? scriptMessage('history_recheckCleanupRemoved', 'Removed (review individually):') + ' ' + candidate.evidence
+          ? scriptMessage('history_recheckCleanupRemoved', '除去する部分（1件ずつ確認）：') + ' ' + candidate.evidence
           : candidate.evidence;
         card.appendChild(evidence);
       }
@@ -164,10 +164,10 @@
       choices.appendChild(noneLabel);
       card.appendChild(choices);
     }
-    var canAdopt = (item.state === 'auto_candidate' || item.state === 'needs_review')
+    var canAdopt = item.bucket !== 'adopted' && (item.state === 'auto_candidate' || item.state === 'needs_review')
       && !!adoptionValue(item);
     var canReject = options.allowReject !== false && (item.state === 'auto_candidate' || item.state === 'needs_review');
-    var canResolve = item.state === 'conflict';
+    var canResolve = item.bucket !== 'adopted' && item.state === 'conflict';
     var canUndo = !!options.canUndo;
     if (canAdopt || canReject || canResolve || canUndo) {
       var actions = document.createElement('div');
@@ -220,7 +220,7 @@
       var button = event.target && typeof event.target.closest === 'function'
         ? event.target.closest('[data-credit-review-state]') : event.target;
       var state = button && button.dataset ? button.dataset.creditReviewState : '';
-      if (state === 'all' || Object.prototype.hasOwnProperty.call(STATE_LABELS, state)) self.setFilter(state);
+      if (state === 'all' || Object.prototype.hasOwnProperty.call(self.env.bucketLabels || STATE_LABELS, state)) self.setFilter(state);
     });
     function handleAction(event) {
       var button = event.target && typeof event.target.closest === 'function'
@@ -306,15 +306,21 @@
         var record = recordsByVideoId.get(item.videoId);
         return self.env.allowReject === false || rejectedSignature(record, item.role) !== candidateSignature(item);
       });
+    if (this.env.bucketFor) allItems.forEach(function (item) {
+      item.bucket = self.env.bucketFor(item);
+      // Recheck can propose a reading/source fix even for a manually confirmed role.
+      if (item.bucket !== 'adopted' && item.candidates.length === 1) item.state = 'needs_review';
+    });
+    var labels = this.env.bucketLabels || STATE_LABELS;
     var limit = this.getLimit();
     var counts = {};
-    Object.keys(STATE_LABELS).forEach(function (state) { counts[state] = 0; });
-    allItems.forEach(function (item) { counts[item.state]++; });
+    Object.keys(labels).forEach(function (state) { counts[state] = 0; });
+    allItems.forEach(function (item) { counts[item.bucket || item.state]++; });
     // 上限は状態ごとに掛ける。一覧全体を先に切ると、並び順で先に来る状態が枠を
     // 使い切り、他の状態はタブに件数が出ているのに中身が空になる（実データでは
     // 要確認が27,215件あり、それ以外のタブが全滅した・2026-09-01）。
-    var groups = Object.keys(STATE_LABELS).map(function (state) {
-      var items = allItems.filter(function (item) { return item.state === state; }).slice(0, limit);
+    var groups = Object.keys(labels).map(function (state) {
+      var items = allItems.filter(function (item) { return (item.bucket || item.state) === state; }).slice(0, limit);
       return { state: state, totalCount: counts[state], displayedCount: items.length, items: items };
     });
     var displayedCount = groups.reduce(function (sum, group) { return sum + group.displayedCount; }, 0);
@@ -329,6 +335,7 @@
     };
     this.updateCounts();
     this.render();
+    if (this.env.onRefresh) this.env.onRefresh();
   };
 
   CreditReviewController.prototype.sendMutation = function (payload) {
@@ -404,7 +411,7 @@
     var item = this.findItem(videoId, role);
     var record = this.recordsByVideoId.get(String(videoId));
     var value = adoptionValue(item);
-    if (!item || !record || (item.state !== 'auto_candidate' && item.state !== 'needs_review') || !value) {
+    if (!item || !record || item.bucket === 'adopted' || (item.state !== 'auto_candidate' && item.state !== 'needs_review') || !value) {
       return { error: 'not_adoptable' };
     }
     return this.commitCandidate(videoId, role, value, scriptMessage('history_scripts_adopt_18', '採用'));
@@ -418,7 +425,7 @@
     this.reviewList.groups.forEach(function (group) {
       group.items.forEach(function (item) {
         var value = adoptionValue(item);
-        if ((item.state === 'auto_candidate' || item.state === 'needs_review') && value
+        if (item.bucket !== 'adopted' && (item.state === 'auto_candidate' || item.state === 'needs_review') && value
           && (typeof accept !== 'function' || accept(item, value))) targets.push(item);
       });
     });
@@ -461,7 +468,7 @@
     if (this.busy.has(key)) return { error: 'busy' };
     var item = this.findItem(videoId, role);
     var record = this.recordsByVideoId.get(String(videoId));
-    if (!item || !record || (item.state !== 'auto_candidate' && item.state !== 'needs_review')) {
+    if (!item || !record || item.bucket === 'adopted' || (item.state !== 'auto_candidate' && item.state !== 'needs_review')) {
       return { error: 'not_rejectable' };
     }
     var signature = candidateSignature(item);
@@ -570,6 +577,7 @@
 
   CreditReviewController.prototype.open = function () {
     if (!this.modal || !root.CreditTarget || typeof root.CreditTarget.getCreditReviewList !== 'function') return;
+    if (this.env.onOpen) this.env.onOpen();
     this.previousFocus = document.activeElement || null;
     this.refreshReviewList();
     this.modal.hidden = false;
@@ -588,7 +596,7 @@
   };
 
   CreditReviewController.prototype.setFilter = function (state) {
-    if (state !== 'all' && !Object.prototype.hasOwnProperty.call(STATE_LABELS, state)) return;
+    if (state !== 'all' && !Object.prototype.hasOwnProperty.call(this.env.bucketLabels || STATE_LABELS, state)) return;
     this.filterState = state;
     this.updateFilterButtons();
     this.render();
@@ -639,6 +647,7 @@
       var record = recordsByVideoId.get(item.videoId) || {};
       var key = self.roleKey(item.videoId, item.role);
       fragment.appendChild(createReviewItem(item, record[item.role], {
+        bucketLabel: self.env.bucketLabels && self.env.bucketLabels[item.bucket],
         busy: self.busy.has(key),
         allowReject: self.env.allowReject,
         canUndo: self.undoActions.has(key),
@@ -659,7 +668,7 @@
       var globalSummary = this.reviewList.truncated
         ? scriptMessage('history_scripts_review_shown', this.reviewList.totalCount + '件中' + this.reviewList.displayedCount + '件を表示', [this.reviewList.totalCount, this.reviewList.displayedCount])
         : scriptMessage('history_scripts_review_total', '全' + this.reviewList.totalCount + '件', [this.reviewList.totalCount]);
-      var filterSummary = this.filterState === 'all' ? '' : scriptMessage('history_scripts_review_filter', ' / ' + STATE_LABELS[this.filterState] + ' ' + items.length + '件', [STATE_LABELS[this.filterState], items.length]);
+      var filterSummary = this.filterState === 'all' ? '' : scriptMessage('history_scripts_review_filter', ' / ' + (this.env.bucketLabels || STATE_LABELS)[this.filterState] + ' ' + items.length + '件', [(this.env.bucketLabels || STATE_LABELS)[this.filterState], items.length]);
       this.summary.textContent = globalSummary + filterSummary;
     }
     if (this.feedback) {

@@ -183,7 +183,7 @@ async function artistUI({value = 'Eiko Shimamiya, 島みやえい子', proposed 
   const vm = require('vm'), elements = {}, calls = [], saves = [], stamps = [];
   const row = {videoId:'HHE7ZbsZOwc',title:'Song',lyricist:value,
     creditRoleSources:{lyricist:manual ? 'manual' : 'general'}};
-  const element = () => ({children:[],listeners:{},value:'all',checked:false,
+  const element = () => ({dataset:{},children:[],listeners:{},value:'all',checked:false,
     append(...items) { this.children.push(...items); }, appendChild(item) { this.children.push(item); },
     addEventListener(type,fn) { this.listeners[type]=fn; }, checkValidity() { return true; }});
   let listener, materials, reviewEnv;
@@ -211,7 +211,7 @@ async function artistTests() {
     assert.equal(merged.proposals[0].value,'島みやえい子');
     assert.equal(merged.proposals[0].source,'musicbrainz-reading');
     assert.equal(merged.proposals[0].sourceDetail,'https://musicbrainz.org/artist/eiko-id');
-    assert.equal(merged.elements.creditRecheckAdoptAll.disabled,false);
+    assert.equal(merged.elements.creditRecheckAdoptAll.disabled,true);
     assert.deepEqual(merged.calls.map(c=>c.type),['lookupMbArtistReading']);
     assert.equal(merged.calls[0].name,'島みやえい子');
     assert(merged.stamps[0].endsWith(':mb:src:artist'));
@@ -239,13 +239,10 @@ async function artistTests() {
   const manual=await artistUI({manual:true});
   await manual.elements.creditRecheckAdoptAll.listeners.click();
   await manual.elements.creditRecheckUndoAll.listeners.click();
-  check('artist reading: manual values use existing adopt and undo path',()=>{
-    assert.equal(manual.proposals.length,0); assert.equal(manual.saves.length,2);
-    assert.equal(manual.saves[0].value,'島みやえい子');
-    assert.equal(manual.saves[0].expectedCurrent,manual.row.lyricist);
-    assert.equal(manual.saves[1].value,manual.row.lyricist);
-    assert.equal(manual.saves[1].expectedCurrent,'島みやえい子');
-    assert.equal(manual.saves[1].expectedSource,'manual');
+  check('artist reading: manual mixed-script removal stays visible for individual adoption',()=>{
+    assert.equal(manual.proposals.length,1); assert.equal(manual.saves.length,0);
+    assert.equal(manual.proposals[0].value,'島みやえい子');
+    assert.equal(manual.elements.creditRecheckAdoptAll.disabled,true);
   });
   let queries=0;
   const lookup=CM.createArtistReadingLookup(async name=>{queries++;return {success:true,artists:[{name,'sort-name':'Shimamiya, Eiko',id:'id'}]};});

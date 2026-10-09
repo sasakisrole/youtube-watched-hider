@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.60 (2026-10-09)
+
+- Preserve pending recheck proposals across reloads and separate bulk adoption, visual review, and adopted items with accurate counts and report buckets.
+
 ## v1.60.59 (2026-10-09)
 
 - Offer individually reviewed cleanup of saved credit honorifics and trailing vocal annotations while preserving affiliations and confirmed values. Space MusicBrainz requests by 1.1 seconds, retry temporary failures within the queue, and export failure details.

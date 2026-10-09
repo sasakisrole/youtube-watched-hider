@@ -53,7 +53,83 @@
     var mbQueue = [], mbRunning = false, mbFound = 0, mbSame = 0, mbDifferent = 0;
     // Confirmed values rewritten only from a romanized name to the Japanese name
     // with the same MusicBrainz reading; applied and undone with adopt-all.
-    var readingFixes = new Map(), readingBatch = [];
+    var readingFixes = new Map();
+    var storageKey = 'creditRecheckProposalsV1', storageReady = false, storageQueue = Promise.resolve(), restoring = false;
+    var bucketLabels = {
+      bulk: message('history_recheckBucketBulk', 'まとめて採用'),
+      visual: message('history_recheckBucketVisual', '要目視'),
+      adopted: message('history_recheckBucketAdopted', '採用済み')
+    };
+    function allProposals() {
+      var merged = new Map(candidates);
+      readingFixes.forEach(function (fix, key) {
+        merged.set(key, Object.assign({}, fix, { value: fix.to,
+          source: fix.kind === 'source' ? 'description-recheck' : 'musicbrainz-reading' }));
+      });
+      return Array.from(merged.values());
+    }
+    function bucketFor(item) {
+      var key = item.videoId + ':' + item.role;
+      var proposal = readingFixes.get(key) || candidates.get(key) || (item.candidates || [])[0] || {};
+      var record = snapshots.get(item.videoId) || {};
+      return root.CreditMaintenance.proposalBucket(proposal.savedValue === undefined ? record[item.role] : proposal.savedValue,
+        proposal, !!(review && review.undoActions && review.undoActions.has(key)));
+    }
+    function bucketCounts() {
+      var counts = { bulk: 0, visual: 0, adopted: 0 };
+      allProposals().forEach(function (proposal) { counts[bucketFor(proposal)]++; });
+      return counts;
+    }
+    function persist() {
+      if (!storageReady || !chrome.storage) return;
+      var entries = allProposals().filter(function (p) { return bucketFor(p) !== 'adopted'; }).map(function (p) {
+        var record = snapshots.get(p.videoId) || {};
+        if (p.savedValue === undefined) {
+          p.savedValue = record[p.role] || '';
+          p.savedSource = root.CreditTarget.effectiveRoleSource(record, p.role);
+          var original = readingFixes.get(p.videoId + ':' + p.role) || candidates.get(p.videoId + ':' + p.role);
+          Object.assign(original, { savedValue: p.savedValue, savedSource: p.savedSource });
+        }
+        return Object.assign({}, p, { selected: false });
+      });
+      storageQueue = storageQueue.catch(function () {}).then(function () {
+        return chrome.storage.local.set({ [storageKey]: entries });
+      }).catch(function () { copyStatus.textContent = message('history_recheckStorageError', '変更案を保存できませんでした。画面を閉じずに再試行してください。'); });
+    }
+    async function restore() {
+      if (storageReady) {
+        var valid = new Set(root.CreditMaintenance.pendingProposals(allProposals(), env.getRecords(), root.CreditTarget)
+          .map(function (p) { return p.videoId + ':' + p.role; }));
+        [candidates, readingFixes].forEach(function (map) { map.forEach(function (p, key) {
+          if (!valid.has(key) && bucketFor(p) !== 'adopted') map.delete(key);
+        }); });
+        review.refreshReviewList(); return;
+      }
+      if (restoring) return;
+      if (!chrome.storage) { storageReady = true; return; }
+      restoring = true; start.disabled = true;
+      try {
+        var data = await chrome.storage.local.get(storageKey);
+        var rows = env.getRecords();
+        var entries = root.CreditMaintenance.pendingProposals(data[storageKey], rows, root.CreditTarget);
+        entries.forEach(function (p) {
+          var key = p.videoId + ':' + p.role;
+          if (candidates.has(key) || readingFixes.has(key)) return;
+          snapshots.set(p.videoId, structuredClone(rows.find(function (r) { return r.videoId === p.videoId; })));
+          (p.kind ? readingFixes : candidates).set(key, p);
+          checked.add(p.videoId);
+          if (!exports.has(p.videoId)) {
+            var r = snapshots.get(p.videoId), roles = {};
+            ['composer', 'lyricist', 'arranger'].forEach(function (role) { roles[role] = { current: r[role] || '', evidence: [] }; });
+            exports.set(p.videoId, { videoId: p.videoId, title: r.title, channel: r.channel, status: 'proposal', roles: roles });
+          }
+        });
+        storageReady = true;
+        review.refreshReviewList(); summary();
+        start.disabled = !!port;
+      } catch (_error) { copyStatus.textContent = message('history_recheckStorageError', '変更案を保存できませんでした。画面を閉じずに再試行してください。'); }
+      finally { restoring = false; }
+    }
     function mbOn() { return !!(mbToggle && mbToggle.checked); }
     // Unifying romanized names into Japanese helps Japanese readers only; other
     // languages keep names as credited. Unknown language keeps the Japanese default.
@@ -70,40 +146,47 @@
     }
     var review = root.CreditReview.create({
       getRecords: function () { return Array.from(snapshots.values()); },
-      getMaterials: function () { return { candidates: Array.from(candidates.values()) }; },
+      getMaterials: function () { return { candidates: allProposals() }; },
       filterItem: function (item) { return item.candidates.some(function (candidate) { return /^(?:description-recheck|description-format|description-cleanup|musicbrainz-recheck|musicbrainz-reading)$/.test(candidate.source); }); },
       allowReject: false,
       limit: 1500,
       emptyMessage: message('history_recheckEmpty', '再点検で見つかった変更案をここに表示します。変更案がなくても、すべて正しいと確認できたわけではありません。'),
-      saveCreditRole: env.saveCreditRole,
+      bucketLabels: bucketLabels,
+      bucketFor: bucketFor,
+      onOpen: restore,
+      onRefresh: function () { if (review) summary(); },
+      saveCreditRole: function (payload) {
+        var fix = readingFixes.get(payload.videoId + ':' + payload.role);
+        if (fix && payload.adoptCandidate) {
+          delete payload.adoptCandidate; delete payload.adoptSource;
+          if (fix.kind === 'source') payload.restoreRoleSource = 'recheck';
+        }
+        return env.saveCreditRole(payload);
+      },
       adoptSource: 'recheck',
     });
+    // Preserve this page's adopted cards and undo snapshots, including when
+    // the user restarts a pass over already checked videos.
+    function scanRecords() {
+      return env.getRecords().filter(function (record) {
+        return !review.undoActions || !['composer', 'lyricist', 'arranger'].some(function (role) {
+          return review.undoActions.has(record.videoId + ':' + role);
+        });
+      });
+    }
     function controls(running) {
       start.disabled = running; scope.disabled = running; limit.disabled = running; includeChecked.disabled = running;
       stop.disabled = !running;
     }
-    // Only roles whose sole proposal came from this recheck; other sources need their own review.
-    // Only proposals that add or remove contributors are bulk-adoptable. A change
-    // of spelling, case or script may only restyle the same person, and a
-    // replacement sharing no name may be another alias; both are reviewed one by one.
     function ownProposal(item, value) {
-      if (item.candidates.some(function (candidate) { return candidate.source === 'description-cleanup'; })) return false;
-      // Same person proven by the MusicBrainz reading, or separator-only cleanup.
-      if (item.candidates.length === 1 && /^(?:musicbrainz-reading|description-format)$/.test(item.candidates[0].source)) return item.candidates[0].value === value;
-      var own = item.candidates.filter(function (candidate) { return candidate.source === 'description-recheck'; });
-      if (own.length !== 1 || own[0].value !== value) return false;
-      var record = snapshots.get(item.videoId);
-      if (!record) return true;
-      var forward = root.CreditMaintenance.compareNames(record[item.role], value);
-      var backward = root.CreditMaintenance.compareNames(value, record[item.role]);
-      return (forward === 'adds' || backward === 'adds') && !root.CreditMaintenance.scriptMixedChange(record[item.role], value);
+      return item.candidates.length === 1 && item.candidates[0].value === value && bucketFor(item) === 'bulk';
     }
     function summary() {
       copy.disabled = checked.size === 0;
       save.disabled = copy.disabled;
-      adoptAll.disabled = !!port || adopting || (!review.adoptable(ownProposal).length && !readingFixes.size);
-      undoAll.disabled = !!port || adopting || !((review.lastBatch && review.lastBatch.length) || readingBatch.length);
-      var remaining = root.CreditMaintenance.targets(env.getRecords(), scope.value, checked, 500, root.CreditTarget, includeStamped, mbOn()).length;
+      adoptAll.disabled = !!port || mbRunning || adopting || !review.adoptable(ownProposal).length;
+      undoAll.disabled = !!port || adopting || !((review.lastBatch && review.lastBatch.length));
+      var remaining = root.CreditMaintenance.targets(scanRecords(), scope.value, checked, 500, root.CreditTarget, includeStamped, mbOn()).length;
       status.textContent = message('history_recheckProgress',
         'このページで点検 ' + checked.size + '件／変更案 ' + candidates.size + '項目／保留 ' + held + '件／取得失敗 ' + failed + '件／未点検 ' + (remaining === 500 ? '500+' : remaining) + '件',
         [checked.size, candidates.size, held, failed, remaining === 500 ? '500+' : remaining]);
@@ -113,7 +196,11 @@
           'MusicBrainz照合: 残り ' + mbLeft + '件／一致 ' + mbSame + '役割／追加の変更案 ' + mbFound + '項目／名義違い ' + mbDifferent + '役割',
           [mbLeft, mbSame, mbFound, mbDifferent]);
       }
+      var counts = bucketCounts();
+      status.textContent += ' / ' + bucketLabels.visual + ': ' + counts.visual;
+      status.style && (status.style.fontWeight = counts.visual ? 'bold' : '');
       if (!port) stop.disabled = !mbRunning;
+      persist();
     }
     // Held roles only, and only when the user opted in for this run (privacy policy).
     // The background queue keeps MusicBrainz at one request per second.
@@ -279,13 +366,13 @@
     // a YouTube-side stop (bot check, no tab) or unticking the box ends the run.
     function continueRun() {
       if (stopRequested || !continueBox || !continueBox.checked || port) return;
-      if (!root.CreditMaintenance.targets(env.getRecords(), scope.value, checked, 1, root.CreditTarget, includeStamped, mbOn()).length) return;
+      if (!root.CreditMaintenance.targets(scanRecords(), scope.value, checked, 1, root.CreditTarget, includeStamped, mbOn()).length) return;
       root.setTimeout(function () { if (!stopRequested && !port) runBatch(); }, 1500);
     }
     function runBatch() {
-      if (port || review.busy.size) return;
+      if (port || review.busy.size || restoring) return;
       if (!limit.checkValidity()) { limit.reportValidity(); return; }
-      var records = root.CreditMaintenance.targets(env.getRecords(), scope.value, checked, limit.value, root.CreditTarget, includeStamped, mbOn());
+      var records = root.CreditMaintenance.targets(scanRecords(), scope.value, checked, limit.value, root.CreditTarget, includeStamped, mbOn());
       if (!records.length) { summary(); return; }
       if (!env.begin()) {
         status.textContent = message('history_enrich_busy', '他のメンテナンス処理が実行中'); return;
@@ -302,9 +389,15 @@
           var record = batch.get(data.videoId);
           if (!record) return;
           checked.add(record.videoId);
-          ['composer', 'lyricist', 'arranger'].forEach(function (role) { candidates.delete(record.videoId + ':' + role); });
-          snapshots.set(record.videoId, record);
           var result = data.result;
+          if (result && result.ok) {
+            ['composer', 'lyricist', 'arranger'].forEach(function (role) {
+              var key = record.videoId + ':' + role;
+              candidates.delete(key); readingFixes.delete(key);
+              if (review.undoActions) review.undoActions.delete(key);
+            });
+            snapshots.set(record.videoId, record);
+          }
           exports.set(record.videoId, root.CreditMaintenance.exportItem(record, result, root.CreditTarget));
           exportScopes.add(batchScope);
           copyStatus.textContent = '';
@@ -401,35 +494,15 @@
     });
     adoptAll.addEventListener('click', async function () {
       var reviewCount = review.adoptable(ownProposal).length;
-      if (port || adopting || (!reviewCount && !readingFixes.size)) return;
-      var question = readingFixes.size
-        ? message('history_recheckAdoptAllConfirmReading',
-          '一覧の変更案をまとめて採用します。手動確定値は ' + readingFixes.size + '件だけ変更します（概要欄と一致する値を、値はそのままで再点検扱いに戻すものと、ローマ字を同じ読みの日本語表記にするもの）。採用した項目は元に戻せます。よろしいですか？', [readingFixes.size])
-        : message('history_recheckAdoptAllConfirm',
-          '一覧の変更案をまとめて採用します。手動確定値は変更しません。採用した項目は1件ずつ元に戻せます。よろしいですか？');
+      if (port || mbRunning || adopting || !reviewCount) return;
+      var counts = bucketCounts();
+      var question = message('history_recheckBucketConfirm',
+        'まとめて採用 ' + reviewCount + '件を採用します。要目視 ' + counts.visual + '件は残ります。よろしいですか？', [reviewCount, counts.visual]);
       if (typeof root.confirm === 'function' && !root.confirm(question)) return;
       adopting = true; summary();
       copyStatus.textContent = message('history_recheckAdoptAllRunning', 'まとめて採用しています。');
       try {
         var result = reviewCount ? await review.adoptAll(ownProposal) : { targets: 0, adopted: 0, failed: 0 };
-        if (readingFixes.size) {
-          readingBatch = [];
-          for (var fix of Array.from(readingFixes.values())) {
-            var saved = null;
-            try {
-              saved = await env.saveCreditRole(fix.kind === 'source'
-                ? { videoId: fix.videoId, role: fix.role, value: fix.from, expectedCurrent: fix.from, expectedSource: 'manual', restoreRoleSource: 'recheck' }
-                : { videoId: fix.videoId, role: fix.role, value: fix.to, expectedCurrent: fix.from, expectedSource: 'manual' });
-            } catch (_error) { saved = null; }
-            if (saved && saved.updated === true) {
-              readingFixes.delete(fix.videoId + ':' + fix.role);
-              readingBatch.push(fix);
-              var snapshot = snapshots.get(fix.videoId);
-              if (snapshot) snapshot[fix.role] = fix.to;
-              result.adopted++;
-            } else result.failed++;
-          }
-        }
         copyStatus.textContent = result.failed
           ? message('history_recheckAdoptAllPartial', result.adopted + '件を採用しました。採用できなかった' + result.failed + '件は一覧に残っています。', [result.adopted, result.failed])
           : message('history_recheckAdoptAllDone', result.adopted + '件を採用しました。', [result.adopted]);
@@ -440,7 +513,7 @@
       }
     });
     undoAll.addEventListener('click', async function () {
-      var batchSize = ((review.lastBatch && review.lastBatch.length) || 0) + readingBatch.length;
+      var batchSize = ((review.lastBatch && review.lastBatch.length) || 0);
       if (port || adopting || !batchSize) return;
       if (typeof root.confirm === 'function' && !root.confirm(message('history_recheckUndoAllConfirm',
         'まとめて採用した ' + batchSize + '件を元に戻します。よろしいですか？', [batchSize]))) return;
@@ -448,22 +521,6 @@
       copyStatus.textContent = message('history_recheckUndoAllRunning', 'まとめて元に戻しています。');
       try {
         var result = review.lastBatch && review.lastBatch.length ? await review.undoBatch() : { targets: 0, undone: 0, failed: 0 };
-        var keep = [];
-        for (var fix of readingBatch) {
-          var restored = null;
-          try {
-            restored = await env.saveCreditRole(fix.kind === 'source'
-              ? { videoId: fix.videoId, role: fix.role, value: fix.from, expectedCurrent: fix.from, expectedSource: 'recheck', adoptCandidate: true }
-              : { videoId: fix.videoId, role: fix.role, value: fix.from,
-              expectedCurrent: fix.to, expectedSource: 'manual' });
-          } catch (_error) { restored = null; }
-          if (restored && restored.updated === true) {
-            var snapshot = snapshots.get(fix.videoId);
-            if (snapshot) snapshot[fix.role] = fix.from;
-            result.undone++;
-          } else { result.failed++; keep.push(fix); }
-        }
-        readingBatch = keep;
         copyStatus.textContent = result.failed
           ? message('history_recheckUndoAllPartial', result.undone + '件を元に戻しました。戻せなかった' + result.failed + '件はその後に値が変わっています。', [result.undone, result.failed])
           : message('history_recheckUndoAllDone', result.undone + '件を元に戻しました。', [result.undone]);
@@ -486,13 +543,15 @@
       // after resetting the target queue. Proposals count roles; held/failed
       // count videos, and a proposed video may also have a held role.
       var items = structuredClone(Array.from(exports.values()));
-      var counts = { checked: items.length, proposals: candidates.size, adoptable: 0, held: 0, failed: 0 };
+      var counts = { checked: items.length, proposals: allProposals().length, adoptable: 0, held: 0, failed: 0 };
       items.forEach(function (item) {
         Object.keys(item.roles).forEach(function (role) {
           var key = item.videoId + ':' + role, fix = readingFixes.get(key), candidate = candidates.get(key);
-          var proposal = fix ? { value: fix.to, source: fix.kind === 'source' ? 'description-recheck' : 'musicbrainz-reading', adoptable: true }
-            : candidate ? { value: candidate.value, source: candidate.source,
-              adoptable: ownProposal({ videoId: item.videoId, role: role, candidates: [candidate] }, candidate.value) } : null;
+          var entry = fix || candidate;
+          var bucket = entry && bucketFor(entry);
+          var proposal = entry ? { value: fix ? fix.to : candidate.value,
+            source: fix ? (fix.kind === 'source' ? 'description-recheck' : 'musicbrainz-reading') : candidate.source,
+            bucket: bucket, adoptable: bucket === 'bulk' } : null;
           item.roles[role].proposal = proposal;
           if (proposal && proposal.adoptable) counts.adoptable++;
         });
@@ -536,11 +595,25 @@
     });
     scope.addEventListener('change', summary);
     document.getElementById('creditReviewOpen').addEventListener('click', summary);
+    var filters = document.getElementById('creditReviewFilters');
+    filters.textContent = '';
+    ['all', 'bulk', 'visual', 'adopted'].forEach(function (bucket) {
+      var button = document.createElement('button');
+      button.type = 'button'; button.className = 'sort-btn credit-review-filter';
+      button.dataset.creditReviewState = bucket;
+      var label = document.createElement('span');
+      label.textContent = (bucketLabels[bucket] || message('history_all', 'すべて')) + ' ';
+      var count = document.createElement('span'); count.dataset.creditReviewCount = bucket;
+      button.append(label, count); filters.appendChild(button);
+    });
+
     controls(false);
     copy.disabled = true;
     save.disabled = true;
     adoptAll.disabled = true;
     undoAll.disabled = true;
+    review.restoreProposals = restore;
+    review.buildReport = buildReport;
     return review;
   }
   root.CreditMaintenanceUI = { create: create };

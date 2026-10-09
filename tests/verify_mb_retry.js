@@ -98,7 +98,7 @@ async function main() {
     ui.progress(port, row, {ok: true, maintenance: {credits: {}, evidence: {}}});
     ui.done(port);
     const report = await ui.report();
-    assert.deepEqual(report.items[0].roles.composer.proposal, {value: 'Alice', source: 'description-cleanup', adoptable: false});
+    assert.deepEqual(report.items[0].roles.composer.proposal, {value: 'Alice', source: 'description-cleanup', adoptable: false, bucket: 'visual'});
     assert.equal(report.counts.adoptable, 0);
   });
   console.log(`RESULT: ${passed} passed / 0 failed`);

@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.60",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "Preserve pending recheck proposals across reloads and separate bulk adoption, visual review, and adopted items with accurate counts and report buckets."
+    ]
+  },
+  {
     "version": "1.60.59",
     "date": "2026-10-09",
     "summary": "",

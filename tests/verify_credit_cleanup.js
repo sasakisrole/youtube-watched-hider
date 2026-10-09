@@ -36,7 +36,7 @@ check('previously stamped cleanup is revisited without parser revision changes',
 const uiSource = fs.readFileSync(require.resolve('../credit_maintenance.js'), 'utf8');
 const ownStart = uiSource.indexOf('    function ownProposal(');
 const ownEnd = uiSource.indexOf('    function summary()', ownStart);
-const own = new Function('snapshots', 'root', uiSource.slice(ownStart, ownEnd) + ';return ownProposal;')(new Map(), {CreditMaintenance: CM});
+const own = new Function('bucketFor', uiSource.slice(ownStart, ownEnd) + ';return ownProposal;')(item => CM.proposalBucket('', item.candidates[0]));
 check('cleanup never bulk adopts, including mixed candidates', () => {
   for (const candidates of [[{source: 'description-cleanup', value: 'Alice'}], [{source: 'description-cleanup', value: 'Alice'}, {source: 'description-recheck', value: 'Alice'}]])
     assert.equal(own({candidates}, 'Alice'), false);

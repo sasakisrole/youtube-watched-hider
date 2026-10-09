@@ -16,13 +16,13 @@ async function check(name, fn) {
   catch (error) { failed++; console.error('FAIL ' + name + '\n' + error.stack); }
 }
 
-function boot(locale = 'en', clipboardMode = 'success', downloadMode = 'success', uiLanguage = 'ja') {
+function boot(locale = 'en', clipboardMode = 'success', downloadMode = 'success', uiLanguage = 'ja', realReview = false, storage = null) {
   const elements = {}, copied = [], ports = [], keys = new Set(), downloads = [], revoked = [];
   const runtime = {lastError: undefined, mbSent: [], mbResponse: null,
     sendMessage(message, callback) { this.mbSent.push(message); setImmediate(() => callback(this.mbResponse)); }};
   const confirms = [], accepted = [];
   let confirmAnswer = true;
-  const review = {busy: new Set(), refreshReviewList() {}, lastBatch: [], pending: 0,
+  let review = {busy: new Set(), refreshReviewList() {}, lastBatch: [], pending: 0,
     adoptable(accept) { return Array.from({length: this.pending}, () => ({})); },
     async adoptAll(accept) {
       const own = {candidates: [{source: 'description-recheck', value: 'New credit'}]};
@@ -33,7 +33,7 @@ function boot(locale = 'en', clipboardMode = 'success', downloadMode = 'success'
     },
     async undoBatch() { this.lastBatch = []; this.pending = 1; return {targets: 1, undone: 1, failed: 0}; }};
   let records = [], saves = 0;
-  const element = () => ({value: '', textContent: '', disabled: false, children: [], listeners: {},
+  const element = () => ({dataset: {}, value: '', textContent: '', disabled: false, children: [], listeners: {},
     append(...items) { this.children.push(...items); }, appendChild(item) { this.children.push(item); },
     addEventListener(type, fn) { this.listeners[type] = fn; }, checkValidity() { return true; }});
   const catalog = locale && JSON.parse(read('_locales/' + locale + '/messages.json'));
@@ -60,6 +60,16 @@ function boot(locale = 'en', clipboardMode = 'success', downloadMode = 'success'
       copied.push(text); return Promise.resolve();
     }}},
   };
+  if (realReview) {
+    const {doc} = require('./credit_review_test_dom').buildDoc();
+    const get = doc.getElementById.bind(doc);
+    doc.getElementById = id => { const el = elements[id] ||= get(id) || doc.register(id); el.checkValidity = () => true; return el; };
+    doc.ids.forEach((el,id) => { elements[id] = el; });
+    doc.ids.forEach(el => { el.checkValidity = () => true; });
+    ctx.document = doc;
+    vm.runInNewContext(read('credit_review.js'), ctx);
+  }
+  if (storage) ctx.chrome.storage = {local: {async get() { return structuredClone(storage); }, async set(values) { Object.assign(storage, structuredClone(values)); }}};
   ctx.historyUILanguage = () => uiLanguage;
   if (catalog) ctx.historyMessage = (key, fallback, values = []) => {
     keys.add(key); assert(catalog[key], 'missing locale key ' + key);
@@ -69,11 +79,21 @@ function boot(locale = 'en', clipboardMode = 'success', downloadMode = 'success'
   vm.runInNewContext(read('credit_maintenance.js'), ctx);
   const marked = [];
   let saveImpl = null;
-  ctx.CreditMaintenanceUI.create({getRecords: () => records, begin: () => true, end() {}, saveCreditRole(payload) { saves++; return saveImpl ? saveImpl(payload) : undefined; },
+  const controller = ctx.CreditMaintenanceUI.create({getRecords: () => records, begin: () => true, end() {}, async saveCreditRole(payload) {
+    saves++; const result = saveImpl ? await saveImpl(payload) : undefined;
+    if (!realReview || !result?.updated) return result;
+    const r = records.find(r => r.videoId === payload.videoId), role = payload.role;
+    const previous = {value:r[role], source:CT.effectiveRoleSource(r,role), sourcePresent:Object.hasOwn(r.creditRoleSources || {},role)};
+    r[role] = payload.value; r.creditRoleSources ||= {};
+    r.creditRoleSources[role] = payload.restoreRoleSource || (payload.adoptSource === 'recheck' ? 'recheck' : 'manual');
+    return {...result, previous, post:{value:r[role],source:r.creditRoleSources[role]}};
+  },
     markRechecked(videoId, stamp) { marked.push([videoId, stamp]); const live = records.find(r => r.videoId === videoId); if (live) live.creditsRecheck = stamp; return Promise.resolve(true); }});
-  const click = id => elements[id].listeners.click();
+  if (realReview) review = controller;
+  const click = id => realReview ? elements[id].trigger('click') : elements[id].listeners.click();
   return {elements, keys, copied, downloads, revoked, confirms, accepted, review, marked, runtime, ports, click, get saves() { return saves; },
     set confirmAnswer(value) { confirmAnswer = value; },
+    setRecords(rows) { records = rows; },
     setSave(fn) { saveImpl = fn; },
     includeChecked(value) { elements.creditRecheckIncludeChecked.checked = value; elements.creditRecheckIncludeChecked.listeners.change(); },
     start(rows, scope = 'all', limitValue = '50') {
@@ -111,13 +131,13 @@ async function main() {
     assert.deepEqual(Object.keys(report).sort(), ['version', 'exportedAt', 'scope', 'counts', 'items'].sort());
     assert.equal(report.version, JSON.parse(read('manifest.json')).version); assert.equal(new Date(report.exportedAt).toISOString(), report.exportedAt);
     assert.equal(report.scope, 'all');
-    assert.deepEqual(report.counts, {checked: 4, proposals: 1, adoptable: 0, held: 1, failed: 1});
+    assert.deepEqual(report.counts, {checked: 4, proposals: 1, adoptable: 1, held: 1, failed: 1});
     assert.deepEqual(report.items.map(item => item.status), ['proposal', 'held', 'ok', 'failed']);
     const item = report.items[0];
     assert.deepEqual(Object.keys(item).sort(), ['videoId', 'title', 'channel', 'status', 'fetchReason', 'roles'].sort());
     assert.equal(item.videoId, 'sampleVid01'); assert.equal(item.title, 'Alpha'); assert.equal(item.channel, 'Example channel');
     assert.equal(item.fetchReason, '');
-    assert.deepEqual(item.roles.composer, {current: 'Saved credit', currentSource: 'auto', candidate: 'New credit', proposal: {value: 'New credit', source: 'description-recheck', adoptable: false}, heldReason: '', evidence: ['Composer: New credit']});
+    assert.deepEqual(item.roles.composer, {current: 'Saved credit', currentSource: 'auto', candidate: 'New credit', proposal: {value: 'New credit', source: 'description-recheck', adoptable: true, bucket: 'bulk'}, heldReason: '', evidence: ['Composer: New credit']});
     assert.deepEqual(item.roles.lyricist, {current: 'Manual credit', currentSource: 'manual', candidate: 'Suggested credit', proposal: null, heldReason: '', evidence: ['Lyricist: Suggested credit']});
     assert.deepEqual(item.roles.arranger, {current: '', currentSource: 'auto', candidate: '', proposal: null, heldReason: '', evidence: []});
     assert.equal(report.items[3].fetchReason, 'http-429');
@@ -150,7 +170,7 @@ async function main() {
     const ui = boot(), port = ui.start([record]);
     ui.progress(port, record, success('Composer: New credit\nLyricist: https://example.com\nArranger: New contributor'));
     const report = await ui.report();
-    assert.deepEqual(report.counts, {checked: 1, proposals: 2, adoptable: 0, held: 1, failed: 0});
+    assert.deepEqual(report.counts, {checked: 1, proposals: 2, adoptable: 2, held: 1, failed: 0});
     assert.equal(report.items[0].status, 'proposal');
     assert.equal(report.items[0].roles.lyricist.heldReason, 'unparsed');
     assert.deepEqual(report.items[0].roles.lyricist.evidence, ['Lyricist: https://example.com']);
@@ -288,8 +308,8 @@ async function main() {
       assert.equal(JSON.stringify(ui.runtime.mbSent), JSON.stringify([{type: 'enrichCreditsMb', artist: 'Example channel', title: 'Alpha'}]));
       const report = await ui.report();
       assert.equal(report.counts.proposals, proposals, stage);
-      assert.deepEqual(report.items[0].roles.lyricist.proposal, proposals ? {value: 'Carol, Dave', source: 'musicbrainz-recheck', adoptable: false} : null);
-      assert.equal(report.counts.adoptable, 0);
+      assert.deepEqual(report.items[0].roles.lyricist.proposal, proposals ? {value: 'Carol, Dave', source: 'musicbrainz-recheck', adoptable: true, bucket: 'bulk'} : null);
+      assert.equal(report.counts.adoptable, proposals);
       assert.equal(report.items[0].musicbrainz.status, 'found');
       assert.equal(report.items[0].musicbrainz.stage, stage);
     }
@@ -335,7 +355,7 @@ async function main() {
     assert.equal(ui.elements.creditRecheckIncludeChecked.disabled, false);
     assert.equal(ui.runtime.mbSent.length, before);
   });
-  await check('ADOPT-2: only added or removed contributors are bulk-adoptable', async () => {
+  await check('ADOPT-2: replacement and spelling changes are bulk; Japanese to Latin needs visual review', async () => {
     const ui = boot(), add = {...row(), composer: 'Saved credit'}, swap = {...row('sampleVid02'), composer: '漢字名'},
       upper = {...row('sampleVid03'), composer: 'Hayato'};
     let seen = [];
@@ -352,10 +372,10 @@ async function main() {
     ui.progress(port, upper, success('Composer: HAYATO'));
     ui.done(port);
     await ui.click('creditRecheckAdoptAll');
-    assert.deepEqual(seen, [true, false, false]);
+    assert.deepEqual(seen, [true, false, true]);
     const report = await ui.report();
     assert.deepEqual(report.items.map(item => item.roles.composer.proposal.adoptable), seen);
-    assert.equal(report.counts.adoptable, 1);
+    assert.equal(report.counts.adoptable, 2);
   });
   const readingFound = {success: true, candidate: {composer: '八木沼悟志', lyricist: '', arranger: '', mbid: 'mb-9', roleRecordingIds: {},
     mbTitle: 'Alpha', stage: 'strict', manualReviewReason: '', sortNames: {'八木沼悟志': 'Yaginuma, Satoshi'}}};
@@ -370,7 +390,7 @@ async function main() {
     const report = await ui.report();
     assert.equal(report.counts.proposals, 1);
     assert.equal(report.items[0].roles.composer.musicbrainz, 'reading');
-    assert.deepEqual(report.items[0].roles.composer.proposal, {value: readingFound.candidate.composer, source: 'musicbrainz-reading', adoptable: true});
+    assert.deepEqual(report.items[0].roles.composer.proposal, {value: readingFound.candidate.composer, source: 'musicbrainz-reading', adoptable: true, bucket: 'bulk'});
     assert.equal(report.counts.adoptable, 1);
     ui.review.pending = 1;
     await ui.click('creditRecheckAdoptAll');
@@ -392,14 +412,14 @@ async function main() {
   });
   await check('READING-3: a confirmed romanized value is rewritten only to its Japanese reading, and undone', async () => {
     const writes = [];
-    const ui = boot(), record = {...row(), composer: 'Satoshi Yaginuma', creditRoleSources: {composer: 'manual'}};
+    const ui = boot('en', 'success', 'success', 'ja', true), record = {...row(), composer: 'Satoshi Yaginuma', creditRoleSources: {composer: 'manual'}};
     ui.setSave(async (payload) => { writes.push(payload); return {updated: true}; });
     ui.runtime.mbResponse = readingFound;
     ui.elements.creditRecheckMb.checked = true;
     const port = ui.start([record]);
     ui.progress(port, record, success('Unrelated text')); await settle(); ui.done(port);
     const exported = await ui.report();
-    assert.deepEqual(exported.items[0].roles.composer.proposal, {value: readingFound.candidate.composer, source: 'musicbrainz-reading', adoptable: true});
+    assert.deepEqual(exported.items[0].roles.composer.proposal, {value: readingFound.candidate.composer, source: 'musicbrainz-reading', adoptable: true, bucket: 'bulk'});
     assert.equal(exported.counts.adoptable, 1);
     assert.equal(ui.elements.creditRecheckAdoptAll.disabled, false);
     await ui.click('creditRecheckAdoptAll');
@@ -407,7 +427,7 @@ async function main() {
     assert.equal(JSON.stringify(writes), JSON.stringify([{videoId: 'sampleVid01', role: 'composer', value: '八木沼悟志', expectedCurrent: 'Satoshi Yaginuma', expectedSource: 'manual'}]));
     assert.equal(writes[0].adoptCandidate, undefined);
     await ui.click('creditRecheckUndoAll');
-    assert.equal(JSON.stringify(writes[1]), JSON.stringify({videoId: 'sampleVid01', role: 'composer', value: 'Satoshi Yaginuma', expectedCurrent: '八木沼悟志', expectedSource: 'manual'}));
+    assert.equal(JSON.stringify(writes[1]), JSON.stringify({videoId: 'sampleVid01', role: 'composer', value: 'Satoshi Yaginuma', expectedCurrent: '八木沼悟志', expectedSource: 'manual', restoreRoleSource: 'manual'}));
   });
   await check('READING-4: a confirmed value without a matching reading is never touched', async () => {
     const writes = [];
@@ -445,7 +465,7 @@ async function main() {
   await check('SOURCE-1: adoption keeps the recheck source, and a description-backed confirmed value can return to it', async () => {
     assert.match(read('credit_maintenance.js'), /adoptSource: 'recheck'/);
     const writes = [];
-    const ui = boot(), record = {...row(), composer: 'Saved credit', creditRoleSources: {composer: 'manual'}};
+    const ui = boot('en', 'success', 'success', 'ja', true), record = {...row(), composer: 'Saved credit', creditRoleSources: {composer: 'manual'}};
     ui.setSave(async (payload) => { writes.push(payload); return {updated: true}; });
     const port = ui.start([record]);
     ui.progress(port, record, success('Composer: Saved credit')); ui.done(port);
@@ -453,7 +473,7 @@ async function main() {
     await ui.click('creditRecheckAdoptAll');
     assert.equal(JSON.stringify(writes[0]), JSON.stringify({videoId: 'sampleVid01', role: 'composer', value: 'Saved credit', expectedCurrent: 'Saved credit', expectedSource: 'manual', restoreRoleSource: 'recheck'}));
     await ui.click('creditRecheckUndoAll');
-    assert.equal(JSON.stringify(writes[1]), JSON.stringify({videoId: 'sampleVid01', role: 'composer', value: 'Saved credit', expectedCurrent: 'Saved credit', expectedSource: 'recheck', adoptCandidate: true}));
+    assert.equal(JSON.stringify(writes[1]), JSON.stringify({videoId: 'sampleVid01', role: 'composer', value: 'Saved credit', expectedCurrent: 'Saved credit', expectedSource: 'recheck', restoreRoleSource: 'manual'}));
   });
   await check('SOURCE-2: a confirmed value the description does not back is left alone', async () => {
     const writes = [];
@@ -491,7 +511,7 @@ async function main() {
       const port = ui.start([record]);
       ui.progress(port, record, success(manual ? 'Unrelated text' : 'Composer: ' + (expected || saved))); ui.done(port);
       const report = await ui.report(), proposal = report.items[0].roles.composer.proposal;
-      assert.deepEqual(proposal, expected ? {value: expected, source: 'description-format', adoptable: true} : null, saved);
+      assert.deepEqual(proposal, expected ? {value: expected, source: 'description-format', adoptable: true, bucket: 'bulk'} : null, saved);
       if (!manual) assert.equal(report.counts.adoptable, expected ? 1 : 0);
       if (expected) {
         let accepted;
@@ -519,4 +539,5 @@ async function main() {
   console.log(`RESULT: ${passed} passed / ${failed} failed / 0 skipped`);
   process.exitCode = failed ? 1 : 0;
 }
-main().catch(error => { console.error(error); process.exitCode = 1; });
+if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
+module.exports = {boot, row, success};

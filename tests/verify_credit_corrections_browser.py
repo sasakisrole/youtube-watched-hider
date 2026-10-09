@@ -108,9 +108,13 @@ with sync_playwright() as p:
             page.wait_for_function('!document.getElementById("creditRecheckStart").disabled')
         scan()
         assert page.locator('.credit-review-item').count() == 3
+        assert page.locator('[data-credit-review-count=bulk]').inner_text() == '3'
+        assert page.locator('[data-credit-review-count=visual]').inner_text() == '0'
         assert page.evaluate('testWrites.length') == 0
         page.locator('[data-credit-review-action="adopt"]').first.click()
         page.wait_for_function('testWrites.length === 1')
+        assert page.locator('[data-credit-review-count=adopted]').inner_text() == '1'
+        assert page.locator('[data-credit-review-count=bulk]').inner_text() == '2'
         page.locator('#creditReviewList [data-credit-review-action="undo"]').first.click()
         page.wait_for_function('testWrites.length === 2')
         assert page.evaluate('testRecords[0].composer') == 'Old'
@@ -122,7 +126,7 @@ with sync_playwright() as p:
         scan()
         assert page.locator('.credit-review-item').count() == 9
         assert page.evaluate('testWrites.length') == 2
-        page.locator('#creditRecheckReset').click()
+        page.locator('#creditRecheckIncludeChecked').check()
         page.locator('#creditRecheckLimit').fill('50')
         page.locator('#creditRecheckStart').click()
         page.locator('#creditRecheckStop').click()
@@ -160,7 +164,7 @@ with sync_playwright() as p:
         page.evaluate('creditReviewController.open()')
         scan()
         assert page.locator('#creditReviewTitle').inner_text() == 'Recheck saved credits'
-        assert 'Scanned on this page: 3' in page.locator('#creditRecheckStatus').inner_text()
+        assert 'Scanned on this page: 4' in page.locator('#creditRecheckStatus').inner_text()
         assert page.locator('#creditReviewList').inner_text().find('Composer: Alice') >= 0
 
         (output / 'checks.json').write_text(json.dumps({'checks': checks, 'keyboard': 'passed', 'rows': 9}, indent=2), encoding='utf-8')

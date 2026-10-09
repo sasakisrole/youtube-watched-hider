@@ -391,7 +391,24 @@
     }
     return { success: true, processed: processed, total: ids.length, failed: failed, stopped: stopped, aborted: !!(signal && signal.aborted) };
   }
-  var api = { exportItem: exportItem, analyze: analyze, targets: targets, candidates: candidates, scan: scan, isRemix: isRemix,
+  // Recheck-only presentation policy; history verification states stay unchanged.
+  function proposalBucket(saved, proposal, adopted) {
+    if (adopted) return 'adopted';
+    var value = proposal.value === undefined ? proposal.to : proposal.value;
+    if (proposal.source === 'description-cleanup'
+      || (JAPANESE_SCRIPT.test(String(saved || '').normalize('NFKC')) && isLatinName(value))) return 'visual';
+    var adds = compareNames(saved, value) === 'adds' || compareNames(value, saved) === 'adds';
+    return adds && scriptMixedChange(saved, value) ? 'visual' : 'bulk';
+  }
+  function pendingProposals(entries, records, creditTarget) {
+    var byId = new Map(records.map(function (r) { return [r.videoId, r]; }));
+    return (Array.isArray(entries) ? entries : []).filter(function (entry) {
+      var record = entry && byId.get(entry.videoId);
+      return record && ROLES.includes(entry.role) && entry.savedValue === (record[entry.role] || '')
+        && entry.savedSource === creditTarget.effectiveRoleSource(record, entry.role);
+    });
+  }
+  var api = { proposalBucket: proposalBucket, pendingProposals: pendingProposals, exportItem: exportItem, analyze: analyze, targets: targets, candidates: candidates, scan: scan, isRemix: isRemix,
     recheckStamp: recheckStamp, PARSER_REVISION: PARSER_REVISION, sameContributors: sameContributors,
     compareNames: compareNames, namesOnTopicLine: namesOnTopicLine, topicLineNames: topicLineNames,
     mixedJapaneseNames: mixedJapaneseNames, createArtistReadingLookup: createArtistReadingLookup,
