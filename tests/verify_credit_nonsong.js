@@ -25,6 +25,14 @@ check('topic and manual are excluded',()=>{for(const src of ['topic','manual']) 
 check('unrelated BGM does not clear song credits',()=>assert.deepEqual(proposals({title:'Alpha',composer:'Alice',creditsSource:'general'},'曲名：Alpha\n作曲：Alice\nBGM：Bob'),[]));
 check('material heading applies to role evidence',()=>assert.equal(proposals({title:'Discussion',composer:'Alice',creditsSource:'general'},'【使用楽曲】\n作曲：Alice')[0].source,'description-nonsong'));
 check('a title-linked song keeps credits under a material heading',()=>assert.deepEqual(proposals({title:'Alpha',composer:'Alice',creditsSource:'general'},'曲名：Alpha\n【使用楽曲】\n作曲：Alice'),[]));
+check('a soundtrack track named BGM keeps its composer',()=>assert.deepEqual(proposals({title:'Game OST 107. Theme',composer:'Nor',creditsSource:'general'},'Event Menu BGM\n\nComposer: Nor (Twitter: https://example.com/nor)'),[]));
+check('a soundtrack upload with a BGM label keeps its composer',()=>assert.deepEqual(proposals({title:'Game OST 12. Battle',composer:'Nor',creditsSource:'general'},'【BGM】\nComposer: Nor'),[]));
+check('a free-BGM notice sentence is not an attribution label',()=>assert.deepEqual(proposals({title:'Banbado (Shiron Remix) - Shiron',arranger:'Shiron',creditsSource:'general'},'使用可能なフリーBGMとなっております。\n\nMusic title: Banbado (Shiron Remix)\nArranger: Shiron'),[]));
+check('a name inside a longer word does not match a material line',()=>assert.deepEqual(proposals({title:'Talk',composer:'Nor',creditsSource:'general'},'BGM: Normal Sounds\n\nComposer: Nor'),[]));
+check('an anime name quoted in the title does not link the theme song',()=>assert.equal(proposals({title:'Clip｜アニメ『Galaxy Train』',composer:'吉田 拓郎 歌唱：キャンディーズ',creditsSource:'general'},'『Galaxy Train』本編はこちら\n\n★主題歌：キャンディーズ「Fly」\n作詞：喜多條 忠　作曲：吉田 拓郎　歌唱：キャンディーズ')[0].source,'description-nonsong'));
+check('a name with a separate singer credit is dropped and the song composer kept',()=>assert.deepEqual(proposals({title:'MindaRyn「Altair」PV',composer:'土井浩平, 吉田 拓郎 歌唱：キャンディーズ',creditsSource:'general'},'歌：MindaRyn　作詞：亀山陽平　作曲/編曲：土井浩平\n作詞：喜多條 忠　作曲：吉田 拓郎　歌唱：キャンディーズ').map(p=>[p.source,p.value]),[['description-cleanup','土井浩平']]));
+check('a slash-joined singer note keeps the name',()=>assert.equal(proposals({title:'YOU / Group',composer:'Twinfield,くじら/歌唱：礼衣',creditsSource:'general'},'作詞作曲：Twinfield,くじら/歌唱：礼衣')[0].value,'Twinfield,くじら'));
+check('an honorific in the description does not become a proposal',()=>assert.deepEqual(proposals({title:'Song',lyricist:'まろん（IOSYS）',creditsSource:'general'},'Words：まろん（IOSYS）様'),[]));
 async function main(){
   const {boot} = require('./verify_credit_recheck_copy');
   const rows = [structuredClone(examples[0][0])], storage = {};

@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.62 (2026-10-10)
+
+- Narrow the non-song check: only BGM attribution labels count (not phrases such as "Event Menu BGM" or a free-BGM notice), soundtrack uploads and songs named on a "Music title" line are kept, an anime or game name quoted in the title no longer counts as the song, and names match only as whole words. A name followed by a separate singer credit is dropped while the song's own composer stays, and an honorific in the description no longer becomes a proposal.
+
 ## v1.60.61 (2026-10-10)
 
 - Offer individually reviewed removal of non-song description credits, prevent automatic refill, and support undo.

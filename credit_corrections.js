@@ -189,9 +189,14 @@
     var candidateLines = { composer: [], lyricist: [], arranger: [] };
     var nonSongLines = [], linkedSong = false;
     var materialHeading = '';
-    var materialPattern = /(?:\bBGM\b|使用楽曲|使用曲|音楽素材|Music provided by|フリーBGM)/iu;
+    // Only attribution labels count; a phrase such as "Event Menu BGM" names the track itself.
+    var materialPattern = /(?:^|[\s【\[■◆●▼・#])BGM\s*(?:[:：】\]]|by\b|提供)|使用楽曲|使用曲|音楽素材|使用素材|使用させていただいた素材|Music provided by/iu;
+    // A quoted anime or game name in the title is the work, not the song.
+    var workKeys = new Set();
+    for (var work of String(title || '').normalize('NFKC').matchAll(/(?:アニメ|映画|劇場版|ドラマ|ゲーム)\s*[「『]([^」』]+)[」』]/gu)) workKeys.add(normalized(work[1]));
     String(description || '').split(/\r?\n/).forEach(function (line) {
       var trimmed = line.trim();
+      if (!trimmed) materialHeading = '';
       var segments = extract(line);
       var headingLine = segments.length && typeof segments[0].prefix === 'string'
         ? segments[0].prefix.trim().replace(/[/／|｜;；]+\s*$/u, '').trim() : trimmed;
@@ -209,7 +214,7 @@
           if (!/^(?:credits?|クレジット|staff|スタッフ)$/iu.test(name) && !(match[1] && extract('[' + name + ']: Example Person').length)) {
             var key = normalized(name);
             var matches = key.length > 0 && targetKeys.has(key);
-            if (matches) linkedSong = true;
+            if (matches && !workKeys.has(key)) linkedSong = true;
             if (!materialPattern.test(headingLine)) materialHeading = '';
             if (isRemix(title) && !isRemix(name)) matches = false;
             namedKey = key;
@@ -218,6 +223,8 @@
         }
       }
       if (trimmed.includes(' · ') && targetKeys.has(normalized(trimmed.split(' · ')[0]))) linkedSong = true;
+      var titleLine = /^(?:music\s+title|song\s+title|曲名)\s*[:：]\s*(.+)$/iu.exec(trimmed);
+      if (titleLine && targetKeys.has(normalized(titleLine[1]))) linkedSong = true;
       if (materialPattern.test(trimmed) || (materialHeading && segments.length)) {
         nonSongLines.push({line: trimmed, heading: materialHeading, roles: segments.flatMap(function (s) { return s.roles; })});
       }
@@ -340,6 +347,13 @@
     }).slice(0, Math.max(1, Math.min(500, Number(limit) || 50)));
   }
 
+  function namesOnLine(line, value) {
+    var text = String(line || '').normalize('NFKC'), names = creditNames(String(value || ''));
+    return names.length > 0 && names.every(function (name) {
+      var escaped = name.normalize('NFKC').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp('(?:^|[^\\p{L}\\p{N}])' + escaped + '(?:$|[^\\p{L}\\p{N}])', 'iu').test(text);
+    });
+  }
   function candidates(record, result, creditTarget) {
     if (!result || !result.ok || !result.maintenance) return [];
     return ROLES.map(function (role) {
@@ -347,20 +361,38 @@
       if (creditTarget.creditIsBlank(saved) || creditTarget.effectiveRoleSource(record, role) === 'manual') return null;
       var cleanup = creditTarget.cleanupCreditValue(saved, record.title);
       var analysis = result.maintenance;
+      // Soundtrack uploads are the music itself even when the description says BGM.
+      var nonSongCheck = creditTarget.effectiveRoleSource(record, role) === 'general'
+        && !/\bOST\b|サウンドトラック|soundtrack/iu.test(record.title || '') && analysis.linkedSong === false;
       // A song's own MV can name its tie-in or supplier, so material lines count only when no heading or Topic row ties the description to this title.
-      var material = !analysis.linkedSong && (analysis.nonSongLines || []).find(function (entry) {
-        return (entry.roles.includes(role) || !entry.roles.length) && normalized(entry.line).includes(normalized(cleanup ? cleanup.value : saved));
+      var material = nonSongCheck && (analysis.nonSongLines || []).find(function (entry) {
+        return (entry.roles.includes(role) || !entry.roles.length) && namesOnLine(entry.line, cleanup ? cleanup.value : saved);
       });
-      var annotated = cleanup && analysis.linkedSong === false && (analysis.candidateLines[role] || []).length;
-      if (creditTarget.effectiveRoleSource(record, role) === 'general' && (material || annotated)) {
+      // Every name carrying an honorific or a singer note means the value was copied from another work's credit line.
+      var chunks = creditNames(String(saved));
+      var annotated = nonSongCheck && chunks.length && chunks.every(function (chunk) { return creditTarget.cleanupCreditValue(chunk, record.title); })
+        && (analysis.candidateLines[role] || []).length;
+      if (material || annotated) {
         return { videoId: record.videoId, role: role, value: '', source: 'description-nonsong',
           sourceDetail: 'https://www.youtube.com/watch?v=' + record.videoId,
           evidence: material ? (material.heading + '\n' + material.line).trim() : analysis.candidateLines[role].join('\n'), selected: false };
+      }
+      // A name followed by a separate singer credit came from another song's line; a slash-joined singer is the same line.
+      if (nonSongCheck && chunks.length > 1) {
+        var kept = chunks.filter(function (chunk) {
+          var tidy = creditTarget.cleanupCreditValue(chunk, record.title);
+          return !(tidy && /^\s+(?:歌唱|vo\.|vocals?)/iu.test(tidy.removed));
+        });
+        if (kept.length && kept.length < chunks.length) return { videoId: record.videoId, role: role, value: kept.join(', '),
+          source: 'description-cleanup', sourceDetail: 'https://www.youtube.com/watch?v=' + record.videoId,
+          evidence: chunks.filter(function (chunk) { return kept.indexOf(chunk) === -1; }).join(', '), selected: false };
       }
       if (cleanup) return { videoId: record.videoId, role: role, value: cleanup.value,
         source: 'description-cleanup', sourceDetail: 'https://www.youtube.com/watch?v=' + record.videoId,
         evidence: cleanup.removed, selected: false };
       var source = 'description-recheck';
+      var tidy = value && creditTarget.cleanupCreditValue(value, record.title);
+      if (tidy) value = tidy.value;
       if (!value || sameContributors(value, saved)) {
         var separators = [], names = creditNames(saved, separators);
         if (!separators.some(function (separator) { return /[、，]/u.test(separator); })) return null;
