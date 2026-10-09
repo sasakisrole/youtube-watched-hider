@@ -3725,6 +3725,14 @@
   "history_recheckUndoAll": {
     "message": "まとめて元に戻す"
   },
+  "history_recheckUndoAllConfirm": {
+    "message": "まとめて採用した $COUNT$件を元に戻します。よろしいですか？",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
   "history_recheckUndoAllRunning": {
     "message": "まとめて元に戻しています。"
   },

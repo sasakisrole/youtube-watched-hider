@@ -3725,6 +3725,14 @@
   "history_recheckUndoAll": {
     "message": "Undo all adoptions"
   },
+  "history_recheckUndoAllConfirm": {
+    "message": "Undo the $COUNT$ adoptions made at once?",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
   "history_recheckUndoAllRunning": {
     "message": "Undoing adoptions."
   },

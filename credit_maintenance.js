@@ -182,6 +182,8 @@
     });
     undoAll.addEventListener('click', async function () {
       if (port || adopting || !(review.lastBatch && review.lastBatch.length)) return;
+      if (typeof root.confirm === 'function' && !root.confirm(message('history_recheckUndoAllConfirm',
+        'まとめて採用した ' + review.lastBatch.length + '件を元に戻します。よろしいですか？', [review.lastBatch.length]))) return;
       adopting = true; summary();
       copyStatus.textContent = message('history_recheckUndoAllRunning', 'まとめて元に戻しています。');
       try {

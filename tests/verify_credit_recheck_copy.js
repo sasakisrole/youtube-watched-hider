@@ -238,6 +238,11 @@ async function main() {
     assert.deepEqual(ui.accepted, [true, false]);
     assert.equal(ui.elements.creditRecheckCopyStatus.textContent, '1件を採用しました。');
     assert.equal(ui.elements.creditRecheckUndoAll.disabled, false);
+    ui.confirmAnswer = false;
+    await ui.click('creditRecheckUndoAll');
+    assert.equal(ui.review.lastBatch.length, 1, 'cancelled undo keeps the batch');
+    assert.equal(ui.confirms.at(-1), 'まとめて採用した 1件を元に戻します。よろしいですか？');
+    ui.confirmAnswer = true;
     await ui.click('creditRecheckUndoAll');
     assert.equal(ui.elements.creditRecheckCopyStatus.textContent, '1件を元に戻しました。');
     assert.equal(ui.elements.creditRecheckUndoAll.disabled, true);
@@ -250,7 +255,7 @@ async function main() {
     for (const key of ['history_recheckCopy', 'history_recheckCopySuccess', 'history_recheckCopyFailure',
       'history_recheckSave', 'history_recheckSaveSuccess', 'history_recheckSaveFailure',
       'history_recheckAdoptAll', 'history_recheckAdoptAllConfirm', 'history_recheckAdoptAllRunning', 'history_recheckAdoptAllDone',
-      'history_recheckAdoptAllPartial', 'history_recheckAdoptAllFailure', 'history_recheckUndoAll', 'history_recheckUndoAllRunning',
+      'history_recheckAdoptAllPartial', 'history_recheckAdoptAllFailure', 'history_recheckUndoAll', 'history_recheckUndoAllConfirm', 'history_recheckUndoAllRunning',
       'history_recheckUndoAllDone', 'history_recheckUndoAllPartial', 'history_recheckUndoAllFailure']) assert(ja[key] && en[key]);
   });
   console.log(`RESULT: ${passed} passed / ${failed} failed / 0 skipped`);

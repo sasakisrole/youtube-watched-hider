@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.36 (2026-10-09)
+
+- Ask for confirmation before undoing a batch of adopted credit proposals.
+
 ## v1.60.35 (2026-10-09)
 
 - Treat a remix's own title stored in a credit field by older parsing as invalid, so "Repair invalid credit values" can clear it after preview.
