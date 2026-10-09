@@ -3690,5 +3690,64 @@
   },
   "history_recheckSaveFailure": {
     "message": "Could not save results."
+  },
+  "history_recheckAdoptAll": {
+    "message": "Adopt all proposals"
+  },
+  "history_recheckAdoptAllConfirm": {
+    "message": "Adopt all listed proposals? Manually confirmed values are not changed, and each adopted item can be undone individually."
+  },
+  "history_recheckAdoptAllRunning": {
+    "message": "Adopting proposals."
+  },
+  "history_recheckAdoptAllDone": {
+    "message": "Adopted $ADOPTED$ items.",
+    "placeholders": {
+      "adopted": {
+        "content": "$1"
+      }
+    }
+  },
+  "history_recheckAdoptAllPartial": {
+    "message": "Adopted $ADOPTED$ items. $FAILED$ items could not be adopted and remain listed.",
+    "placeholders": {
+      "adopted": {
+        "content": "$1"
+      },
+      "failed": {
+        "content": "$2"
+      }
+    }
+  },
+  "history_recheckAdoptAllFailure": {
+    "message": "Could not finish adopting proposals. Check the list for their current state."
+  },
+  "history_recheckUndoAll": {
+    "message": "Undo all adoptions"
+  },
+  "history_recheckUndoAllRunning": {
+    "message": "Undoing adoptions."
+  },
+  "history_recheckUndoAllDone": {
+    "message": "Undid $UNDONE$ adoptions.",
+    "placeholders": {
+      "undone": {
+        "content": "$1"
+      }
+    }
+  },
+  "history_recheckUndoAllPartial": {
+    "message": "Undid $UNDONE$ adoptions. $FAILED$ items changed afterward and were kept.",
+    "placeholders": {
+      "undone": {
+        "content": "$1"
+      },
+      "failed": {
+        "content": "$2"
+      }
+    }
+  },
+  "history_recheckUndoAllFailure": {
+    "message": "Could not finish undoing adoptions. Check the list for their current state."
   }
 }

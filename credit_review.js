@@ -407,6 +407,44 @@
     return this.commitCandidate(videoId, role, value, scriptMessage('history_scripts_adopt_18', '採用'));
   };
 
+  // Sequential, through the same CAS route as a single adoption: a role whose
+  // stored value changed meanwhile fails and stays listed instead of being overwritten.
+  CreditReviewController.prototype.adoptAll = async function (accept) {
+    if (!this.reviewList) this.refreshReviewList();
+    var targets = [];
+    this.reviewList.groups.forEach(function (group) {
+      group.items.forEach(function (item) {
+        var value = adoptionValue(item);
+        if ((item.state === 'auto_candidate' || item.state === 'needs_review') && value
+          && (typeof accept !== 'function' || accept(item, value))) targets.push(item);
+      });
+    });
+    var summary = { targets: targets.length, adopted: 0, failed: 0 };
+    this.lastBatch = [];
+    for (var i = 0; i < targets.length; i++) {
+      var result = await this.adopt(targets[i].videoId, targets[i].role);
+      if (result && result.updated === true) {
+        summary.adopted++;
+        this.lastBatch.push({ videoId: targets[i].videoId, role: targets[i].role });
+      } else summary.failed++;
+    }
+    return summary;
+  };
+
+  // The batch is reversible as a batch; a role changed after adoption keeps its new value.
+  CreditReviewController.prototype.undoBatch = async function () {
+    var batch = this.lastBatch || [];
+    var summary = { targets: batch.length, undone: 0, failed: 0 };
+    var remaining = [];
+    for (var i = 0; i < batch.length; i++) {
+      var result = await this.undo(batch[i].videoId, batch[i].role);
+      if (result && result.updated === true) summary.undone++;
+      else { summary.failed++; remaining.push(batch[i]); }
+    }
+    this.lastBatch = remaining;
+    return summary;
+  };
+
   CreditReviewController.prototype.reject = async function (videoId, role) {
     if (this.env.allowReject === false) return { error: 'not_rejectable' };
     var key = this.roleKey(videoId, role);

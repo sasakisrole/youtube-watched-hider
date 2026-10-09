@@ -249,7 +249,7 @@ async function testSafetyGuards() {
     && result.error === 'not_adoptable' && JSON.stringify(data.records[3]) === JSON.stringify(verifiedBefore));
   check('database adoption branch independently rejects manual current source', DB_SOURCE.includes("currentSource === 'manual'")
     && DB_SOURCE.includes("'already_verified'"));
-  check('no bulk adoption control or implementation is present', !SOURCE.includes('adoptAll') && !SOURCE.includes('一括採用'));
+  check('bulk adoption is wired only into the recheck screen', !HISTORY_SOURCE.includes('adoptAll'));
 }
 
 async function testDatabaseAdoptionGuard() {
@@ -333,7 +333,34 @@ async function testInvalidValueUndo() {
   check('recorded invalid original can be restored with exact provenance',restored.updated===true && JSON.stringify(env.store.get(before.videoId))===JSON.stringify(before));
 }
 
+async function testAdoptAll() {
+  console.log('adopt all');
+  const data = fixture(); const ui = load(data.records, data.materials);
+  await ui.opener.trigger('click');
+  const skipped = await ui.controller.adoptAll((item) => item.videoId !== 'review');
+  check('accept filter limits bulk adoption', skipped.targets === 1 && skipped.adopted === 1 && data.records[1].lyricist === '');
+  const rest = await ui.controller.adoptAll();
+  check('bulk adoption takes remaining single-value candidates only', rest.adopted === 1 && rest.failed === 0
+    && data.records[0].composer === 'Alice' && data.records[1].lyricist === 'Bob' && data.records[2].arranger === '');
+  check('every bulk adoption keeps its own undo', !!actionFor(ui, 'auto', 'composer', 'undo') || ui.controller.undoActions.has('auto:composer'));
+  const stale = fixture(); const ui2 = load(stale.records, stale.materials);
+  await ui2.opener.trigger('click');
+  ui2.saver.stored.get('auto').composer = 'Changed elsewhere';
+  const guarded = await ui2.controller.adoptAll();
+  check('stored-value check still guards each bulk adoption', guarded.failed === 1 && guarded.adopted === 1
+    && ui2.saver.stored.get('auto').composer === 'Changed elsewhere');
+  const before = structuredClone(data.records);
+  const third = fixture(); const ui3 = load(third.records, third.materials);
+  await ui3.opener.trigger('click');
+  const snapshot = structuredClone(third.records);
+  await ui3.controller.adoptAll();
+  const undone = await ui3.controller.undoBatch();
+  check('batch undo restores every bulk adoption', undone.undone === 2 && undone.failed === 0
+    && JSON.stringify(third.records) === JSON.stringify(snapshot) && ui3.controller.lastBatch.length === 0 && before.length === 4);
+}
+
 async function main() {
+  await testAdoptAll();
   await testInvalidValueUndo();
   await testVerifiedCorrections();
   await testAdoptUndoAndCounts();

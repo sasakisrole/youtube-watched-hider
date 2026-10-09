@@ -19,13 +19,25 @@ async function check(name, fn) {
 function boot(locale = 'en', clipboardMode = 'success', downloadMode = 'success') {
   const elements = {}, copied = [], ports = [], keys = new Set(), downloads = [], revoked = [];
   const runtime = {lastError: undefined};
+  const confirms = [], accepted = [];
+  let confirmAnswer = true;
+  const review = {busy: new Set(), refreshReviewList() {}, lastBatch: [],
+    async adoptAll(accept) {
+      const own = {candidates: [{source: 'description-recheck', value: 'New credit'}]};
+      const other = {candidates: [{source: 'description-recheck', value: 'New credit'}, {source: 'rule', value: 'Other'}]};
+      accepted.push(accept(own, 'New credit'), accept(other, 'Other'));
+      this.lastBatch = [{videoId: 'sampleVid01', role: 'composer'}];
+      return {targets: 1, adopted: 1, failed: 0};
+    },
+    async undoBatch() { this.lastBatch = []; return {targets: 1, undone: 1, failed: 0}; }};
   let records = [], saves = 0;
   const element = () => ({value: '', textContent: '', disabled: false, children: [], listeners: {},
     append(...items) { this.children.push(...items); }, appendChild(item) { this.children.push(item); },
     addEventListener(type, fn) { this.listeners[type] = fn; }, checkValidity() { return true; }});
   const catalog = locale && JSON.parse(read('_locales/' + locale + '/messages.json'));
   const ctx = {CreditMaintenance: CM, CreditTarget: CT, structuredClone,
-    CreditReview: {create() { return {busy: new Set(), refreshReviewList() {}}; }},
+    CreditReview: {create() { return review; }},
+    confirm(text) { confirms.push(text); return confirmAnswer; },
     document: {getElementById(id) { return elements[id] ||= element(); }, createElement: element},
     chrome: {runtime: Object.assign(runtime, {getManifest: () => JSON.parse(read('manifest.json')), connect() {
       const port = {onMessage: {addListener(fn) { port.receive = fn; }},
@@ -54,7 +66,8 @@ function boot(locale = 'en', clipboardMode = 'success', downloadMode = 'success'
   vm.runInNewContext(read('credit_maintenance.js'), ctx);
   ctx.CreditMaintenanceUI.create({getRecords: () => records, begin: () => true, end() {}, saveCreditRole() { saves++; }});
   const click = id => elements[id].listeners.click();
-  return {elements, keys, copied, downloads, revoked, click, get saves() { return saves; },
+  return {elements, keys, copied, downloads, revoked, confirms, accepted, review, click, get saves() { return saves; },
+    set confirmAnswer(value) { confirmAnswer = value; },
     start(rows, scope = 'all') {
       records = rows; elements.creditRecheckScope.value = scope; elements.creditRecheckLimit.value = '50';
       click('creditRecheckStart'); return ports.at(-1);
@@ -202,13 +215,43 @@ async function main() {
       assert.deepEqual(ui.revoked, ['blob:report']);
     });
   }
+  await check('ADOPT-1: adopt all needs proposals and a confirmation, then offers undo', async () => {
+    const html = read('history.html');
+    assert.match(html, /<button[^>]+id="creditRecheckAdoptAll"[^>]+disabled/);
+    assert.match(html, /<button[^>]+id="creditRecheckUndoAll"[^>]+disabled/);
+    const ui = boot('ja'), record = row(), port = ui.start([record]);
+    assert.equal(ui.elements.creditRecheckAdoptAll.disabled, true);
+    ui.progress(port, record, success('Composer: Saved credit'));
+    ui.done(port);
+    assert.equal(ui.elements.creditRecheckAdoptAll.disabled, true);
+    const next = row('sampleVid02'), port2 = ui.start([next]);
+    ui.progress(port2, next, success('Composer: New credit'));
+    assert.equal(ui.elements.creditRecheckAdoptAll.disabled, true, 'disabled while scanning');
+    ui.done(port2);
+    assert.equal(ui.elements.creditRecheckAdoptAll.disabled, false);
+    assert.equal(ui.elements.creditRecheckUndoAll.disabled, true);
+    ui.confirmAnswer = false;
+    await ui.click('creditRecheckAdoptAll');
+    assert.equal(ui.confirms.length, 1); assert.equal(ui.review.lastBatch.length, 0);
+    ui.confirmAnswer = true;
+    await ui.click('creditRecheckAdoptAll');
+    assert.deepEqual(ui.accepted, [true, false]);
+    assert.equal(ui.elements.creditRecheckCopyStatus.textContent, '1件を採用しました。');
+    assert.equal(ui.elements.creditRecheckUndoAll.disabled, false);
+    await ui.click('creditRecheckUndoAll');
+    assert.equal(ui.elements.creditRecheckCopyStatus.textContent, '1件を元に戻しました。');
+    assert.equal(ui.elements.creditRecheckUndoAll.disabled, true);
+  });
   await check('REQ-6: release and locale metadata', () => {
     assert.equal(JSON.parse(read('manifest.json')).version, read('CHANGELOG.md').match(/^## v(\d+\.\d+\.\d+)/m)[1]);
     assert.match(read('CHANGELOG.md'), /## v1\.60\.29[^]*?Copy credit recheck results as JSON/);
     const ja = JSON.parse(read('_locales/ja/messages.json')), en = JSON.parse(read('_locales/en/messages.json'));
     assert.deepEqual(Object.keys(ja).sort(), Object.keys(en).sort());
     for (const key of ['history_recheckCopy', 'history_recheckCopySuccess', 'history_recheckCopyFailure',
-      'history_recheckSave', 'history_recheckSaveSuccess', 'history_recheckSaveFailure']) assert(ja[key] && en[key]);
+      'history_recheckSave', 'history_recheckSaveSuccess', 'history_recheckSaveFailure',
+      'history_recheckAdoptAll', 'history_recheckAdoptAllConfirm', 'history_recheckAdoptAllRunning', 'history_recheckAdoptAllDone',
+      'history_recheckAdoptAllPartial', 'history_recheckAdoptAllFailure', 'history_recheckUndoAll', 'history_recheckUndoAllRunning',
+      'history_recheckUndoAllDone', 'history_recheckUndoAllPartial', 'history_recheckUndoAllFailure']) assert(ja[key] && en[key]);
   });
   console.log(`RESULT: ${passed} passed / ${failed} failed / 0 skipped`);
   process.exitCode = failed ? 1 : 0;

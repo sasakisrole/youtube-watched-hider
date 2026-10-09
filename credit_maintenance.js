@@ -46,6 +46,9 @@
     var copy = document.getElementById('creditRecheckCopy');
     var copyStatus = document.getElementById('creditRecheckCopyStatus');
     var save = document.getElementById('creditRecheckSave');
+    var adoptAll = document.getElementById('creditRecheckAdoptAll');
+    var undoAll = document.getElementById('creditRecheckUndoAll');
+    var adopting = false;
     var review = root.CreditReview.create({
       getRecords: function () { return Array.from(snapshots.values()); },
       getMaterials: function () { return { candidates: Array.from(candidates.values()) }; },
@@ -62,6 +65,8 @@
     function summary() {
       copy.disabled = checked.size === 0;
       save.disabled = copy.disabled;
+      adoptAll.disabled = !!port || adopting || candidates.size === 0;
+      undoAll.disabled = !!port || adopting || !(review.lastBatch && review.lastBatch.length);
       var remaining = root.CreditMaintenance.targets(env.getRecords(), scope.value, checked, 500, root.CreditTarget).length;
       status.textContent = message('history_recheckProgress',
         'このページで点検 ' + checked.size + '件／変更案 ' + candidates.size + '項目／保留 ' + held + '件／取得失敗 ' + failed + '件／未点検 ' + (remaining === 500 ? '500+' : remaining) + '件',
@@ -154,6 +159,42 @@
     stop.addEventListener('click', function () {
       if (port) { port.postMessage({ type: 'ABORT' }); stop.disabled = true; }
     });
+    adoptAll.addEventListener('click', async function () {
+      if (port || adopting || !candidates.size) return;
+      if (typeof root.confirm === 'function' && !root.confirm(message('history_recheckAdoptAllConfirm',
+        '一覧の変更案をまとめて採用します。手動確定値は変更しません。採用した項目は1件ずつ元に戻せます。よろしいですか？'))) return;
+      adopting = true; summary();
+      copyStatus.textContent = message('history_recheckAdoptAllRunning', 'まとめて採用しています。');
+      try {
+        // Only roles whose sole proposal came from this recheck; other sources need their own review.
+        var result = await review.adoptAll(function (item, value) {
+          var own = item.candidates.filter(function (candidate) { return candidate.source === 'description-recheck'; });
+          return own.length === 1 && own[0].value === value;
+        });
+        copyStatus.textContent = result.failed
+          ? message('history_recheckAdoptAllPartial', result.adopted + '件を採用しました。採用できなかった' + result.failed + '件は一覧に残っています。', [result.adopted, result.failed])
+          : message('history_recheckAdoptAllDone', result.adopted + '件を採用しました。', [result.adopted]);
+      } catch (_error) {
+        copyStatus.textContent = message('history_recheckAdoptAllFailure', 'まとめて採用を完了できませんでした。一覧で状態を確認してください。');
+      } finally {
+        adopting = false; summary();
+      }
+    });
+    undoAll.addEventListener('click', async function () {
+      if (port || adopting || !(review.lastBatch && review.lastBatch.length)) return;
+      adopting = true; summary();
+      copyStatus.textContent = message('history_recheckUndoAllRunning', 'まとめて元に戻しています。');
+      try {
+        var result = await review.undoBatch();
+        copyStatus.textContent = result.failed
+          ? message('history_recheckUndoAllPartial', result.undone + '件を元に戻しました。戻せなかった' + result.failed + '件はその後に値が変わっています。', [result.undone, result.failed])
+          : message('history_recheckUndoAllDone', result.undone + '件を元に戻しました。', [result.undone]);
+      } catch (_error) {
+        copyStatus.textContent = message('history_recheckUndoAllFailure', 'まとめて元に戻すことを完了できませんでした。一覧で状態を確認してください。');
+      } finally {
+        adopting = false; summary();
+      }
+    });
     reset.addEventListener('click', function () {
       if (port) return;
       checked.clear(); copyStatus.textContent = ''; summary();
@@ -208,6 +249,8 @@
     controls(false);
     copy.disabled = true;
     save.disabled = true;
+    adoptAll.disabled = true;
+    undoAll.disabled = true;
     return review;
   }
   root.CreditMaintenanceUI = { create: create };

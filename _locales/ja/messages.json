@@ -3690,5 +3690,64 @@
   },
   "history_recheckSaveFailure": {
     "message": "結果を保存できませんでした。"
+  },
+  "history_recheckAdoptAll": {
+    "message": "変更案をまとめて採用"
+  },
+  "history_recheckAdoptAllConfirm": {
+    "message": "一覧の変更案をまとめて採用します。手動確定値は変更しません。採用した項目は1件ずつ元に戻せます。よろしいですか？"
+  },
+  "history_recheckAdoptAllRunning": {
+    "message": "まとめて採用しています。"
+  },
+  "history_recheckAdoptAllDone": {
+    "message": "$ADOPTED$件を採用しました。",
+    "placeholders": {
+      "adopted": {
+        "content": "$1"
+      }
+    }
+  },
+  "history_recheckAdoptAllPartial": {
+    "message": "$ADOPTED$件を採用しました。採用できなかった$FAILED$件は一覧に残っています。",
+    "placeholders": {
+      "adopted": {
+        "content": "$1"
+      },
+      "failed": {
+        "content": "$2"
+      }
+    }
+  },
+  "history_recheckAdoptAllFailure": {
+    "message": "まとめて採用を完了できませんでした。一覧で状態を確認してください。"
+  },
+  "history_recheckUndoAll": {
+    "message": "まとめて元に戻す"
+  },
+  "history_recheckUndoAllRunning": {
+    "message": "まとめて元に戻しています。"
+  },
+  "history_recheckUndoAllDone": {
+    "message": "$UNDONE$件を元に戻しました。",
+    "placeholders": {
+      "undone": {
+        "content": "$1"
+      }
+    }
+  },
+  "history_recheckUndoAllPartial": {
+    "message": "$UNDONE$件を元に戻しました。戻せなかった$FAILED$件はその後に値が変わっています。",
+    "placeholders": {
+      "undone": {
+        "content": "$1"
+      },
+      "failed": {
+        "content": "$2"
+      }
+    }
+  },
+  "history_recheckUndoAllFailure": {
+    "message": "まとめて元に戻すことを完了できませんでした。一覧で状態を確認してください。"
   }
 }

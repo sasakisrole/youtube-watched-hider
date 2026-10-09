@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.34 (2026-10-09)
+
+- Adopt all credit recheck proposals at once, and undo that batch at once. Each role still goes through the stored-value check, manual values are untouched, and only roles whose single proposal came from the recheck are adopted.
+
 ## v1.60.33 (2026-10-09)
 
 - Do not treat the label and publisher names ASOBINOTES and Bandai Namco Music Live, Inc. as composers or lyricists.
