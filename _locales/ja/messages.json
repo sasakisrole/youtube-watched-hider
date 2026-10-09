@@ -3681,5 +3681,14 @@
   },
   "history_recheckCopyFailure": {
     "message": "結果をコピーできませんでした。"
+  },
+  "history_recheckSave": {
+    "message": "結果を保存"
+  },
+  "history_recheckSaveSuccess": {
+    "message": "結果をダウンロードフォルダの youtube-watched-hider-reports に保存しました。"
+  },
+  "history_recheckSaveFailure": {
+    "message": "結果を保存できませんでした。"
   }
 }

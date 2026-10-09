@@ -3681,5 +3681,14 @@
   },
   "history_recheckCopyFailure": {
     "message": "Could not copy results."
+  },
+  "history_recheckSave": {
+    "message": "Save results"
+  },
+  "history_recheckSaveSuccess": {
+    "message": "Results saved to youtube-watched-hider-reports in your Downloads folder."
+  },
+  "history_recheckSaveFailure": {
+    "message": "Could not save results."
   }
 }

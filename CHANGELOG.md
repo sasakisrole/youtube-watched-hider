@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.60.32 (2026-10-09)
+
+- Save credit recheck results as a JSON file in the youtube-watched-hider-reports folder under Downloads.
+- Do not treat the label name MOTTO MUSIC as a composer or lyricist.
+
 ## v1.60.31 (2026-10-08)
 
 - Avoid credit recheck proposals when contributor lists differ only in separator spacing, comma style, or order. Preserve meaningful differences within names and continue showing actual contributor additions and removals.

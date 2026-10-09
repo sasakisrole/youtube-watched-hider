@@ -39,8 +39,9 @@
   var CREDIT_ROLE_TEXT_RE = /(?:作詞(?:家|者)?|作詩|作曲(?:家|者)?|編曲(?:家|者)?|作編曲|lyrics?(?:\s+by)?|lyricists?|written\s+by|songwriters?|words\s*(?:&|and)\s*music|compos(?:e|ed\s+by|er|ers|ition)|arrang(?:e|ed\s+by|er|ers|ement))/iu;
   var DOMAIN_LIKE_RE = /(?:^|[\s([{'"<>])(?:www\.)?(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|net|org|jp|co|io|ly|tv|me|info|biz|app|dev)(?=$|[\s/\\:?#)\]}'"<>])/iu;
   // Exact whole-value placeholders only. Keep this deliberately narrow: a
-  // broad vocabulary risks rejecting real artist names.
-  var NON_PERSON_CREDIT_VALUES = new Set(['BGM']);
+  // broad vocabulary risks rejecting real artist names. A label that its
+  // distributor writes into Composer/Lyricist rows is not a contributor.
+  var NON_PERSON_CREDIT_VALUES = new Set(['BGM', 'MOTTO MUSIC']);
 
   function creditIsBlank(value) {
     return value == null || String(value).trim() === '';

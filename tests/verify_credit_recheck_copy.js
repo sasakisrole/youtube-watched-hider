@@ -16,8 +16,9 @@ async function check(name, fn) {
   catch (error) { failed++; console.error('FAIL ' + name + '\n' + error.stack); }
 }
 
-function boot(locale = 'en', clipboardMode = 'success') {
-  const elements = {}, copied = [], ports = [], keys = new Set();
+function boot(locale = 'en', clipboardMode = 'success', downloadMode = 'success') {
+  const elements = {}, copied = [], ports = [], keys = new Set(), downloads = [], revoked = [];
+  const runtime = {lastError: undefined};
   let records = [], saves = 0;
   const element = () => ({value: '', textContent: '', disabled: false, children: [], listeners: {},
     append(...items) { this.children.push(...items); }, appendChild(item) { this.children.push(item); },
@@ -26,11 +27,19 @@ function boot(locale = 'en', clipboardMode = 'success') {
   const ctx = {CreditMaintenance: CM, CreditTarget: CT, structuredClone,
     CreditReview: {create() { return {busy: new Set(), refreshReviewList() {}}; }},
     document: {getElementById(id) { return elements[id] ||= element(); }, createElement: element},
-    chrome: {runtime: {getManifest: () => JSON.parse(read('manifest.json')), connect() {
+    chrome: {runtime: Object.assign(runtime, {getManifest: () => JSON.parse(read('manifest.json')), connect() {
       const port = {onMessage: {addListener(fn) { port.receive = fn; }},
         onDisconnect: {addListener(fn) { port.disconnect = fn; }}, postMessage() {}};
       ports.push(port); return port;
+    }}), downloads: {download(options, callback) {
+      downloads.push(options);
+      if (downloadMode === 'error') runtime.lastError = {message: 'blocked'};
+      callback(downloadMode === 'success' ? 7 : undefined);
+      runtime.lastError = undefined;
     }}},
+    Blob: class { constructor(parts, options) { this.text = parts.join(''); this.type = options.type; } },
+    URL: {createObjectURL(blob) { downloads.blob = blob; return 'blob:report'; }, revokeObjectURL(url) { revoked.push(url); }},
+    setTimeout(fn) { fn(); },
     navigator: clipboardMode === 'missing' ? {} : {clipboard: {writeText(text) {
       if (clipboardMode === 'throw') throw Error('unavailable');
       if (clipboardMode === 'reject') return Promise.reject(Error('denied'));
@@ -45,7 +54,7 @@ function boot(locale = 'en', clipboardMode = 'success') {
   vm.runInNewContext(read('credit_maintenance.js'), ctx);
   ctx.CreditMaintenanceUI.create({getRecords: () => records, begin: () => true, end() {}, saveCreditRole() { saves++; }});
   const click = id => elements[id].listeners.click();
-  return {elements, keys, copied, click, get saves() { return saves; },
+  return {elements, keys, copied, downloads, revoked, click, get saves() { return saves; },
     start(rows, scope = 'all') {
       records = rows; elements.creditRecheckScope.value = scope; elements.creditRecheckLimit.value = '50';
       click('creditRecheckStart'); return ports.at(-1);
@@ -162,12 +171,44 @@ async function main() {
       });
     }
   }
+  await check('SAVE-1: save button starts disabled and follows copy', async () => {
+    assert.match(read('history.html'), /<button[^>]+id="creditRecheckSave"[^>]+disabled[^>]+data-i18n="history_recheckSave"/);
+    const ui = boot();
+    assert.equal(ui.elements.creditRecheckSave.disabled, true);
+    await ui.click('creditRecheckSave'); assert.equal(ui.downloads.length, 0);
+    const record = row(), port = ui.start([record]);
+    ui.progress(port, record, success('Composer: New credit'));
+    assert.equal(ui.elements.creditRecheckSave.disabled, false);
+  });
+  await check('SAVE-2: save writes the same report into the reports folder', async () => {
+    const ui = boot('ja'), record = row(), port = ui.start([record]);
+    ui.progress(port, record, success('Composer: New credit'));
+    await ui.click('creditRecheckSave');
+    const options = ui.downloads[0];
+    assert.match(options.filename, /^youtube-watched-hider-reports\/credit-recheck-\d{8}-\d{6}\.json$/);
+    assert.equal(options.saveAs, false); assert.equal(options.conflictAction, 'uniquify');
+    assert.equal(ui.elements.creditRecheckCopyStatus.textContent, JSON.parse(read('_locales/ja/messages.json')).history_recheckSaveSuccess.message);
+    const saved = JSON.parse(ui.downloads.blob.text), copied = await ui.report();
+    delete saved.exportedAt; delete copied.exportedAt;
+    assert.deepEqual(saved, copied);
+    assert.deepEqual(ui.revoked, ['blob:report']);
+  });
+  for (const mode of ['error', 'missing-id']) {
+    await check('SAVE-3: download failure is reported ' + mode, async () => {
+      const ui = boot('en', 'success', mode), record = row(), port = ui.start([record]);
+      ui.progress(port, record, success('Composer: New credit'));
+      await ui.click('creditRecheckSave');
+      assert.equal(ui.elements.creditRecheckCopyStatus.textContent, 'Could not save results.');
+      assert.deepEqual(ui.revoked, ['blob:report']);
+    });
+  }
   await check('REQ-6: release and locale metadata', () => {
     assert.equal(JSON.parse(read('manifest.json')).version, read('CHANGELOG.md').match(/^## v(\d+\.\d+\.\d+)/m)[1]);
     assert.match(read('CHANGELOG.md'), /## v1\.60\.29[^]*?Copy credit recheck results as JSON/);
     const ja = JSON.parse(read('_locales/ja/messages.json')), en = JSON.parse(read('_locales/en/messages.json'));
     assert.deepEqual(Object.keys(ja).sort(), Object.keys(en).sort());
-    for (const key of ['history_recheckCopy', 'history_recheckCopySuccess', 'history_recheckCopyFailure']) assert(ja[key] && en[key]);
+    for (const key of ['history_recheckCopy', 'history_recheckCopySuccess', 'history_recheckCopyFailure',
+      'history_recheckSave', 'history_recheckSaveSuccess', 'history_recheckSaveFailure']) assert(ja[key] && en[key]);
   });
   console.log(`RESULT: ${passed} passed / ${failed} failed / 0 skipped`);
   process.exitCode = failed ? 1 : 0;

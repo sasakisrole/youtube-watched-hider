@@ -155,6 +155,8 @@ async function run() {
     'Copyright Control, toe',
     'All Rights Reserved',
     'BGM',
+    'MOTTO MUSIC',
+    'motto  music',
     '中恵 光城 Compose/Arrange：RD-Sounds',
     'Lyrics: Alice',
     'Reboot"',

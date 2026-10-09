@@ -45,6 +45,7 @@
     var issues = document.getElementById('creditRecheckIssues');
     var copy = document.getElementById('creditRecheckCopy');
     var copyStatus = document.getElementById('creditRecheckCopyStatus');
+    var save = document.getElementById('creditRecheckSave');
     var review = root.CreditReview.create({
       getRecords: function () { return Array.from(snapshots.values()); },
       getMaterials: function () { return { candidates: Array.from(candidates.values()) }; },
@@ -60,6 +61,7 @@
     }
     function summary() {
       copy.disabled = checked.size === 0;
+      save.disabled = copy.disabled;
       var remaining = root.CreditMaintenance.targets(env.getRecords(), scope.value, checked, 500, root.CreditTarget).length;
       status.textContent = message('history_recheckProgress',
         'このページで点検 ' + checked.size + '件／変更案 ' + candidates.size + '項目／保留 ' + held + '件／取得失敗 ' + failed + '件／未点検 ' + (remaining === 500 ? '500+' : remaining) + '件',
@@ -156,30 +158,56 @@
       if (port) return;
       checked.clear(); copyStatus.textContent = ''; summary();
     });
+    function buildReport() {
+      // Keep the latest snapshot for every video seen on this page, even
+      // after resetting the target queue. Proposals count roles; held/failed
+      // count videos, and a proposed video may also have a held role.
+      var items = Array.from(exports.values());
+      var counts = { checked: items.length, proposals: candidates.size, held: 0, failed: 0 };
+      items.forEach(function (item) {
+        if (item.status === 'failed') counts.failed++;
+        if (Object.values(item.roles).some(function (role) { return !!role.heldReason; })) counts.held++;
+      });
+      return { version: chrome.runtime.getManifest().version, exportedAt: new Date().toISOString(),
+        scope: exportScopes.has('all') ? 'all' : 'remix', counts: counts, items: items };
+    }
     copy.addEventListener('click', async function () {
       if (!checked.size) return;
       try {
-        // Keep the latest snapshot for every video seen on this page, even
-        // after resetting the target queue. Proposals count roles; held/failed
-        // count videos, and a proposed video may also have a held role.
-        var items = Array.from(exports.values());
-        var counts = { checked: items.length, proposals: candidates.size, held: 0, failed: 0 };
-        items.forEach(function (item) {
-          if (item.status === 'failed') counts.failed++;
-          if (Object.values(item.roles).some(function (role) { return !!role.heldReason; })) counts.held++;
-        });
-        var report = { version: chrome.runtime.getManifest().version, exportedAt: new Date().toISOString(),
-          scope: exportScopes.has('all') ? 'all' : 'remix', counts: counts, items: items };
-        await root.navigator.clipboard.writeText(JSON.stringify(report, null, 2));
+        await root.navigator.clipboard.writeText(JSON.stringify(buildReport(), null, 2));
         copyStatus.textContent = message('history_recheckCopySuccess', '結果をコピーしました。');
       } catch (_error) {
         copyStatus.textContent = message('history_recheckCopyFailure', '結果をコピーできませんでした。');
+      }
+    });
+    // A fixed folder under Downloads, so a saved report can be found by path.
+    save.addEventListener('click', async function () {
+      if (!checked.size) return;
+      var url = '';
+      try {
+        var d = new Date(), pad = function (n) { return String(n).padStart(2, '0'); };
+        var stamp = d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds());
+        url = root.URL.createObjectURL(new root.Blob([JSON.stringify(buildReport(), null, 2)], { type: 'application/json' }));
+        await new Promise(function (resolve, reject) {
+          chrome.downloads.download({ url: url, filename: 'youtube-watched-hider-reports/credit-recheck-' + stamp + '.json',
+            conflictAction: 'uniquify', saveAs: false }, function (downloadId) {
+            var error = chrome.runtime.lastError;
+            if (error || downloadId == null) reject(new Error(error ? error.message : 'no download id'));
+            else resolve(downloadId);
+          });
+        });
+        copyStatus.textContent = message('history_recheckSaveSuccess', '結果をダウンロードフォルダの youtube-watched-hider-reports に保存しました。');
+      } catch (_error) {
+        copyStatus.textContent = message('history_recheckSaveFailure', '結果を保存できませんでした。');
+      } finally {
+        if (url) root.setTimeout(function () { root.URL.revokeObjectURL(url); }, 60000);
       }
     });
     scope.addEventListener('change', summary);
     document.getElementById('creditReviewOpen').addEventListener('click', summary);
     controls(false);
     copy.disabled = true;
+    save.disabled = true;
     return review;
   }
   root.CreditMaintenanceUI = { create: create };
