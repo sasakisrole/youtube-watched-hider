@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.35 (2026-10-09)
+
+- Treat a remix's own title stored in a credit field by older parsing as invalid, so "Repair invalid credit values" can clear it after preview.
+
 ## v1.60.34 (2026-10-09)
 
 - Adopt all credit recheck proposals at once, and undo that batch at once. Each role still goes through the stored-value check, manual values are untouched, and only roles whose single proposal came from the recheck are adopted.

@@ -173,6 +173,10 @@ async function run() {
     check(`accept ${JSON.stringify(value)}`, CT.isValidCreditValue(value) === true);
   });
   check('reject exact video title when supplied', CT.isValidCreditValue('Song Title', 'Song Title') === false);
+  check('reject a remix title stored as a credit', CT.isValidCreditValue("Banbado (Shiron Dub'n'Bado Remix)", "Banbado (Shiron Dub'n'Bado Remix) - Shiron") === false
+    && CT.isValidCreditValue('闇の彼方 (mozell remix)/Beyond Darkness (mozell remix)', '闇の彼方 (mozell remix)') === false);
+  check('keep the artist of an "Artist - Song Remix" title', CT.isValidCreditValue('Alice', 'Alice - Song (Bob Remix)') === true
+    && CT.isValidCreditValue('Bob Remix Crew', 'Other Song (Bob Remix)') === true);
   check('title comparison normalizes width and whitespace', CT.isValidCreditValue('Ｓｏｎｇ   Title', 'Song Title') === false);
   check('same value is accepted when no video title is available', CT.isValidCreditValue('Song Title') === true);
 

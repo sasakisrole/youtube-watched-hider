@@ -365,6 +365,12 @@
     if (NON_PERSON_CREDIT_VALUES.has(comparable.toUpperCase())) return false;
     var comparableTitle = normalizeComparableCreditText(videoTitle);
     if (comparableTitle && comparable === comparableTitle) return false;
+    // Old parses stored a remix's own title ("Music title:" rows) as its composer.
+    // Requiring the remix marker keeps an artist from "Artist - Song" titles valid.
+    if (comparableTitle && /remix|リミックス/iu.test(comparable)) {
+      var valueHead = comparable.split(/\s*[\/／]\s*/u)[0];
+      if (valueHead === comparableTitle || valueHead === comparableTitle.split(/\s+-\s+/u)[0]) return false;
+    }
     if (/(?:https?:)?\/\//iu.test(normalized) || /(?:^|\s)www\./iu.test(normalized)) return false;
     if (/(?:^|[\s([{'"<>])(?:bit\.ly|t\.co|music\.apple\.com|youtube\.com)(?=$|[\s/\\:?#)\]}'"<>])/iu.test(normalized)) return false;
     if (DOMAIN_LIKE_RE.test(normalized)) return false;
