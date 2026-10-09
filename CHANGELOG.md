@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.59 (2026-10-09)
+
+- Offer individually reviewed cleanup of saved credit honorifics and trailing vocal annotations while preserving affiliations and confirmed values. Space MusicBrainz requests by 1.1 seconds, retry temporary failures within the queue, and export failure details.
+
 ## v1.60.58 (2026-10-09)
 
 - Export current recheck proposals and their adopt-all eligibility, including MusicBrainz readings and confirmed-value fixes. Offer bulk-adoptable comma separator cleanup while preserving contributor order, separators inside parentheses, and confirmed values.

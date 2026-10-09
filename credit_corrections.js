@@ -87,14 +87,14 @@
     var cache = new Map();
     return async function (value, enabled, japanese) {
       if (!enabled || !japanese) return null;
-      var names = mixedJapaneseNames(value), sortNames = {}, urls = [], complete = true;
+      var names = mixedJapaneseNames(value), sortNames = {}, urls = [], complete = true, error = '';
       for (var name of names) {
         var normalizedName = name.normalize('NFKC');
         if (!cache.has(normalizedName)) cache.set(normalizedName, Promise.resolve().then(function (n) {
           return query(n);
         }.bind(null, normalizedName)).catch(function () { return null; }));
         var response = await cache.get(normalizedName);
-        if (!response || !response.success) { complete = false; continue; }
+        if (!response || !response.success) { complete = false; error = response && response.error || error; continue; }
         var exact = (response.artists || []).filter(function (artist) {
           return String(artist.name || '').normalize('NFKC') === normalizedName;
         });
@@ -106,7 +106,7 @@
           exact.forEach(function (artist) { if (artist.id) urls.push('https://musicbrainz.org/artist/' + encodeURIComponent(artist.id)); });
         }
       }
-      return { value: unifyReading(value, sortNames), urls: Array.from(new Set(urls)), complete: complete };
+      return { value: unifyReading(value, sortNames), urls: Array.from(new Set(urls)), complete: complete, error: error };
     };
   }
   // True when the two lists name the same people, allowing a romanized name
@@ -323,7 +323,8 @@
       // A MusicBrainz check revisits videos last checked without it when it could
       // change something there (an automatic value, or a romanized confirmed one).
       var mixedReading = !!withMb && ROLES.some(function (role) { return mixedJapaneseNames(record[role]).length; });
-      var due = includeStamped || !flags || (mixedReading && !flags.artist) || (!!withMb && !flags.mb && (auto || manualReading)) || (manualValue && !flags.source);
+      var cleanupDue = ROLES.some(function (role) { return creditTarget.effectiveRoleSource(record, role) !== 'manual' && creditTarget.cleanupCreditValue(record[role], record.title); });
+      var due = cleanupDue || includeStamped || !flags || (mixedReading && !flags.artist) || (!!withMb && !flags.mb && (auto || manualReading)) || (manualValue && !flags.source);
       return /^[\w-]{11}$/.test(record.videoId || '') && (!checked || !checked.has(record.videoId))
         && due && (scope !== 'remix' || isRemix(record.title)) && (auto || manualReading || manualValue);
     }).slice(0, Math.max(1, Math.min(500, Number(limit) || 50)));
@@ -334,6 +335,10 @@
     return ROLES.map(function (role) {
       var value = result.maintenance.credits[role], saved = record[role];
       if (creditTarget.creditIsBlank(saved) || creditTarget.effectiveRoleSource(record, role) === 'manual') return null;
+      var cleanup = creditTarget.cleanupCreditValue(saved, record.title);
+      if (cleanup) return { videoId: record.videoId, role: role, value: cleanup.value,
+        source: 'description-cleanup', sourceDetail: 'https://www.youtube.com/watch?v=' + record.videoId,
+        evidence: cleanup.removed, selected: false };
       var source = 'description-recheck';
       if (!value || sameContributors(value, saved)) {
         var separators = [], names = creditNames(saved, separators);

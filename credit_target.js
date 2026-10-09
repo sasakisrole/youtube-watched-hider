@@ -391,6 +391,27 @@
     return true;
   }
 
+  // Only recover values outside the existing invalid-value repair path.
+  // Scan outside parentheses so affiliations remain exactly as credited.
+  function cleanupCreditValue(saved, title) {
+    if (!isValidCreditValue(saved, title)) return null;
+    var depth = 0, cut = saved.length;
+    for (var i = 0; i < saved.length; i++) {
+      if (/[（(]/u.test(saved[i])) depth++;
+      else if (/[）)]/u.test(saved[i])) depth--;
+      if (depth || i === 0) continue;
+      var tail = saved.slice(i).normalize('NFKC');
+      if (/^歌唱\s*:/u.test(tail)
+        || (/[\s/／|｜;；,、]/u.test(saved[i - 1]) && /^(?:vo\.|vocals?\s*:|feat\.)/iu.test(tail))) {
+        cut = i; break;
+      }
+    }
+    if (cut === saved.length && !/(?:様|さん|氏|先生)\s*$/u.test(saved)) return null;
+    var value = saved.slice(0, cut).replace(/[\s/／|｜;；,、]+$/u, '').replace(/(?:様|さん|氏|先生)\s*$/u, '').trim();
+    if (value === saved || !isValidCreditValue(value, title)) return null;
+    return { value: value, removed: saved.slice(value.length) };
+  }
+
   // Plan repairs for sticky, non-empty role values that the current save
   // boundary would reject. The caller decides whether and how to apply them.
   function planCreditRepair(record) {
@@ -480,6 +501,7 @@
     getCreditReviewStates: getCreditReviewStates,
     getCreditReviewList: getCreditReviewList,
     isValidCreditValue: isValidCreditValue,
+    cleanupCreditValue: cleanupCreditValue,
     planCreditRepair: planCreditRepair,
     isTopicChannelName: isTopicChannelName,
     stripTopicChannelSuffix: stripTopicChannelSuffix,

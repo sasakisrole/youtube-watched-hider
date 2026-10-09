@@ -71,7 +71,7 @@
     var review = root.CreditReview.create({
       getRecords: function () { return Array.from(snapshots.values()); },
       getMaterials: function () { return { candidates: Array.from(candidates.values()) }; },
-      filterItem: function (item) { return item.candidates.some(function (candidate) { return /^(?:description-recheck|description-format|musicbrainz-recheck|musicbrainz-reading)$/.test(candidate.source); }); },
+      filterItem: function (item) { return item.candidates.some(function (candidate) { return /^(?:description-recheck|description-format|description-cleanup|musicbrainz-recheck|musicbrainz-reading)$/.test(candidate.source); }); },
       allowReject: false,
       limit: 1500,
       emptyMessage: message('history_recheckEmpty', '再点検で見つかった変更案をここに表示します。変更案がなくても、すべて正しいと確認できたわけではありません。'),
@@ -87,6 +87,7 @@
     // of spelling, case or script may only restyle the same person, and a
     // replacement sharing no name may be another alias; both are reviewed one by one.
     function ownProposal(item, value) {
+      if (item.candidates.some(function (candidate) { return candidate.source === 'description-cleanup'; })) return false;
       // Same person proven by the MusicBrainz reading, or separator-only cleanup.
       if (item.candidates.length === 1 && /^(?:musicbrainz-reading|description-format)$/.test(item.candidates[0].source)) return item.candidates[0].value === value;
       var own = item.candidates.filter(function (candidate) { return candidate.source === 'description-recheck'; });
@@ -133,7 +134,7 @@
         item.musicbrainz = found
           ? { status: 'found', mbid: found.mbid, title: found.mbTitle, stage: found.stage, review: found.manualReviewReason || '',
             composer: found.composer, lyricist: found.lyricist, arranger: found.arranger }
-          : { status: response ? (response.reason || 'not-found') : 'error' };
+          : { status: response ? (response.reason || 'not-found') : 'error', error: response && response.error || '' };
       }
       // A fuzzy title match may be a different song; only strict matches count.
       if (!found || found.stage !== 'strict') return;
@@ -215,6 +216,14 @@
         var value = proposal && root.CreditMaintenance.mixedJapaneseNames(proposal.value).length ? proposal.value : saved;
         var result = await lookupArtistReading(value, true, true);
         complete = complete && result.complete;
+        if (result.error) {
+          var diagnostic = exports.get(job.record.videoId);
+          if (diagnostic) {
+            diagnostic.musicbrainz = diagnostic.musicbrainz || { status: 'fetch-error' };
+            diagnostic.musicbrainz.error = result.error;
+          }
+        }
+        if (proposal && proposal.source === 'description-cleanup') continue;
         if (!result.value || !result.urls.length || !root.CreditTarget.isValidCreditValue(result.value, job.record.title)) continue;
         if (root.CreditTarget.effectiveRoleSource(job.record, role) === 'manual') {
           readingFixes.set(key, { videoId: job.record.videoId, role: role, from: saved, to: result.value, kind: 'reading' });

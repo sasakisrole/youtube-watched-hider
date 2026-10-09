@@ -801,7 +801,7 @@ async function getContentCacheStats() {
 // Case 2-4 are enforced by MusicBrainz lookup + history-side similarity thresholding.
 // Case 5 is enforced by runEnrichRateLimited, which serializes each source at >=1s/request.
 // Case 7 is enforced by returning empty song/candidate payloads without creating tabs.
-const ENRICH_RATE_LIMIT_MS = 1000;
+const ENRICH_RATE_LIMIT_MS = 1100;
 const ENRICH_FETCH_TIMEOUT_MS = 30000;
 const enrichRateState = {
   mb: { lastStartedAt: 0, queue: Promise.resolve() },
@@ -830,22 +830,38 @@ async function runEnrichRateLimited(source, task) {
 
 async function fetchEnrichText(source, url, headers = {}) {
   return runEnrichRateLimited(source, async () => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), ENRICH_FETCH_TIMEOUT_MS);
-    try {
-      const response = await fetch(url, {
-        headers,
-        signal: controller.signal,
-        credentials: 'omit',
-        cache: 'no-store',
-      });
-      const text = await response.text();
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+    let retries = 0, timeoutRetries = 0;
+    while (true) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), ENRICH_FETCH_TIMEOUT_MS);
+      let retryDelay;
+      try {
+        const response = await fetch(url, {
+          headers, signal: controller.signal, credentials: 'omit', cache: 'no-store',
+        });
+        const text = await response.text();
+        if (!response.ok) {
+          const error = new Error(`HTTP ${response.status}`);
+          if (source !== 'mb' || ![503, 429].includes(response.status) || retries >= 2) throw error;
+          const after = response.headers && response.headers.get('Retry-After');
+          retryDelay = after != null && /^\s*\d+(?:\.\d+)?\s*$/.test(after)
+            ? Number(after) * 1000 : 2000 * Math.pow(2, retries);
+        } else {
+          return { text, status: response.status, finalUrl: response.url || url };
+        }
+      } catch (error) {
+        if (source !== 'mb') throw error;
+        if (error.name !== 'AbortError') throw error;
+        if (timeoutRetries >= 1 || retries >= 2) throw new Error('timeout');
+        timeoutRetries++;
+        retryDelay = 2000;
+      } finally {
+        clearTimeout(timer);
       }
-      return { text, status: response.status, finalUrl: response.url || url };
-    } finally {
-      clearTimeout(timer);
+      retries++;
+      // Hold the source queue during backoff, including the next attempt.
+      await sleep(Math.max(retryDelay, ENRICH_RATE_LIMIT_MS - (Date.now() - enrichRateState.mb.lastStartedAt)));
+      enrichRateState.mb.lastStartedAt = Date.now();
     }
   });
 }
@@ -1813,7 +1829,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'lookupMbArtistReading') {
     lookupMbArtistReading(message.name).then(sendResponse)
-      .catch(() => sendResponse({ success: false, reason: 'fetch-error' }));
+      .catch((e) => sendResponse({ success: false, reason: 'fetch-error', error: e.message }));
     return true;
   }
 

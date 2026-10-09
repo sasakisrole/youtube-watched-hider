@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.59",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "Offer individually reviewed cleanup of saved credit honorifics and trailing vocal annotations while preserving affiliations and confirmed values. Space MusicBrainz requests by 1.1 seconds, retry temporary failures within the queue, and export failure details."
+    ]
+  },
+  {
     "version": "1.60.58",
     "date": "2026-10-09",
     "summary": "",

@@ -103,7 +103,7 @@
     appendValueRow(values, scriptMessage('history_scripts_candidate_13', '候補'), candidates.length ? candidates.join(' / ') : scriptMessage('history_scripts_none_14', 'なし'));
     card.append(header, values);
     (item.candidates || []).filter(function (candidate) {
-      return candidate.source === 'description-recheck' && /^https:\/\//.test(candidate.sourceDetail);
+      return /^(?:description-recheck|description-cleanup)$/.test(candidate.source) && /^https:\/\//.test(candidate.sourceDetail);
     }).forEach(function (candidate) {
       var link = document.createElement('a');
       link.href = candidate.sourceDetail;
@@ -114,7 +114,9 @@
       if (candidate.evidence) {
         var evidence = document.createElement('pre');
         evidence.className = 'credit-review-evidence';
-        evidence.textContent = candidate.evidence;
+        evidence.textContent = candidate.source === 'description-cleanup'
+          ? scriptMessage('history_recheckCleanupRemoved', 'Removed (review individually):') + ' ' + candidate.evidence
+          : candidate.evidence;
         card.appendChild(evidence);
       }
     });
