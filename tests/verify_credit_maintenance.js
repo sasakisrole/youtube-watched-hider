@@ -69,6 +69,16 @@ check('multi-word unknown roles in a list keep the composer', () => {
   assert.equal(analyze('Composer, Mixing  Engineer, Producer, Recording  Engineer: Joseph Reiser').credits.composer,'Joseph Reiser');
   assert.equal(analyze('Composer, Associated Performer, Double Bass: Nick Blacka').credits.composer,'Nick Blacka');
 });
+check('confirmed romanized values are revisited only by a MusicBrainz check', () => {
+  const manual={videoId:'manualVid01',title:'Song (X Remix)',composer:'Satoshi Yaginuma',creditRoleSources:{composer:'manual'}};
+  const kanji={...manual,videoId:'manualVid02',composer:'八木沼悟志'};
+  assert.equal(CM.targets([manual,kanji],'remix',new Set(),50,CT).length,0);
+  assert.deepEqual(CM.targets([manual,kanji],'remix',new Set(),50,CT,false,true).map(r=>r.videoId),['manualVid01']);
+  const stamped={...manual,creditsRecheck:CM.recheckStamp(manual,true)};
+  assert.equal(CM.targets([stamped],'remix',new Set(),50,CT,false,true).length,0,'a MusicBrainz stamp settles it');
+  const auto={videoId:'autoVid0001',title:'Song (X Remix)',composer:'Alice',creditsRecheck:CM.recheckStamp({composer:'Alice'},true)};
+  assert.equal(CM.targets([{...auto,creditsRecheck:CM.recheckStamp(auto,true)}],'remix',new Set(),50,CT).length,0,'an :mb stamp satisfies a plain check');
+});
 check('romanized readings unify to the Japanese name, aliases do not', () => {
   const sort={'八木沼悟志':'Yaginuma, Satoshi','中村航':'Nakamura, Kou','白戸佑輔':'Shirato, Yuusuke','吉田菫':'Yoshida, Sumire','齋藤真也':'Saito, Shinya'};
   assert.equal(CM.unifyReading('Satoshi Yaginuma',sort),'八木沼悟志');

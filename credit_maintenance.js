@@ -51,6 +51,14 @@
     var adopting = false, includeStamped = false;
     var mbToggle = document.getElementById('creditRecheckMb');
     var mbQueue = [], mbRunning = false, mbFound = 0, mbSame = 0, mbDifferent = 0;
+    // Confirmed values rewritten only from a romanized name to the Japanese name
+    // with the same MusicBrainz reading; applied and undone with adopt-all.
+    var readingFixes = new Map(), readingBatch = [];
+    function mbOn() { return !!(mbToggle && mbToggle.checked); }
+    function stampRecord(record, withMb) {
+      if (typeof env.markRechecked !== 'function') return;
+      Promise.resolve(env.markRechecked(record.videoId, root.CreditMaintenance.recheckStamp(record, withMb))).catch(function () {});
+    }
     var review = root.CreditReview.create({
       getRecords: function () { return Array.from(snapshots.values()); },
       getMaterials: function () { return { candidates: Array.from(candidates.values()) }; },
@@ -82,9 +90,9 @@
     function summary() {
       copy.disabled = checked.size === 0;
       save.disabled = copy.disabled;
-      adoptAll.disabled = !!port || adopting || !review.adoptable(ownProposal).length;
-      undoAll.disabled = !!port || adopting || !(review.lastBatch && review.lastBatch.length);
-      var remaining = root.CreditMaintenance.targets(env.getRecords(), scope.value, checked, 500, root.CreditTarget, includeStamped).length;
+      adoptAll.disabled = !!port || adopting || (!review.adoptable(ownProposal).length && !readingFixes.size);
+      undoAll.disabled = !!port || adopting || !((review.lastBatch && review.lastBatch.length) || readingBatch.length);
+      var remaining = root.CreditMaintenance.targets(env.getRecords(), scope.value, checked, 500, root.CreditTarget, includeStamped, mbOn()).length;
       status.textContent = message('history_recheckProgress',
         'このページで点検 ' + checked.size + '件／変更案 ' + candidates.size + '項目／保留 ' + held + '件／取得失敗 ' + failed + '件／未点検 ' + (remaining === 500 ? '500+' : remaining) + '件',
         [checked.size, candidates.size, held, failed, remaining === 500 ? '500+' : remaining]);
@@ -109,6 +117,7 @@
       });
     }
     function applyMb(job, response) {
+      stampRecord(job.record, !!(response && response.success));
       var found = response && response.success && response.candidate;
       var item = exports.get(job.record.videoId);
       if (item) {
@@ -167,6 +176,15 @@
           notes.push(roleLabel(role) + ': ' + message('history_recheckMbReading', '日本語表記に統一'));
         }
       });
+      (job.manualRoles || []).forEach(function (role) {
+        var saved = String(job.record[role] || '');
+        var unified = root.CreditMaintenance.unifyReading(saved, found.sortNames);
+        if (!unified || root.CreditMaintenance.sameContributors(unified, saved)
+          || !root.CreditTarget.isValidCreditValue(unified, job.record.title)) return;
+        readingFixes.set(job.record.videoId + ':' + role, { videoId: job.record.videoId, role: role, from: saved, to: unified });
+        if (item && item.roles[role]) { item.roles[role].musicbrainz = 'reading'; item.roles[role].candidate = unified; }
+        notes.push(roleLabel(role) + ': ' + message('history_recheckMbReadingManual', '日本語表記に統一（確定済みの値） ' + unified, [unified]));
+      });
       if (notes.length) issue(job.record, 'MusicBrainz: ' + notes.join(' / '), false);
     }
     function roleLabel(role) {
@@ -201,7 +219,7 @@
     start.addEventListener('click', function () {
       if (port || review.busy.size) return;
       if (!limit.checkValidity()) { limit.reportValidity(); return; }
-      var records = root.CreditMaintenance.targets(env.getRecords(), scope.value, checked, limit.value, root.CreditTarget, includeStamped);
+      var records = root.CreditMaintenance.targets(env.getRecords(), scope.value, checked, limit.value, root.CreditTarget, includeStamped, mbOn());
       if (!records.length) { summary(); return; }
       if (!env.begin()) {
         status.textContent = message('history_enrich_busy', '他のメンテナンス処理が実行中'); return;
@@ -224,10 +242,9 @@
           exports.set(record.videoId, root.CreditMaintenance.exportItem(record, result, root.CreditTarget));
           exportScopes.add(batchScope);
           copyStatus.textContent = '';
-          // Only a successful fetch counts as checked; failures stay targets.
-          if (result && result.ok && typeof env.markRechecked === 'function') {
-            Promise.resolve(env.markRechecked(record.videoId, root.CreditMaintenance.recheckStamp(record))).catch(function () {});
-          }
+          // Only a successful fetch counts as checked; failures stay targets. With
+          // MusicBrainz on, a queued video is stamped once its lookup finishes.
+          var stampLater = false;
           if (!result || !result.ok) {
             failed++;
             issue(record, fetchFailure(result && result.reason), false);
@@ -265,11 +282,16 @@
               return root.CreditMaintenance.compareNames(record[candidate.role], candidate.value) === 'different'
                 && root.CreditMaintenance.isLatinName(record[candidate.role]) !== root.CreditMaintenance.isLatinName(candidate.value);
             }).map(function (candidate) { return candidate.role; });
-            if (mbToggle && mbToggle.checked && (mbRoles.length || readingRoles.length)) {
-              mbQueue.push({ record: record, roles: mbRoles, readingRoles: readingRoles });
+            var manualRoles = ['composer', 'lyricist', 'arranger'].filter(function (role) {
+              return root.CreditTarget.effectiveRoleSource(record, role) === 'manual' && root.CreditMaintenance.isLatinName(String(record[role] || ''));
+            });
+            if (mbOn() && (mbRoles.length || readingRoles.length || manualRoles.length)) {
+              stampLater = true;
+              mbQueue.push({ record: record, roles: mbRoles, readingRoles: readingRoles, manualRoles: manualRoles });
               if (!mbRunning) drainMb();
             }
           }
+          if (result && result.ok && !stampLater) stampRecord(record, mbOn());
           review.refreshReviewList(); summary(); return;
         }
         if (data.type === 'DONE') {
@@ -291,13 +313,35 @@
       summary();
     });
     adoptAll.addEventListener('click', async function () {
-      if (port || adopting || !review.adoptable(ownProposal).length) return;
-      if (typeof root.confirm === 'function' && !root.confirm(message('history_recheckAdoptAllConfirm',
-        '一覧の変更案をまとめて採用します。手動確定値は変更しません。採用した項目は1件ずつ元に戻せます。よろしいですか？'))) return;
+      var reviewCount = review.adoptable(ownProposal).length;
+      if (port || adopting || (!reviewCount && !readingFixes.size)) return;
+      var question = readingFixes.size
+        ? message('history_recheckAdoptAllConfirmReading',
+          '一覧の変更案をまとめて採用します。手動確定値は、ローマ字を同じ読みの日本語表記にする ' + readingFixes.size + '件だけ変更します。採用した項目は元に戻せます。よろしいですか？', [readingFixes.size])
+        : message('history_recheckAdoptAllConfirm',
+          '一覧の変更案をまとめて採用します。手動確定値は変更しません。採用した項目は1件ずつ元に戻せます。よろしいですか？');
+      if (typeof root.confirm === 'function' && !root.confirm(question)) return;
       adopting = true; summary();
       copyStatus.textContent = message('history_recheckAdoptAllRunning', 'まとめて採用しています。');
       try {
-        var result = await review.adoptAll(ownProposal);
+        var result = reviewCount ? await review.adoptAll(ownProposal) : { targets: 0, adopted: 0, failed: 0 };
+        if (readingFixes.size) {
+          readingBatch = [];
+          for (var fix of Array.from(readingFixes.values())) {
+            var saved = null;
+            try {
+              saved = await env.saveCreditRole({ videoId: fix.videoId, role: fix.role, value: fix.to,
+                expectedCurrent: fix.from, expectedSource: 'manual' });
+            } catch (_error) { saved = null; }
+            if (saved && saved.updated === true) {
+              readingFixes.delete(fix.videoId + ':' + fix.role);
+              readingBatch.push(fix);
+              var snapshot = snapshots.get(fix.videoId);
+              if (snapshot) snapshot[fix.role] = fix.to;
+              result.adopted++;
+            } else result.failed++;
+          }
+        }
         copyStatus.textContent = result.failed
           ? message('history_recheckAdoptAllPartial', result.adopted + '件を採用しました。採用できなかった' + result.failed + '件は一覧に残っています。', [result.adopted, result.failed])
           : message('history_recheckAdoptAllDone', result.adopted + '件を採用しました。', [result.adopted]);
@@ -308,13 +352,28 @@
       }
     });
     undoAll.addEventListener('click', async function () {
-      if (port || adopting || !(review.lastBatch && review.lastBatch.length)) return;
+      var batchSize = ((review.lastBatch && review.lastBatch.length) || 0) + readingBatch.length;
+      if (port || adopting || !batchSize) return;
       if (typeof root.confirm === 'function' && !root.confirm(message('history_recheckUndoAllConfirm',
-        'まとめて採用した ' + review.lastBatch.length + '件を元に戻します。よろしいですか？', [review.lastBatch.length]))) return;
+        'まとめて採用した ' + batchSize + '件を元に戻します。よろしいですか？', [batchSize]))) return;
       adopting = true; summary();
       copyStatus.textContent = message('history_recheckUndoAllRunning', 'まとめて元に戻しています。');
       try {
-        var result = await review.undoBatch();
+        var result = review.lastBatch && review.lastBatch.length ? await review.undoBatch() : { targets: 0, undone: 0, failed: 0 };
+        var keep = [];
+        for (var fix of readingBatch) {
+          var restored = null;
+          try {
+            restored = await env.saveCreditRole({ videoId: fix.videoId, role: fix.role, value: fix.from,
+              expectedCurrent: fix.to, expectedSource: 'manual' });
+          } catch (_error) { restored = null; }
+          if (restored && restored.updated === true) {
+            var snapshot = snapshots.get(fix.videoId);
+            if (snapshot) snapshot[fix.role] = fix.from;
+            result.undone++;
+          } else { result.failed++; keep.push(fix); }
+        }
+        readingBatch = keep;
         copyStatus.textContent = result.failed
           ? message('history_recheckUndoAllPartial', result.undone + '件を元に戻しました。戻せなかった' + result.failed + '件はその後に値が変わっています。', [result.undone, result.failed])
           : message('history_recheckUndoAllDone', result.undone + '件を元に戻しました。', [result.undone]);
@@ -324,6 +383,7 @@
         adopting = false; summary();
       }
     });
+    if (mbToggle) mbToggle.addEventListener('change', summary);
     // Checking it starts the pass over from the beginning; nothing runs until Start.
     includeChecked.addEventListener('change', function () {
       if (port) { includeChecked.checked = includeStamped; return; }

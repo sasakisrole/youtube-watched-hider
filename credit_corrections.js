@@ -236,18 +236,30 @@
 
   // A stamp covers the parser revision and the role values it saw; a later
   // edit to any role makes the video a target again.
-  function recheckStamp(record) {
+  // ':mb' marks a check that also consulted MusicBrainz; it satisfies a plain
+  // check, but a MusicBrainz check still revisits videos stamped without it.
+  function recheckStamp(record, withMb) {
     var text = PARSER_REVISION + '\u001f' + ROLES.map(function (role) { return String((record && record[role]) || ''); }).join('\u001f');
     var hash = 5381;
     for (var i = 0; i < text.length; i++) hash = ((hash * 33) ^ text.charCodeAt(i)) >>> 0;
-    return PARSER_REVISION + ':' + hash.toString(16);
+    return PARSER_REVISION + ':' + hash.toString(16) + (withMb ? ':mb' : '');
   }
-  function targets(records, scope, checked, limit, creditTarget, includeStamped) {
+  // Confirmed (manual) roles are only revisited by a MusicBrainz check, and
+  // only when romanized, since the sole change allowed to them is the same
+  // name written in Japanese.
+  function hasManualRomanized(record, creditTarget) {
+    return ROLES.some(function (role) {
+      return creditTarget.effectiveRoleSource(record, role) === 'manual' && isLatinName(String(record[role] || ''));
+    });
+  }
+  function targets(records, scope, checked, limit, creditTarget, includeStamped, withMb) {
     return (records || []).filter(function (record) {
+      var stamp = record.creditsRecheck, base = recheckStamp(record);
+      var manualReading = !!withMb && hasManualRomanized(record, creditTarget);
+      var auto = ROLES.some(function (role) { return !creditTarget.creditIsBlank(record[role]) && creditTarget.effectiveRoleSource(record, role) !== 'manual'; });
+      var due = includeStamped || (stamp !== base && stamp !== base + ':mb') || (manualReading && stamp !== base + ':mb');
       return /^[\w-]{11}$/.test(record.videoId || '') && (!checked || !checked.has(record.videoId))
-        && (includeStamped || record.creditsRecheck !== recheckStamp(record))
-        && (scope !== 'remix' || isRemix(record.title))
-        && ROLES.some(function (role) { return !creditTarget.creditIsBlank(record[role]) && creditTarget.effectiveRoleSource(record, role) !== 'manual'; });
+        && due && (scope !== 'remix' || isRemix(record.title)) && (auto || manualReading);
     }).slice(0, Math.max(1, Math.min(500, Number(limit) || 50)));
   }
 

@@ -3806,5 +3806,21 @@
   },
   "history_recheckMbKeepJapanese": {
     "message": "kept: same person in Japanese spelling"
+  },
+  "history_recheckMbReadingManual": {
+    "message": "use the Japanese spelling (confirmed value) $VALUE$",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "history_recheckAdoptAllConfirmReading": {
+    "message": "Adopt all listed proposals? Confirmed values change only where $COUNT$ romanized names become the Japanese spelling with the same reading. Adopted items can be undone.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   }
 }

@@ -67,11 +67,13 @@ function boot(locale = 'en', clipboardMode = 'success', downloadMode = 'success'
   };
   vm.runInNewContext(read('credit_maintenance.js'), ctx);
   const marked = [];
-  ctx.CreditMaintenanceUI.create({getRecords: () => records, begin: () => true, end() {}, saveCreditRole() { saves++; },
+  let saveImpl = null;
+  ctx.CreditMaintenanceUI.create({getRecords: () => records, begin: () => true, end() {}, saveCreditRole(payload) { saves++; return saveImpl ? saveImpl(payload) : undefined; },
     markRechecked(videoId, stamp) { marked.push([videoId, stamp]); const live = records.find(r => r.videoId === videoId); if (live) live.creditsRecheck = stamp; return Promise.resolve(true); }});
   const click = id => elements[id].listeners.click();
   return {elements, keys, copied, downloads, revoked, confirms, accepted, review, marked, runtime, click, get saves() { return saves; },
     set confirmAnswer(value) { confirmAnswer = value; },
+    setSave(fn) { saveImpl = fn; },
     includeChecked(value) { elements.creditRecheckIncludeChecked.checked = value; elements.creditRecheckIncludeChecked.listeners.change(); },
     start(rows, scope = 'all') {
       records = rows; elements.creditRecheckScope.value = scope; elements.creditRecheckLimit.value = '50';
@@ -376,6 +378,34 @@ async function main() {
     await settle();
     assert.equal((await ui.report()).counts.proposals, 0);
   });
+  await check('READING-3: a confirmed romanized value is rewritten only to its Japanese reading, and undone', async () => {
+    const writes = [];
+    const ui = boot(), record = {...row(), composer: 'Satoshi Yaginuma', creditRoleSources: {composer: 'manual'}};
+    ui.setSave(async (payload) => { writes.push(payload); return {updated: true}; });
+    ui.runtime.mbResponse = readingFound;
+    ui.elements.creditRecheckMb.checked = true;
+    const port = ui.start([record]);
+    ui.progress(port, record, success('Unrelated text')); await settle(); ui.done(port);
+    assert.equal(ui.elements.creditRecheckAdoptAll.disabled, false);
+    await ui.click('creditRecheckAdoptAll');
+    assert.match(ui.confirms.at(-1), /1/);
+    assert.equal(JSON.stringify(writes), JSON.stringify([{videoId: 'sampleVid01', role: 'composer', value: '八木沼悟志', expectedCurrent: 'Satoshi Yaginuma', expectedSource: 'manual'}]));
+    assert.equal(writes[0].adoptCandidate, undefined);
+    await ui.click('creditRecheckUndoAll');
+    assert.equal(JSON.stringify(writes[1]), JSON.stringify({videoId: 'sampleVid01', role: 'composer', value: 'Satoshi Yaginuma', expectedCurrent: '八木沼悟志', expectedSource: 'manual'}));
+  });
+  await check('READING-4: a confirmed value without a matching reading is never touched', async () => {
+    const writes = [];
+    const ui = boot(), record = {...row(), composer: 'Suu', creditRoleSources: {composer: 'manual'}};
+    ui.setSave(async (payload) => { writes.push(payload); return {updated: true}; });
+    ui.runtime.mbResponse = {success: true, candidate: {composer: '吉田菫', lyricist: '', arranger: '', mbid: 'm', roleRecordingIds: {},
+      mbTitle: 'Alpha', stage: 'strict', manualReviewReason: '', sortNames: {'吉田菫': 'Yoshida, Sumire'}}};
+    ui.elements.creditRecheckMb.checked = true;
+    const port = ui.start([record]);
+    ui.progress(port, record, success('Unrelated text')); await settle(); ui.done(port);
+    assert.equal(ui.elements.creditRecheckAdoptAll.disabled, true);
+    assert.equal(writes.length, 0);
+  });
   await check('REQ-6: release and locale metadata', () => {
     assert.equal(JSON.parse(read('manifest.json')).version, read('CHANGELOG.md').match(/^## v(\d+\.\d+\.\d+)/m)[1]);
     assert.match(read('CHANGELOG.md'), /## v1\.60\.29[^]*?Copy credit recheck results as JSON/);
@@ -387,7 +417,8 @@ async function main() {
       'history_recheckAdoptAllPartial', 'history_recheckAdoptAllFailure', 'history_recheckUndoAll', 'history_recheckUndoAllConfirm', 'history_recheckUndoAllRunning',
       'history_recheckUndoAllDone', 'history_recheckUndoAllPartial', 'history_recheckUndoAllFailure',
       'history_recheckMb', 'history_recheckMbProgress', 'history_recheckIncludeChecked', 'history_recheckOptionsHelp',
-      'history_recheckMbReading', 'history_recheckMbKeepJapanese']) assert(ja[key] && en[key]);
+      'history_recheckMbReading', 'history_recheckMbKeepJapanese', 'history_recheckMbReadingManual',
+      'history_recheckAdoptAllConfirmReading']) assert(ja[key] && en[key]);
   });
   console.log(`RESULT: ${passed} passed / ${failed} failed / 0 skipped`);
   process.exitCode = failed ? 1 : 0;

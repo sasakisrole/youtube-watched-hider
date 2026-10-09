@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.47 (2026-10-09)
+
+- A recheck with MusicBrainz may also rewrite a confirmed (manual) credit, but only from a romanized name to the Japanese name with the same MusicBrainz reading. These changes are listed, confirmed with "Adopt all proposals", and can be undone with "Undo all adoptions".
+
 ## v1.60.46 (2026-10-09)
 
 - When "Also check MusicBrainz" is selected, propose the Japanese spelling for a romanized credit whose reading matches the artist's MusicBrainz sort name, and drop description proposals that only romanize a Japanese credit. Aliases are not used, so another name of a person is still reported, not merged.

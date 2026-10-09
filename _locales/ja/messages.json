@@ -3806,5 +3806,21 @@
   },
   "history_recheckMbKeepJapanese": {
     "message": "同じ人の日本語表記のため変更しない"
+  },
+  "history_recheckMbReadingManual": {
+    "message": "日本語表記に統一（確定済みの値） $VALUE$",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
+  },
+  "history_recheckAdoptAllConfirmReading": {
+    "message": "一覧の変更案をまとめて採用します。手動確定値は、ローマ字を同じ読みの日本語表記にする $COUNT$件だけ変更します。採用した項目は元に戻せます。よろしいですか？",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   }
 }
