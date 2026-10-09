@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.44",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "In credit enrichment, skip channels whose every video is waiting on the MusicBrainz cooldown without showing them as work, and spend a limited run on videos that can still produce a result first. Results are unchanged."
+    ]
+  },
+  {
     "version": "1.60.43",
     "date": "2026-10-09",
     "summary": "",

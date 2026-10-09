@@ -133,6 +133,44 @@
     return limited;
   }
 
+  // A limited run spends its slots on videos that can still produce a result
+  // (a channel rule applies or MusicBrainz is due); videos in MusicBrainz
+  // cooldown only fill what is left. An unlimited run is unchanged.
+  function limitEnrichmentGroupsByDue(groups, limit, isDue) {
+    if (limit == null || typeof isDue !== 'function') return limitEnrichmentGroups(groups, limit);
+    let remaining = Math.max(0, Math.floor(Number(limit) || 0));
+    const picked = new Map();
+    for (const pass of [true, false]) {
+      for (const [channel, videos] of groups) {
+        for (const video of videos) {
+          if (!remaining) break;
+          if (isDue(channel, video) !== pass) continue;
+          if (!picked.has(channel)) picked.set(channel, new Set());
+          picked.get(channel).add(video);
+          remaining--;
+        }
+      }
+    }
+    const limited = new Map();
+    for (const [channel, videos] of groups) {
+      const chosen = picked.get(channel);
+      if (chosen) limited.set(channel, videos.filter((video) => chosen.has(video)));
+    }
+    return limited;
+  }
+
+  // Conservative: unknown or rule channels count as due, and the raw missing
+  // roles (a superset of what is left after local passes) are checked.
+  function createMbDueCheck(ruleChannels, ignoreCooldown, now) {
+    const api = window.CreditTarget;
+    return (channel, video) => {
+      if (ruleChannels && ruleChannels.has(channel)) return true;
+      if (!api || typeof api.shouldQueryMb !== 'function') return true;
+      return api.shouldQueryMb(video, { artist: cleanArtistFromChannel(channel), title: (video && video.title) || '',
+        missingRoles: getMissingCreditRoles(video), now, ignoreCooldown: ignoreCooldown === true });
+    };
+  }
+
   // Which of the still-missing roles does this candidate actually fill? Drives
   // (a) whether a candidate is worth adding and (b) which roles to drop from the
   // remaining set so the next source only chases what is still blank.
@@ -1143,7 +1181,8 @@
       let estimateRules = Array.isArray(rules) ? rules : null;
       let ignoreCooldown = false;
       const estimateText = (limit = null) => {
-        const limitedGroups = limitEnrichmentGroups(groups, limit);
+        const ruleChannels = estimateRules ? new Set(estimateRules.map((rule) => rule.channel)) : null;
+        const limitedGroups = limitEnrichmentGroupsByDue(groups, limit, createMbDueCheck(ruleChannels, ignoreCooldown, Date.now()));
         const minimumRequestCount = getMinimumEnrichmentRequestCount(
           limitedGroups,
           estimateRules,
@@ -1427,7 +1466,7 @@
         this.updateButtons();
       }
       if (!confirmation) return;
-      const groups = limitEnrichmentGroups(allGroups, confirmation.limit);
+      let groups = allGroups;
 
       const beginOk = !this.env.beginMaintenance || this.env.beginMaintenance(scriptMessage('history_scripts_generating_cancel_102', '生成中…（中止）'), true);
       if (!beginOk) {
@@ -1443,13 +1482,15 @@
       this.generating = true;
       const outcomes = { noRecording: 0, noRoles: 0, cooldown: 0, filtered: 0, fetchError: 0 };
       this.updateButtons();
-      this.setMessage(scriptMessage('history_scripts_matching_1_channels_228', `${groups.size}チャンネルを照合します。`, [groups.size]));
 
       try {
         if (!Array.isArray(rules)) {
           rules = rulesLoadAttempt ? await rulesLoadAttempt : await this.loadRules();
         }
         const ruleByChannel = new Map(rules.map((rule) => [rule.channel, rule]));
+        groups = limitEnrichmentGroupsByDue(allGroups, confirmation.limit,
+          createMbDueCheck(new Set(ruleByChannel.keys()), confirmation.ignoreCooldown, Date.now()));
+        this.setMessage(scriptMessage('history_scripts_matching_1_channels_228', `${groups.size}チャンネルを照合します。`, [groups.size]));
         // Share accepted roles across the local passes and MusicBrainz so later
         // sources cannot propose a second value for an already covered role.
         const statesByVideoId = new Map();
@@ -1492,13 +1533,25 @@
           const [channel, videos] = entries[i];
           if (this.abortRequested) break;
           const progressLabel = `${i + 1}/${entries.length}ch: ${channel}`;
-          this.updateProgress(progressLabel, i / entries.length);
-          if (this.env.updateMaintenance) this.env.updateMaintenance(scriptMessage('history_scripts_generating_cancel_102', '生成中…（中止）'), true);
-
           // Source 3: MusicBrainz per still-missing video (no channel-level gate —
           // one success elsewhere no longer starves the other videos, HANDOFF §3.3).
           const pending = videos.map((video) => statesByVideoId.get(video.videoId))
             .filter((state) => state.missing.size && !this.abortRequested);
+          // A channel whose every video is in MusicBrainz cooldown would only be
+          // skipped one by one; count it and move on without showing it as work.
+          // Each video is judged once; the per-video loop below reuses the result.
+          const mbApi = window.CreditTarget;
+          const dueFlags = pending.map((state) => !mbApi || typeof mbApi.shouldQueryMb !== 'function'
+            || mbApi.shouldQueryMb(state.video, {
+              artist: cleanArtistFromChannel(channel), title: state.video.title || '',
+              missingRoles: Array.from(state.missing), now: Date.now(), ignoreCooldown: confirmation.ignoreCooldown === true,
+            }));
+          if (pending.length && !dueFlags.some(Boolean)) {
+            outcomes.cooldown += pending.length;
+            continue;
+          }
+          this.updateProgress(progressLabel, i / entries.length);
+          if (this.env.updateMaintenance) this.env.updateMaintenance(scriptMessage('history_scripts_generating_cancel_102', '生成中…（中止）'), true);
           for (let j = 0; j < pending.length; j++) {
             const state = pending[j];
             if (this.abortRequested) break;
@@ -1512,15 +1565,7 @@
             const artist = cleanArtistFromChannel(channel);
             const missingRoles = Array.from(state.missing);
             const api = window.CreditTarget;
-            const shouldQuery = !api || typeof api.shouldQueryMb !== 'function'
-              || api.shouldQueryMb(state.video, {
-                artist,
-                title,
-                missingRoles,
-                now: Date.now(),
-                ignoreCooldown: confirmation.ignoreCooldown === true,
-              });
-            if (!shouldQuery) { outcomes.cooldown++; continue; }
+            if (!dueFlags[j]) { outcomes.cooldown++; continue; }
             const queryFingerprint = api && typeof api.mbQueryFingerprint === 'function'
               ? api.mbQueryFingerprint(artist, title)
               : `${String(artist).normalize('NFKC').trim().replace(/\s+/gu, ' ').toLowerCase()}\u0000${String(title).normalize('NFKC').trim().replace(/\s+/gu, ' ').toLowerCase()}`;
@@ -2012,6 +2057,8 @@
     estimateEnrichmentMinutes,
     buildEnrichmentConfirmText,
     limitEnrichmentGroups,
+    limitEnrichmentGroupsByDue,
+    createMbDueCheck,
     coveredNeededRoles,
     limitCandidateToRoles,
     candidateRejectionSignature,

@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.44 (2026-10-09)
+
+- In credit enrichment, skip channels whose every video is waiting on the MusicBrainz cooldown without showing them as work, and spend a limited run on videos that can still produce a result first. Results are unchanged.
+
 ## v1.60.43 (2026-10-09)
 
 - Use English as the default language, so browsers set to languages other than Japanese or English show English instead of Japanese. Japanese browsers are unchanged.
