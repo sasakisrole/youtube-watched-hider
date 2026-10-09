@@ -397,7 +397,9 @@
     .credit-review-evidence { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; color: var(--text-muted); }
     .credit-recheck-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     .credit-recheck-controls select, .credit-recheck-controls input { min-height: 44px; max-width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); }
-    .credit-recheck-controls input { width: 6em; }
+    .credit-recheck-controls input[type="number"] { width: 6em; }
+    .credit-recheck-option { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; }
+    .credit-recheck-controls .credit-recheck-option input { width: 18px; height: 18px; min-height: 0; margin: 0; accent-color: var(--accent); }
     .credit-review-dialog :is(select, input):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     #creditRecheckIssues { max-height: 6em; overflow: auto; font-size: 12px; overflow-wrap: anywhere; }
     .credit-review-item > a { display: inline-flex; align-items: center; min-height: 44px; color: var(--accent); }
@@ -1297,11 +1299,12 @@
         <select id="creditRecheckScope"><option value="remix" data-i18n="history_recheckRemix">Remix系</option><option value="all" data-i18n="history_recheckAll">履歴全体</option></select>
         <label for="creditRecheckLimit" data-i18n="history_recheckLimit">1回の件数</label>
         <input id="creditRecheckLimit" type="number" min="1" max="500" step="1" value="50">
-        <label for="creditRecheckMb"><input id="creditRecheckMb" type="checkbox"> <span data-i18n="history_recheckMb">MusicBrainzでも照合する</span></label>
+        <label class="credit-recheck-option" for="creditRecheckIncludeChecked"><input id="creditRecheckIncludeChecked" type="checkbox"> <span data-i18n="history_recheckIncludeChecked">点検済みの動画も含める</span></label>
+        <label class="credit-recheck-option" for="creditRecheckMb"><input id="creditRecheckMb" type="checkbox"> <span data-i18n="history_recheckMb">MusicBrainzでも照合する</span></label>
         <button class="sort-btn" id="creditRecheckStart" type="button" data-i18n="history_recheckStart">未点検分を点検</button>
         <button class="sort-btn" id="creditRecheckStop" type="button" disabled data-i18n="history_recheckStop">点検を中止</button>
-        <button class="sort-btn" id="creditRecheckReset" type="button" data-i18n="history_recheckReset">点検済みも再対象にする</button>
       </div>
+      <p class="credit-review-note" data-i18n="history_recheckOptionsHelp">チェック欄は次の点検に効きます。点検は「未点検分を点検」を押すと始まります。「点検済みの動画も含める」にチェックすると、前に点検した動画ももう一度調べます。</p>
       <p class="credit-review-note" data-i18n="history_recheckHelp">YouTubeタブを開いた状態で実行してください。取得間隔を守って処理します。根拠不足・複数曲・版の混在は保留し、原曲の編曲者やRemix担当者から推測しません。</p>
       <p id="creditRecheckStatus" class="credit-review-summary" role="status" aria-live="polite"></p>
       <button class="sort-btn" id="creditRecheckCopy" type="button" disabled data-i18n="history_recheckCopy">結果をコピー</button>

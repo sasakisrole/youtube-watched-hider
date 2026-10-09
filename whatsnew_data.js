@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.41",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "Replace the \"recheck checked videos too\" button with a checkbox so its state is visible, explain that options apply to the next run, and size the recheck checkboxes normally."
+    ]
+  },
+  {
     "version": "1.60.40",
     "date": "2026-10-09",
     "summary": "",

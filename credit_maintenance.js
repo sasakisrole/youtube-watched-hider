@@ -38,7 +38,7 @@
     var exports = new Map(), exportScopes = new Set();
     var start = document.getElementById('creditRecheckStart');
     var stop = document.getElementById('creditRecheckStop');
-    var reset = document.getElementById('creditRecheckReset');
+    var includeChecked = document.getElementById('creditRecheckIncludeChecked');
     var scope = document.getElementById('creditRecheckScope');
     var limit = document.getElementById('creditRecheckLimit');
     var status = document.getElementById('creditRecheckStatus');
@@ -61,7 +61,7 @@
       saveCreditRole: env.saveCreditRole,
     });
     function controls(running) {
-      start.disabled = running; scope.disabled = running; limit.disabled = running; reset.disabled = running;
+      start.disabled = running; scope.disabled = running; limit.disabled = running; includeChecked.disabled = running;
       stop.disabled = !running;
     }
     // Only roles whose sole proposal came from this recheck; other sources need their own review.
@@ -263,9 +263,12 @@
         adopting = false; summary();
       }
     });
-    reset.addEventListener('click', function () {
-      if (port) return;
-      checked.clear(); includeStamped = true; copyStatus.textContent = ''; summary();
+    // Checking it starts the pass over from the beginning; nothing runs until Start.
+    includeChecked.addEventListener('change', function () {
+      if (port) { includeChecked.checked = includeStamped; return; }
+      includeStamped = includeChecked.checked;
+      if (includeStamped) checked.clear();
+      copyStatus.textContent = ''; summary();
     });
     function buildReport() {
       // Keep the latest snapshot for every video seen on this page, even

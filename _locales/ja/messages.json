@@ -3771,5 +3771,11 @@
         "content": "$2"
       }
     }
+  },
+  "history_recheckIncludeChecked": {
+    "message": "点検済みの動画も含める"
+  },
+  "history_recheckOptionsHelp": {
+    "message": "チェック欄は次の点検に効きます。点検は「未点検分を点検」を押すと始まります。「点検済みの動画も含める」にチェックすると、前に点検した動画ももう一度調べます。"
   }
 }

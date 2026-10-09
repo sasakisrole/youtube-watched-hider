@@ -72,6 +72,7 @@ function boot(locale = 'en', clipboardMode = 'success', downloadMode = 'success'
   const click = id => elements[id].listeners.click();
   return {elements, keys, copied, downloads, revoked, confirms, accepted, review, marked, runtime, click, get saves() { return saves; },
     set confirmAnswer(value) { confirmAnswer = value; },
+    includeChecked(value) { elements.creditRecheckIncludeChecked.checked = value; elements.creditRecheckIncludeChecked.listeners.change(); },
     start(rows, scope = 'all') {
       records = rows; elements.creditRecheckScope.value = scope; elements.creditRecheckLimit.value = '50';
       click('creditRecheckStart'); return ports.at(-1);
@@ -160,7 +161,7 @@ async function main() {
     assert.equal((await ui.report()).scope, 'remix');
     port = ui.start([first, second]); ui.progress(port, second, success('Composer: Saved credit')); ui.done(port);
     assert.equal((await ui.report()).items.length, 2);
-    ui.click('creditRecheckReset'); assert.equal(ui.elements.creditRecheckCopy.disabled, true);
+    ui.includeChecked(true); assert.equal(ui.elements.creditRecheckCopy.disabled, true);
     const before = ui.copied.length; await ui.click('creditRecheckCopy'); assert.equal(ui.copied.length, before);
     port = ui.start([first, second]); ui.progress(port, first, success('Composer: Saved credit'));
     const report = await ui.report();
@@ -260,7 +261,7 @@ async function main() {
     ui.done(port);
     assert.deepEqual(ui.marked, [['sampleVid01', CM.recheckStamp(ok)]]);
     assert.equal(CM.targets([ok, bad], 'all', new Set(), 50, CT).map(r => r.videoId).join(), 'sampleVid02');
-    ui.click('creditRecheckReset');
+    ui.includeChecked(true);
     port = ui.start([ok, bad]);
     ui.progress(port, ok, success('Composer: Saved credit'));
     assert.equal(ui.marked.length, 2, 'reset includes the stamped video again');
@@ -300,6 +301,24 @@ async function main() {
       assert.equal(report.items[0].musicbrainz.status, response ? (response.candidate ? 'found' : 'no-recording') : 'error');
     }
   });
+  await check('OPT-1: the include-checked option is a visible checkbox that only applies to the next run', async () => {
+    const html = read('history.html');
+    assert.match(html, /<input id="creditRecheckIncludeChecked" type="checkbox">/);
+    assert.doesNotMatch(html, /id="creditRecheckReset"/);
+    const ui = boot(), record = row();
+    let port = ui.start([record]);
+    ui.progress(port, record, success('Composer: Saved credit')); ui.done(port);
+    const before = ui.runtime.mbSent.length;
+    ui.includeChecked(true);
+    assert.equal(ui.elements.creditRecheckIncludeChecked.checked, true);
+    port = ui.start([record]);
+    assert.equal(ui.elements.creditRecheckIncludeChecked.disabled, true, 'locked while a run is active');
+    ui.includeChecked(false);
+    assert.equal(ui.elements.creditRecheckIncludeChecked.checked, true, 'a change during a run is reverted');
+    ui.done(port);
+    assert.equal(ui.elements.creditRecheckIncludeChecked.disabled, false);
+    assert.equal(ui.runtime.mbSent.length, before);
+  });
   await check('REQ-6: release and locale metadata', () => {
     assert.equal(JSON.parse(read('manifest.json')).version, read('CHANGELOG.md').match(/^## v(\d+\.\d+\.\d+)/m)[1]);
     assert.match(read('CHANGELOG.md'), /## v1\.60\.29[^]*?Copy credit recheck results as JSON/);
@@ -310,7 +329,7 @@ async function main() {
       'history_recheckAdoptAll', 'history_recheckAdoptAllConfirm', 'history_recheckAdoptAllRunning', 'history_recheckAdoptAllDone',
       'history_recheckAdoptAllPartial', 'history_recheckAdoptAllFailure', 'history_recheckUndoAll', 'history_recheckUndoAllConfirm', 'history_recheckUndoAllRunning',
       'history_recheckUndoAllDone', 'history_recheckUndoAllPartial', 'history_recheckUndoAllFailure',
-      'history_recheckMb', 'history_recheckMbProgress']) assert(ja[key] && en[key]);
+      'history_recheckMb', 'history_recheckMbProgress', 'history_recheckIncludeChecked', 'history_recheckOptionsHelp']) assert(ja[key] && en[key]);
   });
   console.log(`RESULT: ${passed} passed / ${failed} failed / 0 skipped`);
   process.exitCode = failed ? 1 : 0;

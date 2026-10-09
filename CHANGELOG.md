@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.41 (2026-10-09)
+
+- Replace the "recheck checked videos too" button with a checkbox so its state is visible, explain that options apply to the next run, and size the recheck checkboxes normally.
+
 ## v1.60.40 (2026-10-09)
 
 - Optionally look up held credit roles on MusicBrainz during a recheck (off by default). Only strict title and artist matches become proposals, and they are reviewed one by one rather than adopted in bulk.
