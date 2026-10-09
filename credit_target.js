@@ -41,7 +41,8 @@
   // Exact whole-value placeholders only. Keep this deliberately narrow: a
   // broad vocabulary risks rejecting real artist names. A label that its
   // distributor writes into Composer/Lyricist rows is not a contributor.
-  var NON_PERSON_CREDIT_VALUES = new Set(['BGM', 'MOTTO MUSIC']);
+  var NON_PERSON_CREDIT_VALUES = new Set(['BGM', 'MOTTO MUSIC', 'ASOBINOTES',
+    'BANDAI NAMCO MUSIC LIVE,INC.', 'BANDAI NAMCO MUSIC LIVE, INC.']);
 
   function creditIsBlank(value) {
     return value == null || String(value).trim() === '';

@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.33 (2026-10-09)
+
+- Do not treat the label and publisher names ASOBINOTES and Bandai Namco Music Live, Inc. as composers or lyricists.
+
 ## v1.60.32 (2026-10-09)
 
 - Save credit recheck results as a JSON file in the youtube-watched-hider-reports folder under Downloads.

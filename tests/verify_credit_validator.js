@@ -157,6 +157,8 @@ async function run() {
     'BGM',
     'MOTTO MUSIC',
     'motto  music',
+    'ASOBINOTES',
+    'Bandai Namco Music Live,Inc.',
     '中恵 光城 Compose/Arrange：RD-Sounds',
     'Lyrics: Alice',
     'Reboot"',
