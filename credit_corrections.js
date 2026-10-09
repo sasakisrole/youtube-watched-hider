@@ -272,7 +272,9 @@
       // A confirmed value may be one adopted before adoptions kept the recheck
       // source; checking it once lets a description-backed one become correctable.
       var manualValue = ROLES.some(function (role) { return !creditTarget.creditIsBlank(record[role]) && creditTarget.effectiveRoleSource(record, role) === 'manual'; });
-      var due = includeStamped || !flags || (manualReading && !flags.mb) || (manualValue && !flags.source);
+      // A MusicBrainz check revisits videos last checked without it when it could
+      // change something there (an automatic value, or a romanized confirmed one).
+      var due = includeStamped || !flags || (!!withMb && !flags.mb && (auto || manualReading)) || (manualValue && !flags.source);
       return /^[\w-]{11}$/.test(record.videoId || '') && (!checked || !checked.has(record.videoId))
         && due && (scope !== 'remix' || isRemix(record.title)) && (auto || manualReading || manualValue);
     }).slice(0, Math.max(1, Math.min(500, Number(limit) || 50)));

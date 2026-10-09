@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.53 (2026-10-09)
+
+- A recheck with MusicBrainz now revisits every video last checked without it, so a quick pass without MusicBrainz can be followed by one with it.
+
 ## v1.60.52 (2026-10-09)
 
 - Keep earlier recheck results: instead of marking every video unchecked, only videos that have confirmed values are checked once more for the recheck-source change.

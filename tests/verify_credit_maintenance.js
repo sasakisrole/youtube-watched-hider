@@ -87,6 +87,8 @@ check('confirmed values are checked once; romanized ones again only by a MusicBr
   assert.equal(CM.targets([stamped],'remix',new Set(),50,CT,false,true).length,0,'a MusicBrainz stamp settles it');
   const auto={videoId:'autoVid0001',title:'Song (X Remix)',composer:'Alice',creditsRecheck:CM.recheckStamp({composer:'Alice'},true)};
   assert.equal(CM.targets([{...auto,creditsRecheck:CM.recheckStamp(auto,true)}],'remix',new Set(),50,CT).length,0,'an :mb stamp satisfies a plain check');
+  assert.equal(CM.targets([{...auto,creditsRecheck:CM.recheckStamp(auto,false,true)}],'remix',new Set(),50,CT).length,0,'a plain stamp satisfies a plain check');
+  assert.equal(CM.targets([{...auto,creditsRecheck:CM.recheckStamp(auto,false,true)}],'remix',new Set(),50,CT,false,true).length,1,'but a MusicBrainz check revisits it');
 });
 check('romanized readings unify to the Japanese name, aliases do not', () => {
   const sort={'八木沼悟志':'Yaginuma, Satoshi','中村航':'Nakamura, Kou','白戸佑輔':'Shirato, Yuusuke','吉田菫':'Yoshida, Sumire','齋藤真也':'Saito, Shinya'};

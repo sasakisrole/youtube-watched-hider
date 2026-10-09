@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.53",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "A recheck with MusicBrainz now revisits every video last checked without it, so a quick pass without MusicBrainz can be followed by one with it."
+    ]
+  },
+  {
     "version": "1.60.52",
     "date": "2026-10-09",
     "summary": "",
