@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.61",
+    "date": "2026-10-10",
+    "summary": "",
+    "points": [
+      "Offer individually reviewed removal of non-song description credits, prevent automatic refill, and support undo."
+    ]
+  },
+  {
     "version": "1.60.60",
     "date": "2026-10-09",
     "summary": "",

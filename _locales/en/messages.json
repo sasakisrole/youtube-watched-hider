@@ -1,4 +1,5 @@
 {
+  "history_recheckNonSong": {"message": "Clear non-song credit: background/material music or annotation without a matching song title"},
   "history_recheckCleanupRemoved": {"message": "Removed (review individually):"},
   "popup_playlistCards": {
     "message": "Playlist cards"

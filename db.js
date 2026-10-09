@@ -8,7 +8,7 @@ if (typeof WatchedDB === 'undefined') {
     const LIKED_STORE = 'likedVideos';
     const CREDIT_ROLES = ['composer', 'lyricist', 'arranger'];
     const CREDITS_RAW_RESPONSE_MAX_LENGTH = 4096;
-    const CREDIT_ROLE_SOURCES = new Set(['topic', 'general', 'enrich:rule', 'enrich:mb', 'recheck', 'manual']);
+    const CREDIT_ROLE_SOURCES = new Set(['topic', 'general', 'enrich:rule', 'enrich:mb', 'recheck', 'manual', 'description-nonsong']);
 
     let dbInstance = null;
 
@@ -257,7 +257,7 @@ if (typeof WatchedDB === 'undefined') {
           for (const k of [...CREDIT_ROLES, 'creditsRaw']) {
             const v = credits && credits[k];
             const valid = k === 'creditsRaw' || globalThis.CreditTarget.isValidCreditValue(v, existing.title);
-            const canWrite = k === 'creditsRaw' ? (force || !existing[k]) : !existing[k];
+            const canWrite = k === 'creditsRaw' ? (force || !existing[k]) : !existing[k] && globalThis.CreditTarget.effectiveRoleSource(existing, k) !== 'description-nonsong';
             if (v && valid && canWrite) {
               existing[k] = v;
               if (k !== 'creditsRaw') writtenRoles.push(k);
@@ -389,6 +389,7 @@ if (typeof WatchedDB === 'undefined') {
     async function setManualCreditRole(args = {}) {
       const { videoId, role, value, expectedCurrent, expectedSource, restoreRoleSource } = args;
       const adoptCandidate = args.adoptCandidate === true;
+      const clearNonSong = adoptCandidate && args.adoptSource === 'description-nonsong' && value === '';
       const rejectCandidate = typeof args.rejectCandidate === 'string' ? args.rejectCandidate : '';
       const hasRestoreRoleSource = Object.prototype.hasOwnProperty.call(args, 'restoreRoleSource');
       const hasRestoreCandidateRejection = Object.prototype.hasOwnProperty.call(args, 'restoreCandidateRejection');
@@ -466,7 +467,7 @@ if (typeof WatchedDB === 'undefined') {
           }
           const undoEntry = existing.creditReviewUndo && existing.creditReviewUndo[role];
           const restoresRecordedValue = hasRestoreRoleSource && undoEntry
-            && (currentSource === 'manual' || (currentSource === 'recheck' && undoEntry.sourceAfter === 'recheck')) && undoEntry.after === currentValue
+            && (currentSource === 'manual' || (['recheck', 'description-nonsong'].includes(currentSource) && undoEntry.sourceAfter === currentSource)) && undoEntry.after === currentValue
             && undoEntry.before === value && undoEntry.sourceBefore === restoreRoleSource;
           if (!nextIsBlank && !globalThis.CreditTarget.isValidCreditValue(value) && !restoresRecordedValue) {
             result = { error: 'invalid_value' };
@@ -474,7 +475,7 @@ if (typeof WatchedDB === 'undefined') {
           }
           // Review-center adoption may replace an unverified automatic value,
           // but it must never be usable as a back door to overwrite manual data.
-          if (adoptCandidate && (nextIsBlank || currentSource === 'manual')) {
+          if (adoptCandidate && ((nextIsBlank && !clearNonSong) || currentSource === 'manual' || (clearNonSong && currentSource !== 'general'))) {
             result = { error: currentSource === 'manual' ? 'already_verified' : 'invalid_value' };
             return;
           }
@@ -501,7 +502,9 @@ if (typeof WatchedDB === 'undefined') {
             && !Array.isArray(existing.creditReviewUndo) ? { ...existing.creditReviewUndo } : {};
           // Invalid automatic values also need reversible maintenance; only a
           // value recorded by this transaction may bypass validation on undo.
-          if (adoptCandidate && typeof currentValue === 'string'
+          if (clearNonSong) {
+            undoLog[role] = { before: currentValue, after: '', sourceAfter: 'description-nonsong', sourceBefore: sourcePresent ? priorSources[role] : null };
+          } else if (adoptCandidate && typeof currentValue === 'string'
             && !globalThis.CreditTarget.isValidCreditValue(currentValue)) {
             undoLog[role] = { before: currentValue, after: value,
               sourceBefore: sourcePresent ? priorSources[role] : null };
@@ -518,6 +521,8 @@ if (typeof WatchedDB === 'undefined') {
           if (hasRestoreRoleSource) {
             if (restoreRoleSource === null) delete roleSources[role];
             else roleSources[role] = restoreRoleSource;
+          } else if (clearNonSong) {
+            roleSources[role] = 'description-nonsong';
           } else if (nextIsBlank) {
             delete roleSources[role];
           } else if (adoptCandidate && args.adoptSource === 'recheck') {
@@ -1456,7 +1461,7 @@ if (typeof WatchedDB === 'undefined') {
                 const currentSource = globalThis.CreditTarget.effectiveRoleSource(existing, role);
                 if (!globalThis.CreditTarget.creditIsBlank(record[role])
                   && globalThis.CreditTarget.creditIsBlank(existing[role])
-                  && currentSource !== 'manual') {
+                  && currentSource !== 'manual' && currentSource !== 'description-nonsong') {
                   existing[role] = record[role];
                   const roleSources = sanitizeCreditRoleSources(existing.creditRoleSources);
                   const incomingSource = globalThis.CreditTarget.effectiveRoleSource(record, role);

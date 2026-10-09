@@ -147,7 +147,7 @@
     var review = root.CreditReview.create({
       getRecords: function () { return Array.from(snapshots.values()); },
       getMaterials: function () { return { candidates: allProposals() }; },
-      filterItem: function (item) { return item.candidates.some(function (candidate) { return /^(?:description-recheck|description-format|description-cleanup|musicbrainz-recheck|musicbrainz-reading)$/.test(candidate.source); }); },
+      filterItem: function (item) { return item.candidates.some(function (candidate) { return /^(?:description-recheck|description-format|description-cleanup|description-nonsong|musicbrainz-recheck|musicbrainz-reading)$/.test(candidate.source); }); },
       allowReject: false,
       limit: 1500,
       emptyMessage: message('history_recheckEmpty', '再点検で見つかった変更案をここに表示します。変更案がなくても、すべて正しいと確認できたわけではありません。'),
@@ -310,7 +310,7 @@
             diagnostic.musicbrainz.error = result.error;
           }
         }
-        if (proposal && proposal.source === 'description-cleanup') continue;
+        if (proposal && ['description-cleanup', 'description-nonsong'].includes(proposal.source)) continue;
         if (!result.value || !result.urls.length || !root.CreditTarget.isValidCreditValue(result.value, job.record.title)) continue;
         if (root.CreditTarget.effectiveRoleSource(job.record, role) === 'manual') {
           readingFixes.set(key, { videoId: job.record.videoId, role: role, from: saved, to: result.value, kind: 'reading' });

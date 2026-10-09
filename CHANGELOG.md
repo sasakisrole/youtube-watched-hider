@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.61 (2026-10-10)
+
+- Offer individually reviewed removal of non-song description credits, prevent automatic refill, and support undo.
+
 ## v1.60.60 (2026-10-09)
 
 - Preserve pending recheck proposals across reloads and separate bulk adoption, visual review, and adopted items with accurate counts and report buckets.

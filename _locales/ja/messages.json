@@ -1,4 +1,5 @@
 {
+  "history_recheckNonSong": {"message": "曲の動画ではないため消す：BGM・素材表記、または曲名に結びつかない注記"},
   "history_recheckCleanupRemoved": {"message": "除去する部分（1件ずつ確認）："},
   "popup_playlistCards": {
     "message": "プレイリストのカード"

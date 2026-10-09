@@ -21,7 +21,7 @@
   'use strict';
 
   var CREDIT_ROLES = ['composer', 'lyricist', 'arranger'];
-  var CREDIT_ROLE_SOURCES = ['topic', 'general', 'enrich:rule', 'enrich:mb', 'recheck', 'manual'];
+  var CREDIT_ROLE_SOURCES = ['topic', 'general', 'enrich:rule', 'enrich:mb', 'recheck', 'manual', 'description-nonsong'];
 
   // 30 days — matches DESIGN B-9 RETRY.YOUTUBE_NOT_FOUND.
   var CREDIT_RECHECK_MS = 30 * 24 * 60 * 60 * 1000;
@@ -57,7 +57,7 @@
 
   function getMissingCreditRoles(record) {
     return CREDIT_ROLES.filter(function (role) {
-      return creditIsBlank(record && record[role]);
+      return creditIsBlank(record && record[role]) && effectiveRoleSource(record, role) !== 'description-nonsong';
     });
   }
 
@@ -108,7 +108,9 @@
   function addReviewCandidate(target, role, candidate, defaultSource, defaultSelected) {
     var rawValue = candidate && (candidate.role === role && !creditIsBlank(candidate.value)
       ? candidate.value : candidate[role]);
-    if (creditIsBlank(rawValue)) return;
+    var clearing = candidate && candidate.role === role && candidate.source === 'description-nonsong' && candidate.value === '';
+    if (clearing) rawValue = '';
+    if (creditIsBlank(rawValue) && !clearing) return;
     target.push({
       value: String(rawValue).trim(),
       source: typeof candidate.source === 'string' ? candidate.source : defaultSource,
@@ -155,7 +157,8 @@
         }, 'same-song', true);
       });
     }
-    return collected;
+    var clearing = collected.filter(function (c) { return c.source === 'description-nonsong'; });
+    return clearing.length ? clearing : collected;
   }
 
   function getCreditReviewStates(record, materials) {

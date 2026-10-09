@@ -187,12 +187,16 @@
     var namedKey = '';
     var entries = [], excluded = [], hasVersionSections = false;
     var candidateLines = { composer: [], lyricist: [], arranger: [] };
+    var nonSongLines = [], linkedSong = false;
+    var materialHeading = '';
+    var materialPattern = /(?:\bBGM\b|使用楽曲|使用曲|音楽素材|Music provided by|フリーBGM)/iu;
     String(description || '').split(/\r?\n/).forEach(function (line) {
       var trimmed = line.trim();
       var segments = extract(line);
       var headingLine = segments.length && typeof segments[0].prefix === 'string'
         ? segments[0].prefix.trim().replace(/[/／|｜;；]+\s*$/u, '').trim() : trimmed;
       var marker = headingLine.normalize('NFKC').replace(/^[\s#■◆●・*\[【「『(]+|[\s\]】」』):：]+$/gu, '').trim();
+      if (materialPattern.test(headingLine)) materialHeading = trimmed;
       var original = /^(?:original(?:\s+(?:song|version|credits?))?|原曲(?:情報|クレジット)?)(?=\s*(?:[:：/|]|https?:\/\/|$))/iu.test(marker);
       if (original) {
         namedKey = ''; section++; scope = 'original'; heading = trimmed; hasVersionSections = true;
@@ -205,11 +209,17 @@
           if (!/^(?:credits?|クレジット|staff|スタッフ)$/iu.test(name) && !(match[1] && extract('[' + name + ']: Example Person').length)) {
             var key = normalized(name);
             var matches = key.length > 0 && targetKeys.has(key);
+            if (matches) linkedSong = true;
+            if (!materialPattern.test(headingLine)) materialHeading = '';
             if (isRemix(title) && !isRemix(name)) matches = false;
             namedKey = key;
             section++; scope = matches ? 'current' : 'other'; heading = trimmed;
           }
         }
+      }
+      if (trimmed.includes(' · ') && targetKeys.has(normalized(trimmed.split(' · ')[0]))) linkedSong = true;
+      if (materialPattern.test(trimmed) || (materialHeading && segments.length)) {
+        nonSongLines.push({line: trimmed, heading: materialHeading, roles: segments.flatMap(function (s) { return s.roles; })});
       }
       // Preserve only role-related lines and their section heading, including
       // rejected values and role-like text that could not be tokenized.
@@ -280,7 +290,7 @@
       }
     });
     return { credits: credits, evidence: evidence, held: held, reasons: reasons, candidateLines: candidateLines,
-      topicNames: topicLineNames(description) };
+      topicNames: topicLineNames(description), nonSongLines: nonSongLines, linkedSong: linkedSong };
   }
 
   // A stamp covers the parser revision and the role values it saw; a later
@@ -336,6 +346,17 @@
       var value = result.maintenance.credits[role], saved = record[role];
       if (creditTarget.creditIsBlank(saved) || creditTarget.effectiveRoleSource(record, role) === 'manual') return null;
       var cleanup = creditTarget.cleanupCreditValue(saved, record.title);
+      var analysis = result.maintenance;
+      // A song's own MV can name its tie-in or supplier, so material lines count only when no heading or Topic row ties the description to this title.
+      var material = !analysis.linkedSong && (analysis.nonSongLines || []).find(function (entry) {
+        return (entry.roles.includes(role) || !entry.roles.length) && normalized(entry.line).includes(normalized(cleanup ? cleanup.value : saved));
+      });
+      var annotated = cleanup && analysis.linkedSong === false && (analysis.candidateLines[role] || []).length;
+      if (creditTarget.effectiveRoleSource(record, role) === 'general' && (material || annotated)) {
+        return { videoId: record.videoId, role: role, value: '', source: 'description-nonsong',
+          sourceDetail: 'https://www.youtube.com/watch?v=' + record.videoId,
+          evidence: material ? (material.heading + '\n' + material.line).trim() : analysis.candidateLines[role].join('\n'), selected: false };
+      }
       if (cleanup) return { videoId: record.videoId, role: role, value: cleanup.value,
         source: 'description-cleanup', sourceDetail: 'https://www.youtube.com/watch?v=' + record.videoId,
         evidence: cleanup.removed, selected: false };
@@ -395,7 +416,7 @@
   function proposalBucket(saved, proposal, adopted) {
     if (adopted) return 'adopted';
     var value = proposal.value === undefined ? proposal.to : proposal.value;
-    if (proposal.source === 'description-cleanup'
+    if (proposal.source === 'description-nonsong' || proposal.source === 'description-cleanup'
       || (JAPANESE_SCRIPT.test(String(saved || '').normalize('NFKC')) && isLatinName(value))) return 'visual';
     var adds = compareNames(saved, value) === 'adds' || compareNames(value, saved) === 'adds';
     return adds && scriptMixedChange(saved, value) ? 'visual' : 'bulk';

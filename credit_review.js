@@ -44,7 +44,11 @@
     list.append(term, detail);
   }
 
+  function isNonSong(item) {
+    return !!(item && item.candidates && item.candidates.some(function (c) { return c.source === 'description-nonsong' && c.value === ''; }));
+  }
   function adoptionValue(item) {
+    if (isNonSong(item)) return '';
     var candidates = uniqueCandidateValues(item && item.candidates);
     if (candidates.length === 1) return candidates[0];
     return text(item && item.value);
@@ -103,7 +107,7 @@
     appendValueRow(values, scriptMessage('history_scripts_candidate_13', '候補'), candidates.length ? candidates.join(' / ') : scriptMessage('history_scripts_none_14', 'なし'));
     card.append(header, values);
     (item.candidates || []).filter(function (candidate) {
-      return /^(?:description-recheck|description-cleanup)$/.test(candidate.source) && /^https:\/\//.test(candidate.sourceDetail);
+      return /^(?:description-recheck|description-cleanup|description-nonsong)$/.test(candidate.source) && /^https:\/\//.test(candidate.sourceDetail);
     }).forEach(function (candidate) {
       var link = document.createElement('a');
       link.href = candidate.sourceDetail;
@@ -114,7 +118,9 @@
       if (candidate.evidence) {
         var evidence = document.createElement('pre');
         evidence.className = 'credit-review-evidence';
-        evidence.textContent = candidate.source === 'description-cleanup'
+        evidence.textContent = candidate.source === 'description-nonsong'
+          ? scriptMessage('history_recheckNonSong', '曲の動画ではないため消す：BGM・素材表記、または曲名に結びつかない注記') + '\n' + candidate.evidence
+          : candidate.source === 'description-cleanup'
           ? scriptMessage('history_recheckCleanupRemoved', '除去する部分（1件ずつ確認）：') + ' ' + candidate.evidence
           : candidate.evidence;
         card.appendChild(evidence);
@@ -165,7 +171,7 @@
       card.appendChild(choices);
     }
     var canAdopt = item.bucket !== 'adopted' && (item.state === 'auto_candidate' || item.state === 'needs_review')
-      && !!adoptionValue(item);
+      && (!!adoptionValue(item) || isNonSong(item));
     var canReject = options.allowReject !== false && (item.state === 'auto_candidate' || item.state === 'needs_review');
     var canResolve = item.bucket !== 'adopted' && item.state === 'conflict';
     var canUndo = !!options.canUndo;
@@ -353,7 +359,7 @@
     if (hasRestore) {
       if (restoreRoleSource === null) delete sources[role];
       else sources[role] = restoreRoleSource;
-    } else if (post.source === 'manual' || post.source === 'recheck') {
+    } else if (post.source === 'manual' || post.source === 'recheck' || post.source === 'description-nonsong') {
       sources[role] = post.source;
     }
     if (Object.keys(sources).length) record.creditRoleSources = sources;
@@ -383,7 +389,7 @@
         videoId: String(videoId), role: role, value: value,
         expectedCurrent: record[role], expectedSource: expectedSource,
         adoptCandidate: true,
-        adoptSource: this.env.adoptSource === 'recheck' ? 'recheck' : undefined,
+        adoptSource: isNonSong(this.findItem(videoId, role)) ? 'description-nonsong' : this.env.adoptSource === 'recheck' ? 'recheck' : undefined,
       });
       if (!result || result.updated !== true) {
         this.messages.set(key, { text: scriptMessage('history_scripts_review_save_failed', label + 'の保存に失敗しました。データは変更されていません。', [label]), tone: 'error' });
@@ -411,7 +417,7 @@
     var item = this.findItem(videoId, role);
     var record = this.recordsByVideoId.get(String(videoId));
     var value = adoptionValue(item);
-    if (!item || !record || item.bucket === 'adopted' || (item.state !== 'auto_candidate' && item.state !== 'needs_review') || !value) {
+    if (!item || !record || item.bucket === 'adopted' || (item.state !== 'auto_candidate' && item.state !== 'needs_review') || (!value && !isNonSong(item))) {
       return { error: 'not_adoptable' };
     }
     return this.commitCandidate(videoId, role, value, scriptMessage('history_scripts_adopt_18', '採用'));

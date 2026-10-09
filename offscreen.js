@@ -289,7 +289,7 @@ async function handleDbRpc(message) {
         expectedSource: message.expectedSource,
       };
       if (message.adoptCandidate === true) args.adoptCandidate = true;
-      if (message.adoptSource === 'recheck') args.adoptSource = 'recheck';
+      if (['recheck', 'description-nonsong'].includes(message.adoptSource)) args.adoptSource = message.adoptSource;
       if (typeof message.rejectCandidate === 'string') args.rejectCandidate = message.rejectCandidate;
       if (Object.prototype.hasOwnProperty.call(message, 'restoreCandidateRejection')) {
         args.restoreCandidateRejection = message.restoreCandidateRejection;
