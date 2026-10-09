@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.63 (2026-10-10)
+
+- Drop saved recheck proposals made under older proposal rules instead of showing them, and mark their videos for the next recheck so the proposals are rebuilt with the current rules.
+
 ## v1.60.62 (2026-10-10)
 
 - Narrow the non-song check: only BGM attribution labels count (not phrases such as "Event Menu BGM" or a free-BGM notice), soundtrack uploads and songs named on a "Music title" line are kept, an anime or game name quoted in the title no longer counts as the song, and names match only as whole words. A name followed by a separate singer credit is dropped while the song's own composer stays, and an honorific in the description no longer becomes a proposal.

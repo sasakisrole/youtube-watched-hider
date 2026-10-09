@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.63",
+    "date": "2026-10-10",
+    "summary": "",
+    "points": [
+      "Drop saved recheck proposals made under older proposal rules instead of showing them, and mark their videos for the next recheck so the proposals are rebuilt with the current rules."
+    ]
+  },
+  {
     "version": "1.60.62",
     "date": "2026-10-10",
     "summary": "",

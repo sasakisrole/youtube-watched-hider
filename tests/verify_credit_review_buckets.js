@@ -44,6 +44,15 @@ function real(storage) { return boot('en', 'success', 'success', 'ja', true, sto
     await reloaded.review.adopt('sampleVid02', 'composer'); await settle();
     assert.equal(storage[key].length, 1); assert.equal(reloaded.review.reviewList.counts.visual, 0);
   });
+  await check('proposals stored under older rules are dropped and their videos become due', async () => {
+    const rows = [{...row(), composer:'Shiron'}];
+    const stale = {videoId:'sampleVid01',role:'composer',value:'',source:'description-nonsong',savedValue:'Shiron',savedSource:'general'};
+    const storage = {[key]:[stale]}, ui = real(storage); ui.setRecords(rows);
+    await ui.review.restoreProposals(); await settle();
+    assert.equal(ui.review.reviewList.totalCount, 0);
+    assert.deepEqual(ui.marked, [['sampleVid01', 'stale-proposal']]);
+    assert.equal(CM.targets(rows, 'all', new Set(), 50, require('../credit_target'), false, false).length, 1);
+  });
   await check('changed saved value or source and deleted records discard proposals', async () => {
     const base = {videoId:'sampleVid01',role:'composer',value:'New',source:'description-recheck',savedValue:'Old',savedSource:'general'};
     for (const rows of [[{...row(),composer:'Edited'}], [{...row(),composer:'Old',creditsSource:'manual'}], []]) {

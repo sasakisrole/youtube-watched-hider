@@ -4,6 +4,9 @@
   // Bump whenever description parsing or candidate rules change, so every
   // stored recheck stamp expires and those videos become recheck targets again.
   var PARSER_REVISION = '2026-10-09.2';
+  // Bump when proposal rules change without a parser change: stored proposals
+  // from older rules are dropped and their videos become recheck targets again.
+  var PROPOSAL_REVISION = '2026-10-10.1';
   function normalized(value) {
     return String(value || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
   }
@@ -462,7 +465,7 @@
     });
   }
   var api = { proposalBucket: proposalBucket, pendingProposals: pendingProposals, exportItem: exportItem, analyze: analyze, targets: targets, candidates: candidates, scan: scan, isRemix: isRemix,
-    recheckStamp: recheckStamp, PARSER_REVISION: PARSER_REVISION, sameContributors: sameContributors,
+    recheckStamp: recheckStamp, PARSER_REVISION: PARSER_REVISION, PROPOSAL_REVISION: PROPOSAL_REVISION, sameContributors: sameContributors,
     compareNames: compareNames, namesOnTopicLine: namesOnTopicLine, topicLineNames: topicLineNames,
     mixedJapaneseNames: mixedJapaneseNames, createArtistReadingLookup: createArtistReadingLookup,
     unifyReading: unifyReading, sameByReading: sameByReading, isLatinName: isLatinName, scriptMixedChange: scriptMixedChange };

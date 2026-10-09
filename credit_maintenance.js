@@ -90,7 +90,7 @@
           var original = readingFixes.get(p.videoId + ':' + p.role) || candidates.get(p.videoId + ':' + p.role);
           Object.assign(original, { savedValue: p.savedValue, savedSource: p.savedSource });
         }
-        return Object.assign({}, p, { selected: false });
+        return Object.assign({}, p, { selected: false, rev: root.CreditMaintenance.PROPOSAL_REVISION });
       });
       storageQueue = storageQueue.catch(function () {}).then(function () {
         return chrome.storage.local.set({ [storageKey]: entries });
@@ -111,7 +111,14 @@
       try {
         var data = await chrome.storage.local.get(storageKey);
         var rows = env.getRecords();
-        var entries = root.CreditMaintenance.pendingProposals(data[storageKey], rows, root.CreditTarget);
+        var stored = Array.isArray(data[storageKey]) ? data[storageKey] : [];
+        var current = stored.filter(function (p) { return p && p.rev === root.CreditMaintenance.PROPOSAL_REVISION; });
+        // A stale proposal is not shown; its video is marked due so the next pass rebuilds it.
+        Array.from(new Set(stored.filter(function (p) { return p && p.rev !== root.CreditMaintenance.PROPOSAL_REVISION; })
+          .map(function (p) { return p.videoId; }))).forEach(function (videoId) {
+          if (typeof env.markRechecked === 'function') Promise.resolve(env.markRechecked(videoId, 'stale-proposal')).catch(function () {});
+        });
+        var entries = root.CreditMaintenance.pendingProposals(current, rows, root.CreditTarget);
         entries.forEach(function (p) {
           var key = p.videoId + ':' + p.role;
           if (candidates.has(key) || readingFixes.has(key)) return;
