@@ -3,6 +3,15 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.42",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "Keep credits as the name used on the work: a MusicBrainz name that only spells the person differently (real name, other script, alias) is reported as a different name instead of proposed. Matches are reported as matches, and only added contributors become proposals.",
+      "Mark held roles whose names appear on the auto-generated description row, noting that the row cannot confirm the role."
+    ]
+  },
+  {
     "version": "1.60.41",
     "date": "2026-10-09",
     "summary": "",

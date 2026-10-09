@@ -50,7 +50,7 @@
     var undoAll = document.getElementById('creditRecheckUndoAll');
     var adopting = false, includeStamped = false;
     var mbToggle = document.getElementById('creditRecheckMb');
-    var mbQueue = [], mbRunning = false, mbFound = 0;
+    var mbQueue = [], mbRunning = false, mbFound = 0, mbSame = 0, mbDifferent = 0;
     var review = root.CreditReview.create({
       getRecords: function () { return Array.from(snapshots.values()); },
       getMaterials: function () { return { candidates: Array.from(candidates.values()) }; },
@@ -78,9 +78,11 @@
       status.textContent = message('history_recheckProgress',
         'このページで点検 ' + checked.size + '件／変更案 ' + candidates.size + '項目／保留 ' + held + '件／取得失敗 ' + failed + '件／未点検 ' + (remaining === 500 ? '500+' : remaining) + '件',
         [checked.size, candidates.size, held, failed, remaining === 500 ? '500+' : remaining]);
-      if (mbRunning || mbFound) {
-        status.textContent += ' ' + message('history_recheckMbProgress', 'MusicBrainz照合: 残り ' + (mbQueue.length + (mbRunning ? 1 : 0)) + '件／変更案 ' + mbFound + '項目',
-          [mbQueue.length + (mbRunning ? 1 : 0), mbFound]);
+      if (mbRunning || mbFound || mbSame || mbDifferent) {
+        var mbLeft = mbQueue.length + (mbRunning ? 1 : 0);
+        status.textContent += ' ' + message('history_recheckMbProgress',
+          'MusicBrainz照合: 残り ' + mbLeft + '件／一致 ' + mbSame + '役割／追加の変更案 ' + mbFound + '項目／名義違い ' + mbDifferent + '役割',
+          [mbLeft, mbSame, mbFound, mbDifferent]);
       }
       if (!port) stop.disabled = !mbRunning;
     }
@@ -105,19 +107,35 @@
             composer: found.composer, lyricist: found.lyricist, arranger: found.arranger }
           : { status: response ? (response.reason || 'not-found') : 'error' };
       }
-      // A fuzzy title match may be a different song; only strict matches become proposals.
+      // A fuzzy title match may be a different song; only strict matches count.
       if (!found || found.stage !== 'strict') return;
+      var notes = [];
       job.roles.forEach(function (role) {
         var value = String(found[role] || '').split('・').join(', ');
+        if (!value) return;
+        var relation = root.CreditMaintenance.compareNames(job.record[role], value);
+        if (item && item.roles[role]) item.roles[role].musicbrainz = relation;
+        if (relation === 'same') { mbSame++; notes.push(roleLabel(role) + ': ' + message('history_recheckMbSame', '一致')); return; }
+        // Only additions are proposed; a different spelling of a person is kept as credited.
+        if (relation === 'different') {
+          mbDifferent++;
+          notes.push(roleLabel(role) + ': ' + message('history_recheckMbDifferent', '名義違い（別名義か別人の可能性） ' + value, [value]));
+          return;
+        }
         var key = job.record.videoId + ':' + role;
-        if (!value || candidates.has(key) || !root.CreditTarget.isValidCreditValue(value, job.record.title)) return;
-        if (root.CreditMaintenance.sameContributors(value, String(job.record[role] || '').split('・').join(', '))) return;
+        if (candidates.has(key) || !root.CreditTarget.isValidCreditValue(value, job.record.title)) return;
         candidates.set(key, { videoId: job.record.videoId, role: role, value: value, source: 'musicbrainz-recheck',
           sourceDetail: 'https://musicbrainz.org/recording/' + ((found.roleRecordingIds || {})[role] || found.mbid),
           evidence: 'MusicBrainz: ' + found.mbTitle + (found.manualReviewReason ? ' (' + found.manualReviewReason + ')' : ''),
           selected: false });
         mbFound++;
+        notes.push(roleLabel(role) + ': ' + message('history_recheckMbAdds', '追加の変更案'));
       });
+      if (notes.length) issue(job.record, 'MusicBrainz: ' + notes.join(' / '), false);
+    }
+    function roleLabel(role) {
+      return role === 'composer' ? message('history_scripts_composer_6', '作曲')
+        : role === 'lyricist' ? message('history_scripts_lyricist_7', '作詞') : message('history_scripts_arranger_8', '編曲');
     }
     async function drainMb() {
       mbRunning = true; summary();
@@ -197,6 +215,9 @@
                 && !changed.has(role) && !(maintenance.credits || {})[role];
             }).map(function (role) {
               var reason = heldReason((maintenance.reasons || {})[role]);
+              if (root.CreditMaintenance.namesOnTopicLine(record[role], maintenance.topicNames)) {
+                reason += message('history_recheckTopicNames', '（概要欄に名前あり・役割は未確認）');
+              }
               return message('history_recheckRoleReason', roleLabels[role] + ': ' + reason, [roleLabels[role], reason]);
             });
             if (heldRoles.length) issue(record, heldRoles.join(' / '), true);

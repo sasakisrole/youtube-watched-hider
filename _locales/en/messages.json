@@ -3762,13 +3762,19 @@
     "message": "Also check MusicBrainz"
   },
   "history_recheckMbProgress": {
-    "message": "MusicBrainz: $REMAINING$ left / $FOUND$ proposed roles",
+    "message": "MusicBrainz: $REMAINING$ left / $SAME$ roles match / $FOUND$ additional proposals / $DIFFERENT$ roles with a different name",
     "placeholders": {
       "remaining": {
         "content": "$1"
       },
-      "found": {
+      "same": {
         "content": "$2"
+      },
+      "found": {
+        "content": "$3"
+      },
+      "different": {
+        "content": "$4"
       }
     }
   },
@@ -3777,5 +3783,22 @@
   },
   "history_recheckOptionsHelp": {
     "message": "The options apply to the next run. Checking starts when you press \"Scan unchecked videos\". With \"Include videos already checked\" selected, videos checked before are checked again."
+  },
+  "history_recheckTopicNames": {
+    "message": " (names appear on the description row; roles unconfirmed)"
+  },
+  "history_recheckMbSame": {
+    "message": "matches"
+  },
+  "history_recheckMbAdds": {
+    "message": "additional proposal"
+  },
+  "history_recheckMbDifferent": {
+    "message": "different name (alias or another person) $VALUE$",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
   }
 }

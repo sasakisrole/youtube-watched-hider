@@ -69,6 +69,25 @@ check('multi-word unknown roles in a list keep the composer', () => {
   assert.equal(analyze('Composer, Mixing  Engineer, Producer, Recording  Engineer: Joseph Reiser').credits.composer,'Joseph Reiser');
   assert.equal(analyze('Composer, Associated Performer, Double Bass: Nick Blacka').credits.composer,'Nick Blacka');
 });
+check('credits keep the credited name; other spellings are different, not corrections', () => {
+  assert.equal(CM.compareNames('Ko Nakamura','中村航'),'different');
+  assert.equal(CM.compareNames('SUPER STAR 満-MITSURU-','田口康裕'),'different');
+  assert.equal(CM.compareNames('Dave, Carol','Carol・Dave'),'same');
+  assert.equal(CM.compareNames('sky_delta','sky_delta, 藍月なくる'),'adds');
+  assert.equal(CM.compareNames('Alice, Bob','Alice'),'different');
+});
+check('topic row names are found without assigning roles', () => {
+  const desc='Provided to YouTube by Sony Music Marketing\n\nワルモノウィル · Shiina Natsukawa · 夏川椎菜 · HAMA-kgn · HAMA-kgn\n\nEp01';
+  const result=analyze(desc,'ワルモノウィル');
+  assert.deepEqual(result.credits,{composer:'',lyricist:'',arranger:''});
+  assert.deepEqual(result.topicNames,['Shiina Natsukawa','夏川椎菜','HAMA-kgn','HAMA-kgn']);
+  assert.equal(CM.namesOnTopicLine('夏川椎菜',result.topicNames),true);
+  assert.equal(CM.namesOnTopicLine('HAMA-kgn, Someone',result.topicNames),false);
+  const item=CM.exportItem({videoId:'topicVid001',title:'ワルモノウィル',lyricist:'夏川椎菜',composer:'Other'},{ok:true,maintenance:result},CT);
+  assert.equal(item.roles.lyricist.topicMatch,true);
+  assert.equal('topicMatch' in item.roles.composer,false);
+  assert.deepEqual(CM.topicLineNames('No provider line\nA · B'),[]);
+});
 check('critical title-as-composer regressions remain in tests only', () => {
   assert.equal(analyze("Composer: Banbado (Shiron Dub'n'Bado Remix)","Banbado (Shiron Dub'n'Bado Remix)").credits.composer,'');
   assert.equal(analyze('Composer: Battle of Marion(ISK "Meteorite" Remix)','Battle of Marion(ISK "Meteorite" Remix)').credits.composer,'');

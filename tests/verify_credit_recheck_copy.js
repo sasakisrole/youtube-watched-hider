@@ -277,7 +277,7 @@ async function main() {
   });
   await check('MB-2: a strict match proposes held roles one by one; a fuzzy match proposes nothing', async () => {
     for (const [stage, proposals] of [['strict', 1], ['fuzzy', 0]]) {
-      const ui = boot(), record = {...row(), lyricist: 'Old lyric'};
+      const ui = boot(), record = {...row(), lyricist: 'Carol'};
       ui.runtime.mbResponse = mbFound(stage);
       ui.elements.creditRecheckMb.checked = true;
       const port = ui.start([record]);
@@ -288,6 +288,17 @@ async function main() {
       assert.equal(report.items[0].musicbrainz.status, 'found');
       assert.equal(report.items[0].musicbrainz.stage, stage);
     }
+  });
+  await check('MB-4: a differently spelled name is reported, never proposed', async () => {
+    const ui = boot(), record = {...row(), lyricist: 'Ko Nakamura'};
+    ui.runtime.mbResponse = mbFound('strict');
+    ui.elements.creditRecheckMb.checked = true;
+    const port = ui.start([record]);
+    ui.progress(port, record, success('Unrelated text')); await settle();
+    const report = await ui.report();
+    assert.equal(report.counts.proposals, 0);
+    assert.equal(report.items[0].roles.lyricist.musicbrainz, 'different');
+    assert.equal(report.items[0].roles.composer.musicbrainz, 'same');
   });
   await check('MB-3: an agreeing or failed lookup proposes nothing', async () => {
     for (const response of [mbFound('strict'), null, {success: true, candidate: null, reason: 'no-recording'}]) {

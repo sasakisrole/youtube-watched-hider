@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.60.42 (2026-10-09)
+
+- Keep credits as the name used on the work: a MusicBrainz name that only spells the person differently (real name, other script, alias) is reported as a different name instead of proposed. Matches are reported as matches, and only added contributors become proposals.
+- Mark held roles whose names appear on the auto-generated description row, noting that the row cannot confirm the role.
+
 ## v1.60.41 (2026-10-09)
 
 - Replace the "recheck checked videos too" button with a checkbox so its state is visible, explain that options apply to the next run, and size the recheck checkboxes normally.

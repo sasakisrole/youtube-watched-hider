@@ -26,6 +26,38 @@
     return a.length === b.length && a.every(function (name, index) { return name === b[index]; });
   }
   function isRemix(title) { return /remix|リミックス/iu.test(title || ''); }
+  function nameKeys(value) {
+    return Array.from(new Set(String(value || '').split(/[,，、・\/／]/u).map(normalized).filter(Boolean)));
+  }
+  // How another source's names relate to a saved credit. Credits keep the name
+  // used on the work, so a source that only spells the person differently
+  // (real name, other script, other alias) is 'different', never a correction.
+  function compareNames(saved, other) {
+    var a = nameKeys(saved), b = nameKeys(other);
+    if (!a.length || !b.length) return 'different';
+    var covered = a.every(function (key) { return b.indexOf(key) !== -1; });
+    if (covered) return a.length === b.length ? 'same' : 'adds';
+    return 'different';
+  }
+  // Names on the auto-generated "Title · Artist · …" row. The row has no role
+  // labels and its order varies by distributor, so it can show that a name is
+  // present but never which role that name holds.
+  function topicLineNames(description) {
+    var lines = String(description || '').split(/\r?\n/), provided = false;
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].trim();
+      if (/Provided to YouTube by/i.test(line)) { provided = true; continue; }
+      if (!provided || !line) continue;
+      if (line.indexOf(' · ') === -1) return [];
+      return line.split(' · ').slice(1).map(function (field) { return field.trim(); }).filter(Boolean);
+    }
+    return [];
+  }
+  function namesOnTopicLine(value, topicNames) {
+    var keys = nameKeys(value);
+    var present = nameKeys((topicNames || []).join('/'));
+    return keys.length > 0 && keys.every(function (key) { return present.indexOf(key) !== -1; });
+  }
 
   // Compare complete title candidates, never substrings of song names.
   function titleKeys(title) {
@@ -158,7 +190,8 @@
           : 'unknown';
       }
     });
-    return { credits: credits, evidence: evidence, held: held, reasons: reasons, candidateLines: candidateLines };
+    return { credits: credits, evidence: evidence, held: held, reasons: reasons, candidateLines: candidateLines,
+      topicNames: topicLineNames(description) };
   }
 
   // A stamp covers the parser revision and the role values it saw; a later
@@ -208,6 +241,7 @@
       roles[role] = { current: current, currentSource: source, candidate: candidate,
         heldReason: isHeld ? (maintenance.reasons || {})[role] || 'unknown' : '',
         evidence: lines.slice() };
+      if (isHeld && namesOnTopicLine(current, maintenance.topicNames)) roles[role].topicMatch = true;
     });
     return { videoId: record.videoId || '', title: record.title || '', channel: record.channel || '',
       status: !ok ? 'failed' : proposed.length ? 'proposal' : hasHeld ? 'held' : 'ok',
@@ -230,7 +264,8 @@
     return { success: true, processed: processed, total: ids.length, failed: failed, stopped: stopped, aborted: !!(signal && signal.aborted) };
   }
   var api = { exportItem: exportItem, analyze: analyze, targets: targets, candidates: candidates, scan: scan, isRemix: isRemix,
-    recheckStamp: recheckStamp, PARSER_REVISION: PARSER_REVISION, sameContributors: sameContributors };
+    recheckStamp: recheckStamp, PARSER_REVISION: PARSER_REVISION, sameContributors: sameContributors,
+    compareNames: compareNames, namesOnTopicLine: namesOnTopicLine, topicLineNames: topicLineNames };
   if (root) root.CreditMaintenance = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

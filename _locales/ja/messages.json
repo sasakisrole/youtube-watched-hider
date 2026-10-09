@@ -3762,13 +3762,19 @@
     "message": "MusicBrainzでも照合する"
   },
   "history_recheckMbProgress": {
-    "message": "MusicBrainz照合: 残り $REMAINING$件／変更案 $FOUND$項目",
+    "message": "MusicBrainz照合: 残り $REMAINING$件／一致 $SAME$役割／追加の変更案 $FOUND$項目／名義違い $DIFFERENT$役割",
     "placeholders": {
       "remaining": {
         "content": "$1"
       },
-      "found": {
+      "same": {
         "content": "$2"
+      },
+      "found": {
+        "content": "$3"
+      },
+      "different": {
+        "content": "$4"
       }
     }
   },
@@ -3777,5 +3783,22 @@
   },
   "history_recheckOptionsHelp": {
     "message": "チェック欄は次の点検に効きます。点検は「未点検分を点検」を押すと始まります。「点検済みの動画も含める」にチェックすると、前に点検した動画ももう一度調べます。"
+  },
+  "history_recheckTopicNames": {
+    "message": "（概要欄に名前あり・役割は未確認）"
+  },
+  "history_recheckMbSame": {
+    "message": "一致"
+  },
+  "history_recheckMbAdds": {
+    "message": "追加の変更案"
+  },
+  "history_recheckMbDifferent": {
+    "message": "名義違い（別名義か別人の可能性） $VALUE$",
+    "placeholders": {
+      "value": {
+        "content": "$1"
+      }
+    }
   }
 }
