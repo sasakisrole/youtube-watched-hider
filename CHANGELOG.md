@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.49 (2026-10-09)
+
+- In the credit ranking, count one person once when the same credited name differs only in letter case, character width or spacing (for example Mitsukiyo and MITSUKIYO), shown under the spelling used most. Stored credits are unchanged.
+
 ## v1.60.48 (2026-10-09)
 
 - Match romanized names against MusicBrainz readings written with macrons (for example "Saitō, Shin'ya").

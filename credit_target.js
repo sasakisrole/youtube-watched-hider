@@ -44,6 +44,13 @@
   var NON_PERSON_CREDIT_VALUES = new Set(['BGM', 'MOTTO MUSIC', 'ASOBINOTES',
     'BANDAI NAMCO MUSIC LIVE,INC.', 'BANDAI NAMCO MUSIC LIVE, INC.']);
 
+  // Grouping key for counting people: the same credited name written with
+  // other letter case, character width or spacing is one person. Stored
+  // values are never rewritten with it.
+  function creditNameKey(name) {
+    return String(name == null ? '' : name).normalize('NFKC').replace(/\s+/gu, ' ').trim().toLowerCase();
+  }
+
   function creditIsBlank(value) {
     return value == null || String(value).trim() === '';
   }
@@ -467,6 +474,7 @@
     MB_ERROR_BASE_MS: MB_ERROR_BASE_MS,
     MB_ERROR_MAX_MS: MB_ERROR_MAX_MS,
     creditIsBlank: creditIsBlank,
+    creditNameKey: creditNameKey,
     getMissingCreditRoles: getMissingCreditRoles,
     effectiveRoleSource: effectiveRoleSource,
     getCreditReviewStates: getCreditReviewStates,

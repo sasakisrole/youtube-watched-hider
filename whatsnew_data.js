@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.49",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "In the credit ranking, count one person once when the same credited name differs only in letter case, character width or spacing (for example Mitsukiyo and MITSUKIYO), shown under the spelling used most. Stored credits are unchanged."
+    ]
+  },
+  {
     "version": "1.60.48",
     "date": "2026-10-09",
     "summary": "",

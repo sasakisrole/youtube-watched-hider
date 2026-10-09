@@ -231,20 +231,37 @@
       if (!names.length) continue;
       let isSelfArrange = false;
       if (computeSelf) {
-        const composers = new Set(splitCreditField(d.composer));
-        const arrangers = new Set(splitCreditField(d.arranger));
+        const composers = new Set(splitCreditField(d.composer).map(creditNameKey));
+        const arrangers = new Set(splitCreditField(d.arranger).map(creditNameKey));
         isSelfArrange = composers.size > 0 && arrangers.size > 0 &&
           [...composers].some(c => arrangers.has(c));
       }
+      // One person per video even if the field repeats the name in another case.
+      const seen = new Set();
       for (const name of names) {
-        const cur = m.get(name) || { count: 0, totalSec: 0, unknown: 0, known: 0, self: 0, hasSelf: computeSelf };
+        const key = creditNameKey(name);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const cur = m.get(key) || { count: 0, totalSec: 0, unknown: 0, known: 0, self: 0, hasSelf: computeSelf, spellings: new Map() };
         cur.count++;
+        cur.spellings.set(name, (cur.spellings.get(name) || 0) + 1);
         addDurationStat(cur, d);
         if (isSelfArrange) cur.self++;
-        m.set(name, cur);
+        m.set(key, cur);
       }
     }
-    return m;
+    // Show each person under the spelling used on most of their videos.
+    const shown = new Map();
+    for (const cur of m.values()) {
+      const name = [...cur.spellings.entries()].sort((a, b) => b[1] - a[1])[0][0];
+      shown.set(name, cur);
+    }
+    return shown;
+  }
+
+  function creditNameKey(name) {
+    return window.CreditTarget && typeof window.CreditTarget.creditNameKey === 'function'
+      ? window.CreditTarget.creditNameKey(name) : String(name || '').trim().toLowerCase();
   }
 
   let currentCreditField = 'composer';
