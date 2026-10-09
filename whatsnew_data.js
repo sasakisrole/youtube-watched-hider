@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.57",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "Merge romanized and Japanese names in the same credit when an exact-name MusicBrainz artist search confirms the same reading. Japanese-language rechecks with MusicBrainz enabled also revisit mixed-script credits, including confirmed values, without resetting other recheck results."
+    ]
+  },
+  {
     "version": "1.60.56",
     "date": "2026-10-09",
     "summary": "",

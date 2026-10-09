@@ -174,7 +174,123 @@ check('multi-role co-arrangers do not produce a spacing-only correction', () => 
   assert.equal(CM.exportItem(saved,result,CT).status,'ok');
 });
 
+
+// Exercise the actual page controller with background responses mocked.
+async function artistUI({value = 'Eiko Shimamiya, 島みやえい子', proposed = value, artists,
+  locale = 'ja', enabled = true, manual = false, response} = {}) {
+  const vm = require('vm'), elements = {}, calls = [], saves = [], stamps = [];
+  const row = {videoId:'HHE7ZbsZOwc',title:'Song',lyricist:value,
+    creditRoleSources:{lyricist:manual ? 'manual' : 'general'}};
+  const element = () => ({children:[],listeners:{},value:'all',checked:false,
+    append(...items) { this.children.push(...items); }, appendChild(item) { this.children.push(item); },
+    addEventListener(type,fn) { this.listeners[type]=fn; }, checkValidity() { return true; }});
+  let listener, materials, reviewEnv;
+  const ctx = {CreditMaintenance:CM,CreditTarget:CT,structuredClone,
+    historyUILanguage:()=>locale, confirm:()=>true,
+    CreditReview:{create(env) { reviewEnv=env; materials=env.getMaterials; return {busy:new Set(),
+      refreshReviewList(){}, adoptable(predicate) { return materials().candidates.filter(c=>predicate({videoId:c.videoId,role:c.role,candidates:[c]},c.value)); }}; }},
+    document:{getElementById(id) { return elements[id] ||= element(); },createElement:element},
+    chrome:{runtime:{connect() { return {onMessage:{addListener(fn){listener=fn;}},onDisconnect:{addListener(){}},postMessage(){}}; },
+      sendMessage(message,cb) { calls.push(message); cb(response || {success:true,artists:artists || [{id:'eiko-id',name:'島みやえい子','sort-name':'Shimamiya, Eiko'}]}); }}}};
+  vm.runInNewContext(fs.readFileSync(require.resolve('../credit_maintenance.js'),'utf8'),ctx);
+  ctx.CreditMaintenanceUI.create({getRecords:()=>[row],begin:()=>true,end(){},
+    markRechecked(id,stamp) { stamps.push(stamp); },saveCreditRole:async change=>{saves.push(change);return {updated:true};}});
+  elements.creditRecheckLimit.value='50'; elements.creditRecheckMb.checked=enabled;
+  elements.creditRecheckStart.listeners.click();
+  listener({type:'PROGRESS',videoId:row.videoId,result:{ok:true,title:row.title,
+    maintenance:{credits:{lyricist:proposed},evidence:{lyricist:'description'}}}});
+  await new Promise(resolve=>setImmediate(resolve));
+  listener({type:'DONE'});
+  return {calls,saves,stamps,elements,row,proposals:materials().candidates,reviewEnv};
+}
+async function artistTests() {
+  const merged = await artistUI();
+  check('artist reading: Eiko duplicate merges without a held role',()=>{
+    assert.equal(merged.proposals[0].value,'島みやえい子');
+    assert.equal(merged.proposals[0].source,'musicbrainz-reading');
+    assert.equal(merged.proposals[0].sourceDetail,'https://musicbrainz.org/artist/eiko-id');
+    assert.equal(merged.elements.creditRecheckAdoptAll.disabled,false);
+    assert.deepEqual(merged.calls.map(c=>c.type),['lookupMbArtistReading']);
+    assert.equal(merged.calls[0].name,'島みやえい子');
+    assert(merged.stamps[0].endsWith(':mb:src:artist'));
+  });
+  for (const [label,options] of [
+    ['mismatched reading',{artists:[{name:'島みやえい子','sort-name':'Different, Person',id:'other'}]}],
+    ['ambiguous exact names',{artists:[{name:'島みやえい子','sort-name':'Shimamiya, Eiko',id:'a'},{name:'島みやえい子','sort-name':'Other, Person',id:'b'}]}],
+    ['different people Satoshi and Saito',{value:'Satoshi Yaginuma, 斎藤真也',artists:[{name:'斎藤真也','sort-name':'Saito, Shinya',id:'saito'}]}],
+    ['aliases and non-exact names',{artists:[{name:'別名',aliases:[{name:'島みやえい子'}],'sort-name':'Shimamiya, Eiko',id:'alias'}]}],
+    ['missing reading among exact names',{artists:[{name:'島みやえい子','sort-name':'Shimamiya, Eiko',id:'a'},{name:'島みやえい子',id:'b'}]}],
+    ['English UI',{locale:'en'}],['MB off',{enabled:false}]
+  ]) {
+    const ui=await artistUI(options);
+    check('artist reading: '+label+' stays unchanged',()=>{
+      assert.equal(ui.proposals.length,0);
+      if (options.locale || options.enabled===false) assert.equal(ui.calls.length,0);
+    });
+  }
+  const proposal=await artistUI({value:'Eiko Shimamiya',proposed:'Eiko Shimamiya, 島みやえい子'});
+  check('artist reading: mixed proposal becomes bulk-adoptable',()=>{
+    assert.equal(proposal.proposals[0].value,'島みやえい子');
+    assert.equal(proposal.proposals[0].source,'musicbrainz-reading');
+    assert.equal(proposal.elements.creditRecheckAdoptAll.disabled,false);
+  });
+  const manual=await artistUI({manual:true});
+  await manual.elements.creditRecheckAdoptAll.listeners.click();
+  await manual.elements.creditRecheckUndoAll.listeners.click();
+  check('artist reading: manual values use existing adopt and undo path',()=>{
+    assert.equal(manual.proposals.length,0); assert.equal(manual.saves.length,2);
+    assert.equal(manual.saves[0].value,'島みやえい子');
+    assert.equal(manual.saves[0].expectedCurrent,manual.row.lyricist);
+    assert.equal(manual.saves[1].value,manual.row.lyricist);
+    assert.equal(manual.saves[1].expectedCurrent,'島みやえい子');
+    assert.equal(manual.saves[1].expectedSource,'manual');
+  });
+  let queries=0;
+  const lookup=CM.createArtistReadingLookup(async name=>{queries++;return {success:true,artists:[{name,'sort-name':'Shimamiya, Eiko',id:'id'}]};});
+  const results=await Promise.all([lookup('Eiko Shimamiya, 島みやえい子',true,true),lookup('Eiko Shimamiya, 島みやえい子',true,true)]);
+  check('artist reading: concurrent and repeated names share page cache',()=>{assert.equal(queries,1);assert(results.every(r=>r.value==='島みやえい子'));});
+  const nfkc=CM.createArtistReadingLookup(async()=>({success:true,artists:[{name:'カナ','sort-name':'Kana, Eiko',id:'id'}]}));
+  const normalized=await nfkc('Eiko Kana, ｶﾅ',true,true);
+  check('artist reading: exact name uses NFKC and keeps credited spelling',()=>assert.equal(normalized.value,'ｶﾅ'));
+  const failed=await artistUI({response:{success:false,reason:'fetch-error'}});
+  check('artist reading: failure remains eligible on a later page',()=>{
+    const row={...failed.row,creditsRecheck:failed.stamps[0]};
+    assert(!row.creditsRecheck.includes(':artist'));
+    assert.equal(CM.targets([row],'all',new Set(),50,CT,false,true).length,1);
+  });
+  check('artist reading: old MB stamps revisit only mixed fields',()=>{
+    const mixed={...merged.row,creditsRecheck:CM.recheckStamp(merged.row,true,true)};
+    const plain={...mixed,videoId:'plainVid001',lyricist:'Alice'};
+    plain.creditsRecheck=CM.recheckStamp(plain,true,true);
+    assert.deepEqual(CM.targets([mixed,plain],'all',new Set(),50,CT,false,true).map(r=>r.videoId),[mixed.videoId]);
+    mixed.creditsRecheck=CM.recheckStamp(mixed,true,true,true);
+    assert.equal(CM.targets([mixed],'all',new Set(),50,CT,false,true).length,0);
+    assert.equal(CM.targets([mixed],'all',new Set(),50,CT,false,false).length,0);
+  });
+  const backendBlock=source.slice(source.indexOf('async function lookupMbArtistReading'),source.indexOf('function collectMbRole'));
+  const requests=[];
+  const backend=new Function('mbGet',backendBlock+'\nreturn lookupMbArtistReading;')(async(path,params)=>{
+    requests.push({path,params});
+    return {count:1,artists:[{id:'id',name:'島みやえい子','sort-name':'Shimamiya, Eiko',aliases:[{name:'alias'}]}]};
+  });
+  const backendResult=await backend('島みやえい子');
+  check('artist reading: backend uses mbGet and sends only the person name',()=>{
+    assert.equal(requests[0].path,'artist/'); assert.equal(requests[0].params.query,'artist:"島みやえい子"');
+    assert.equal(backendResult.artists[0]['sort-name'],'Shimamiya, Eiko'); assert(!('aliases' in backendResult.artists[0]));
+  });
+  const pages=[];
+  const paged=new Function('mbGet',backendBlock+'\nreturn lookupMbArtistReading;')(async(path,params)=>{
+    pages.push(params.offset);
+    return params.offset==='0' ? {count:101,artists:Array.from({length:100},()=>({name:'島みやえい子','sort-name':'Shimamiya, Eiko',id:'a'}))}
+      : {count:101,artists:[{name:'島みやえい子','sort-name':'Different, Person',id:'b'}]};
+  });
+  const pageLookup=CM.createArtistReadingLookup(paged);
+  const ambiguousPage=await pageLookup('Eiko Shimamiya, 島みやえい子',true,true);
+  check('artist reading: conflicting exact name on second page prevents merge',()=>{assert.equal(ambiguousPage.value,'');assert.deepEqual(pages,['0','100']);});
+}
+
 async function main() {
+  await artistTests();
   const calls=[], progress=[], signal={aborted:false};
   const result=await CM.scan(['anyVideo001','anyVideo001','bad','anyVideo002'], async id => {calls.push(id);return {ok:true};}, p => {progress.push(p);signal.aborted=true;},signal);
   check('abort and deduplication stop future requests',()=>{assert.equal(calls.length,1);assert.equal(result.aborted,true);assert.equal(progress.length,1);});

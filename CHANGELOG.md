@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.57 (2026-10-09)
+
+- Merge romanized and Japanese names in the same credit when an exact-name MusicBrainz artist search confirms the same reading. Japanese-language rechecks with MusicBrainz enabled also revisit mixed-script credits, including confirmed values, without resetting other recheck results.
+
 ## v1.60.56 (2026-10-09)
 
 - Adopt-all no longer adds or removes a name that sits beside a name in the other script (romanized vs Japanese). Descriptions sometimes credit one person twice, such as "Eiko Shimamiya" and a Japanese spelling, so these changes are reviewed one by one.

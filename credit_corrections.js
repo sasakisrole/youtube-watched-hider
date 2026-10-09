@@ -60,7 +60,7 @@
     if (!isLatinName(latin) || !sortNames) return '';
     var key = readingKey(latin), found = '';
     Object.keys(sortNames).forEach(function (name) {
-      if (!found && JAPANESE_SCRIPT.test(name) && key && readingKey(sortNames[name]) === key) found = name;
+      if (!found && JAPANESE_SCRIPT.test(String(name).normalize('NFKC')) && key && readingKey(sortNames[name]) === key) found = name;
     });
     return found;
   }
@@ -76,6 +76,37 @@
       return name;
     });
     return changed ? Array.from(new Set(out)).join(', ') : '';
+  }
+  function mixedJapaneseNames(value) {
+    var names = creditNames(String(value || ''));
+    return names.some(isLatinName) ? names.filter(function (name) { return JAPANESE_SCRIPT.test(String(name).normalize('NFKC')); }) : [];
+  }
+  // Cache promises too, so concurrent roles and batches share each name search.
+  function createArtistReadingLookup(query) {
+    var cache = new Map();
+    return async function (value, enabled, japanese) {
+      if (!enabled || !japanese) return null;
+      var names = mixedJapaneseNames(value), sortNames = {}, urls = [], complete = true;
+      for (var name of names) {
+        var normalizedName = name.normalize('NFKC');
+        if (!cache.has(normalizedName)) cache.set(normalizedName, Promise.resolve().then(function (n) {
+          return query(n);
+        }.bind(null, normalizedName)).catch(function () { return null; }));
+        var response = await cache.get(normalizedName);
+        if (!response || !response.success) { complete = false; continue; }
+        var exact = (response.artists || []).filter(function (artist) {
+          return String(artist.name || '').normalize('NFKC') === normalizedName;
+        });
+        var keys = exact.map(function (artist) { return readingKey(artist['sort-name']); });
+        if (!keys.length || !keys[0] || !keys.every(function (key) { return key === keys[0]; })) continue;
+        // Keep the spelling already credited, including its normalization form.
+        sortNames[name] = exact[0]['sort-name'];
+        if (unifyReading(value, { [name]: sortNames[name] })) {
+          exact.forEach(function (artist) { if (artist.id) urls.push('https://musicbrainz.org/artist/' + encodeURIComponent(artist.id)); });
+        }
+      }
+      return { value: unifyReading(value, sortNames), urls: Array.from(new Set(urls)), complete: complete };
+    };
   }
   // True when the two lists name the same people, allowing a romanized name
   // on one side to stand for its Japanese-script reading on the other.
@@ -257,19 +288,20 @@
   // check, but a MusicBrainz check still revisits videos stamped without it.
   // ':src' marks a check that also looked at confirmed values (since v1.60.51);
   // only videos that have one are revisited for it, not the whole history.
-  function recheckStamp(record, withMb, withSource) {
+  // ':artist' records the exact-name reading check for mixed-script fields.
+  function recheckStamp(record, withMb, withSource, withArtist) {
     var text = PARSER_REVISION + '\u001f' + ROLES.map(function (role) { return String((record && record[role]) || ''); }).join('\u001f');
     var hash = 5381;
     for (var i = 0; i < text.length; i++) hash = ((hash * 33) ^ text.charCodeAt(i)) >>> 0;
-    return PARSER_REVISION + ':' + hash.toString(16) + (withMb ? ':mb' : '') + (withSource ? ':src' : '');
+    return PARSER_REVISION + ':' + hash.toString(16) + (withMb ? ':mb' : '') + (withSource ? ':src' : '') + (withArtist ? ':artist' : '');
   }
   // Flags of a stamp for the record's current values, or null when stale.
   function stampFlags(record) {
     var stamp = String((record && record.creditsRecheck) || ''), base = recheckStamp(record);
     if (stamp.indexOf(base) !== 0) return null;
     var rest = stamp.slice(base.length);
-    if (['', ':mb', ':src', ':mb:src'].indexOf(rest) === -1) return null;
-    return { mb: rest.indexOf(':mb') !== -1, source: rest.indexOf(':src') !== -1 };
+    if (!/^(?::mb)?(?::src)?(?::artist)?$/.test(rest)) return null;
+    return { mb: rest.indexOf(':mb') !== -1, source: rest.indexOf(':src') !== -1, artist: rest.indexOf(':artist') !== -1 };
   }
   // Confirmed (manual) roles are only revisited by a MusicBrainz check, and
   // only when romanized, since the sole change allowed to them is the same
@@ -289,7 +321,8 @@
       var manualValue = ROLES.some(function (role) { return !creditTarget.creditIsBlank(record[role]) && creditTarget.effectiveRoleSource(record, role) === 'manual'; });
       // A MusicBrainz check revisits videos last checked without it when it could
       // change something there (an automatic value, or a romanized confirmed one).
-      var due = includeStamped || !flags || (!!withMb && !flags.mb && (auto || manualReading)) || (manualValue && !flags.source);
+      var mixedReading = !!withMb && ROLES.some(function (role) { return mixedJapaneseNames(record[role]).length; });
+      var due = includeStamped || !flags || (mixedReading && !flags.artist) || (!!withMb && !flags.mb && (auto || manualReading)) || (manualValue && !flags.source);
       return /^[\w-]{11}$/.test(record.videoId || '') && (!checked || !checked.has(record.videoId))
         && due && (scope !== 'remix' || isRemix(record.title)) && (auto || manualReading || manualValue);
     }).slice(0, Math.max(1, Math.min(500, Number(limit) || 50)));
@@ -350,6 +383,7 @@
   var api = { exportItem: exportItem, analyze: analyze, targets: targets, candidates: candidates, scan: scan, isRemix: isRemix,
     recheckStamp: recheckStamp, PARSER_REVISION: PARSER_REVISION, sameContributors: sameContributors,
     compareNames: compareNames, namesOnTopicLine: namesOnTopicLine, topicLineNames: topicLineNames,
+    mixedJapaneseNames: mixedJapaneseNames, createArtistReadingLookup: createArtistReadingLookup,
     unifyReading: unifyReading, sameByReading: sameByReading, isLatinName: isLatinName, scriptMixedChange: scriptMixedChange };
   if (root) root.CreditMaintenance = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

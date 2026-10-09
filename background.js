@@ -1006,6 +1006,24 @@ async function mbGet(path, params) {
   });
 }
 
+// Search every result page before accepting a reading: another exact-name
+// artist can have a different reading. Incomplete searches fail closed.
+async function lookupMbArtistReading(name) {
+  name = String(name || '').normalize('NFKC');
+  if (!name || name.length > 300) return { success: false, reason: 'invalid-name' };
+  const query = 'artist:"' + name.replace(/[\\"]/g, '\\$&') + '"';
+  const artists = [];
+  for (let offset = 0; offset < 1000; offset += 100) {
+    const page = await mbGet('artist/', { query, fmt: 'json', limit: '100', offset: String(offset) });
+    if (!Array.isArray(page.artists) || !Number.isInteger(page.count) || page.count < 0) return { success: false, reason: 'incomplete' };
+    artists.push(...page.artists.filter(artist => String(artist.name || '').normalize('NFKC') === name)
+      .map(artist => ({ id: artist.id, name: artist.name, 'sort-name': artist['sort-name'] })));
+    if (offset + page.artists.length >= page.count) return { success: true, artists };
+    if (page.artists.length < 100) break;
+  }
+  return { success: false, reason: 'incomplete' };
+}
+
 function collectMbRole(roles, rel, sortNames) {
   const type = rel && rel.type;
   if (!Object.prototype.hasOwnProperty.call(roles, type)) return;
@@ -1790,6 +1808,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'BACKUP_NOW') {
     performAutoBackup({ source: 'backup-now', respectEnabled: false }).then(sendResponse);
+    return true;
+  }
+
+  if (message.type === 'lookupMbArtistReading') {
+    lookupMbArtistReading(message.name).then(sendResponse)
+      .catch(() => sendResponse({ success: false, reason: 'fetch-error' }));
     return true;
   }
 

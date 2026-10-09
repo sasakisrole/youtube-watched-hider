@@ -64,9 +64,9 @@
         return /^ja\b/i.test(String(lang || 'ja'));
       } catch (_error) { return true; }
     }
-    function stampRecord(record, withMb) {
+    function stampRecord(record, withMb, withArtist) {
       if (typeof env.markRechecked !== 'function') return;
-      Promise.resolve(env.markRechecked(record.videoId, root.CreditMaintenance.recheckStamp(record, withMb, true))).catch(function () {});
+      Promise.resolve(env.markRechecked(record.videoId, root.CreditMaintenance.recheckStamp(record, withMb, true, withArtist))).catch(function () {});
     }
     var review = root.CreditReview.create({
       getRecords: function () { return Array.from(snapshots.values()); },
@@ -127,7 +127,6 @@
       });
     }
     function applyMb(job, response) {
-      stampRecord(job.record, !!(response && response.success));
       var found = response && response.success && response.candidate;
       var item = exports.get(job.record.videoId);
       if (item) {
@@ -197,6 +196,40 @@
       });
       if (notes.length) issue(job.record, 'MusicBrainz: ' + notes.join(' / '), false);
     }
+    var lookupArtistReading = root.CreditMaintenance.createArtistReadingLookup(function (name) {
+      return new Promise(function (resolve) {
+        try {
+          chrome.runtime.sendMessage({ type: 'lookupMbArtistReading', name: name }, function (response) {
+            void chrome.runtime.lastError;
+            resolve(response || null);
+          });
+        } catch (_error) { resolve(null); }
+      });
+    });
+    async function applyArtistReadings(job) {
+      var complete = true;
+      for (var role of job.artistRoles || []) {
+        var key = job.record.videoId + ':' + role;
+        var proposal = candidates.get(key);
+        var saved = String(job.record[role] || '');
+        var value = proposal && root.CreditMaintenance.mixedJapaneseNames(proposal.value).length ? proposal.value : saved;
+        var result = await lookupArtistReading(value, true, true);
+        complete = complete && result.complete;
+        if (!result.value || !result.urls.length || !root.CreditTarget.isValidCreditValue(result.value, job.record.title)) continue;
+        if (root.CreditTarget.effectiveRoleSource(job.record, role) === 'manual') {
+          readingFixes.set(key, { videoId: job.record.videoId, role: role, from: saved, to: result.value, kind: 'reading' });
+        } else if (root.CreditMaintenance.sameContributors(saved, result.value)) {
+          candidates.delete(key);
+        } else {
+          candidates.set(key, { videoId: job.record.videoId, role: role, value: result.value, source: 'musicbrainz-reading',
+            sourceDetail: result.urls.join(' '), evidence: 'MusicBrainz: ' + value + ' = ' + result.value, selected: false });
+          mbFound++;
+        }
+        var item = exports.get(job.record.videoId);
+        if (item && item.roles[role]) { item.roles[role].musicbrainz = 'reading'; item.roles[role].candidate = result.value; }
+      }
+      return complete;
+    }
     function roleLabel(role) {
       return role === 'composer' ? message('history_scripts_composer_6', '作曲')
         : role === 'lyricist' ? message('history_scripts_lyricist_7', '作詞') : message('history_scripts_arranger_8', '編曲');
@@ -205,7 +238,11 @@
       mbRunning = true; summary();
       while (mbQueue.length) {
         var job = mbQueue.shift();
-        applyMb(job, await lookupMb(job.record));
+        var recording = job.roles.length || job.readingRoles.length || job.manualRoles.length;
+        var response = recording ? await lookupMb(job.record) : null;
+        if (recording) applyMb(job, response);
+        var artistComplete = await applyArtistReadings(job);
+        stampRecord(job.record, !recording || !!(response && response.success), job.artistRoles.length > 0 && artistComplete);
         review.refreshReviewList(); summary();
       }
       mbRunning = false; summary();
@@ -314,9 +351,18 @@
             var manualRoles = !japaneseUi() ? [] : ['composer', 'lyricist', 'arranger'].filter(function (role) {
               return root.CreditTarget.effectiveRoleSource(record, role) === 'manual' && root.CreditMaintenance.isLatinName(String(record[role] || ''));
             });
-            if (mbOn() && (mbRoles.length || readingRoles.length || manualRoles.length)) {
+            var artistRoles = !japaneseUi() ? [] : ['composer', 'lyricist', 'arranger'].filter(function (role) {
+              var proposal = candidates.get(record.videoId + ':' + role);
+              return root.CreditMaintenance.mixedJapaneseNames(record[role]).length
+                || (proposal && root.CreditMaintenance.mixedJapaneseNames(proposal.value).length);
+            });
+            // Mixed fields must pass the exact artist-name ambiguity check;
+            // recording relations alone must not bypass that check.
+            mbRoles = mbRoles.filter(function (role) { return artistRoles.indexOf(role) === -1; });
+            readingRoles = readingRoles.filter(function (role) { return artistRoles.indexOf(role) === -1; });
+            if (mbOn() && (mbRoles.length || readingRoles.length || manualRoles.length || artistRoles.length)) {
               stampLater = true;
-              mbQueue.push({ record: record, roles: mbRoles, readingRoles: readingRoles, manualRoles: manualRoles });
+              mbQueue.push({ record: record, roles: mbRoles, readingRoles: readingRoles, manualRoles: manualRoles, artistRoles: artistRoles });
               if (!mbRunning) drainMb();
             }
           }
