@@ -55,6 +55,15 @@
     // with the same MusicBrainz reading; applied and undone with adopt-all.
     var readingFixes = new Map(), readingBatch = [];
     function mbOn() { return !!(mbToggle && mbToggle.checked); }
+    // Unifying romanized names into Japanese helps Japanese readers only; other
+    // languages keep names as credited. Unknown language keeps the Japanese default.
+    function japaneseUi() {
+      try {
+        var lang = typeof historyUILanguage === 'function' ? historyUILanguage()
+          : (chrome && chrome.i18n && chrome.i18n.getUILanguage ? chrome.i18n.getUILanguage() : 'ja');
+        return /^ja\b/i.test(String(lang || 'ja'));
+      } catch (_error) { return true; }
+    }
     function stampRecord(record, withMb) {
       if (typeof env.markRechecked !== 'function') return;
       Promise.resolve(env.markRechecked(record.videoId, root.CreditMaintenance.recheckStamp(record, withMb, true))).catch(function () {});
@@ -138,7 +147,7 @@
         if (relation === 'same') { mbSame++; notes.push(roleLabel(role) + ': ' + message('history_recheckMbSame', '一致')); return; }
         // A romanized credit becomes the Japanese name whose reading it is;
         // any other different name (an alias, another person) is only reported.
-        var unified = relation === 'different' ? root.CreditMaintenance.unifyReading(job.record[role], found.sortNames) : '';
+        var unified = relation === 'different' && japaneseUi() ? root.CreditMaintenance.unifyReading(job.record[role], found.sortNames) : '';
         if (unified && !root.CreditMaintenance.sameContributors(unified, job.record[role])
           && root.CreditTarget.isValidCreditValue(unified, job.record.title) && !candidates.has(job.record.videoId + ':' + role)) {
           candidates.set(job.record.videoId + ':' + role, { videoId: job.record.videoId, role: role, value: unified, source: 'musicbrainz-reading',
@@ -298,11 +307,11 @@
               return !root.CreditTarget.creditIsBlank(record[role]) && root.CreditTarget.effectiveRoleSource(record, role) !== 'manual'
                 && !changed.has(role) && !(maintenance.credits || {})[role];
             });
-            var readingRoles = proposed.filter(function (candidate) {
+            var readingRoles = !japaneseUi() ? [] : proposed.filter(function (candidate) {
               return root.CreditMaintenance.compareNames(record[candidate.role], candidate.value) === 'different'
                 && root.CreditMaintenance.isLatinName(record[candidate.role]) !== root.CreditMaintenance.isLatinName(candidate.value);
             }).map(function (candidate) { return candidate.role; });
-            var manualRoles = ['composer', 'lyricist', 'arranger'].filter(function (role) {
+            var manualRoles = !japaneseUi() ? [] : ['composer', 'lyricist', 'arranger'].filter(function (role) {
               return root.CreditTarget.effectiveRoleSource(record, role) === 'manual' && root.CreditMaintenance.isLatinName(String(record[role] || ''));
             });
             if (mbOn() && (mbRoles.length || readingRoles.length || manualRoles.length)) {

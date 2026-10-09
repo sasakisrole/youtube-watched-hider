@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.55 (2026-10-09)
+
+- Unify romanized names into the Japanese spelling only when the browser language is Japanese. In other languages, names stay as credited and a MusicBrainz name in another script is only reported.
+
 ## v1.60.54 (2026-10-09)
 
 - Correct the adopt-all confirmation: it now says that confirmed values matching the description only return to the recheck source with their value unchanged, besides romanized names unified to Japanese.

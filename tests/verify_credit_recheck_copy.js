@@ -16,7 +16,7 @@ async function check(name, fn) {
   catch (error) { failed++; console.error('FAIL ' + name + '\n' + error.stack); }
 }
 
-function boot(locale = 'en', clipboardMode = 'success', downloadMode = 'success') {
+function boot(locale = 'en', clipboardMode = 'success', downloadMode = 'success', uiLanguage = 'ja') {
   const elements = {}, copied = [], ports = [], keys = new Set(), downloads = [], revoked = [];
   const runtime = {lastError: undefined, mbSent: [], mbResponse: null,
     sendMessage(message, callback) { this.mbSent.push(message); setImmediate(() => callback(this.mbResponse)); }};
@@ -60,6 +60,7 @@ function boot(locale = 'en', clipboardMode = 'success', downloadMode = 'success'
       copied.push(text); return Promise.resolve();
     }}},
   };
+  ctx.historyUILanguage = () => uiLanguage;
   if (catalog) ctx.historyMessage = (key, fallback, values = []) => {
     keys.add(key); assert(catalog[key], 'missing locale key ' + key);
     return catalog[key].message.replace(/\$([a-z_]+)\$/gi, (_, name) => catalog[key].placeholders[name.toLowerCase()].content)
@@ -448,6 +449,19 @@ async function main() {
     ui.progress(port, record, success('Composer: Someone else')); ui.done(port);
     assert.equal(ui.elements.creditRecheckAdoptAll.disabled, true);
     assert.equal(writes.length, 0);
+  });
+  await check('READING-5: outside a Japanese UI, romanized names are kept as credited', async () => {
+    const ui = boot('en', 'success', 'success', 'en-US'), auto = {...row(), composer: 'Satoshi Yaginuma'},
+      confirmed = {...row('sampleVid02'), composer: 'Satoshi Yaginuma', creditRoleSources: {composer: 'manual'}};
+    ui.runtime.mbResponse = readingFound;
+    ui.elements.creditRecheckMb.checked = true;
+    const port = ui.start([auto, confirmed]);
+    ui.progress(port, auto, success('Unrelated text'));
+    ui.progress(port, confirmed, success('Unrelated text')); await settle(); await settle(); ui.done(port);
+    const report = await ui.report();
+    assert.equal(report.counts.proposals, 0);
+    assert.equal(report.items[0].roles.composer.musicbrainz, 'different');
+    assert.equal(ui.elements.creditRecheckAdoptAll.disabled, true);
   });
   await check('REQ-6: release and locale metadata', () => {
     assert.equal(JSON.parse(read('manifest.json')).version, read('CHANGELOG.md').match(/^## v(\d+\.\d+\.\d+)/m)[1]);

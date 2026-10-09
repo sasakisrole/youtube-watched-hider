@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.55",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "Unify romanized names into the Japanese spelling only when the browser language is Japanese. In other languages, names stay as credited and a MusicBrainz name in another script is only reported."
+    ]
+  },
+  {
     "version": "1.60.54",
     "date": "2026-10-09",
     "summary": "",
