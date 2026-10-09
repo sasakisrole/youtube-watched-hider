@@ -83,6 +83,7 @@ check('romanized readings unify to the Japanese name, aliases do not', () => {
   const sort={'八木沼悟志':'Yaginuma, Satoshi','中村航':'Nakamura, Kou','白戸佑輔':'Shirato, Yuusuke','吉田菫':'Yoshida, Sumire','齋藤真也':'Saito, Shinya'};
   assert.equal(CM.unifyReading('Satoshi Yaginuma',sort),'八木沼悟志');
   assert.equal(CM.unifyReading('Ko Nakamura',sort),'中村航');
+  assert.equal(CM.unifyReading('Satoshi Yaginuma, Shinya Saito',{'八木沼悟志':'Yaginuma, Satoshi','齋藤真也':"Saitō, Shin'ya"}),'八木沼悟志, 齋藤真也');
   assert.equal(CM.unifyReading('Yusuke Shirato, Guest',sort),'白戸佑輔, Guest');
   assert.equal(CM.unifyReading('Suu',sort),'');
   assert.equal(CM.unifyReading('八木沼悟志',sort),'');

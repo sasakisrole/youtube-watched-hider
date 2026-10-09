@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.48",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "Match romanized names against MusicBrainz readings written with macrons (for example \"Saitō, Shin'ya\")."
+    ]
+  },
+  {
     "version": "1.60.47",
     "date": "2026-10-09",
     "summary": "",

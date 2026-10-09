@@ -43,11 +43,13 @@
   // labels and its order varies by distributor, so it can show that a name is
   // present but never which role that name holds.
   // Romanized readings: case, word order and Hepburn long vowels
-  // (ou/oo/oh, uu) are ignored, so "Ko Nakamura" matches "Nakamura, Kou".
+  // (ou/oo/oh, uu, and macrons as in "Saitō") are ignored, so "Ko Nakamura"
+  // matches "Nakamura, Kou" and "Shinya Saito" matches "Saitō, Shin'ya".
   var JAPANESE_SCRIPT = /[\u3040-\u30ff\u3400-\u9fff]/u;
   function isLatinName(name) { return /[a-z]/iu.test(name) && !JAPANESE_SCRIPT.test(name); }
   function readingKey(value) {
-    return String(value || '').normalize('NFKC').toLowerCase().split(/[\s,，.・]+/u)
+    return String(value || '').normalize('NFKC').normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().split(/[\s,，.・]+/u)
       .map(function (token) { return token.replace(/[^a-z]/g, '').replace(/ou|oo|oh(?![aeiou])/g, 'o').replace(/uu/g, 'u'); })
       .filter(Boolean).sort().join(' ');
   }

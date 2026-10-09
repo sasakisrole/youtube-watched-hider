@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.48 (2026-10-09)
+
+- Match romanized names against MusicBrainz readings written with macrons (for example "Saitō, Shin'ya").
+
 ## v1.60.47 (2026-10-09)
 
 - A recheck with MusicBrainz may also rewrite a confirmed (manual) credit, but only from a romanized name to the Japanese name with the same MusicBrainz reading. These changes are listed, confirmed with "Adopt all proposals", and can be undone with "Undo all adoptions".
