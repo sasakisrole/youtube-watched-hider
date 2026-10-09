@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.43",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "Use English as the default language, so browsers set to languages other than Japanese or English show English instead of Japanese. Japanese browsers are unchanged."
+    ]
+  },
+  {
     "version": "1.60.42",
     "date": "2026-10-09",
     "summary": "",

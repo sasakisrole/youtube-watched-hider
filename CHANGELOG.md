@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.43 (2026-10-09)
+
+- Use English as the default language, so browsers set to languages other than Japanese or English show English instead of Japanese. Japanese browsers are unchanged.
+
 ## v1.60.42 (2026-10-09)
 
 - Keep credits as the name used on the work: a MusicBrainz name that only spells the person differently (real name, other script, alias) is reported as a different name instead of proposed. Matches are reported as matches, and only added contributors become proposals.

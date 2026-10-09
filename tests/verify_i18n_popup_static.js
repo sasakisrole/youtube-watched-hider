@@ -3,7 +3,9 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const read = name => fs.readFileSync(path.join(__dirname, '..', name), 'utf8');
-assert.strictEqual(JSON.parse(read('manifest.json')).default_locale, 'ja');
+// Browsers in languages without a catalog fall back to English, not Japanese;
+// this is safe only while both catalogs carry the same keys.
+assert.strictEqual(JSON.parse(read('manifest.json')).default_locale, 'en');
 const ja = JSON.parse(read('_locales/ja/messages.json'));
 const en = JSON.parse(read('_locales/en/messages.json'));
 const html = read('popup.html');
