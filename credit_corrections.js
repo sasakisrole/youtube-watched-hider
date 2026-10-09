@@ -3,7 +3,7 @@
   var ROLES = ['composer', 'lyricist', 'arranger'];
   // Bump whenever description parsing or candidate rules change, so every
   // stored recheck stamp expires and those videos become recheck targets again.
-  var PARSER_REVISION = '2026-10-09';
+  var PARSER_REVISION = '2026-10-09.2';
   function normalized(value) {
     return String(value || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
   }

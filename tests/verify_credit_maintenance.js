@@ -65,6 +65,10 @@ check('scope and same-page continuation cover arbitrary history', () => {
   assert.equal(CM.targets(rows,'all',new Set(),50,CT).length,2);
   assert.equal(CM.targets(rows,'all',new Set([record.videoId]),1,CT)[0].videoId,'anyVideo002');
 });
+check('multi-word unknown roles in a list keep the composer', () => {
+  assert.equal(analyze('Composer, Mixing  Engineer, Producer, Recording  Engineer: Joseph Reiser').credits.composer,'Joseph Reiser');
+  assert.equal(analyze('Composer, Associated Performer, Double Bass: Nick Blacka').credits.composer,'Nick Blacka');
+});
 check('critical title-as-composer regressions remain in tests only', () => {
   assert.equal(analyze("Composer: Banbado (Shiron Dub'n'Bado Remix)","Banbado (Shiron Dub'n'Bado Remix)").credits.composer,'');
   assert.equal(analyze('Composer: Battle of Marion(ISK "Meteorite" Remix)','Battle of Marion(ISK "Meteorite" Remix)').credits.composer,'');

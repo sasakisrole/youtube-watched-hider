@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.39 (2026-10-09)
+
+- Read role lists that contain multi-word roles such as "Double Bass" or "Mixing Engineer", so a composer on such a line is no longer dropped from recheck proposals.
+
 ## v1.60.38 (2026-10-09)
 
 - Remember which credit rechecks are done. A video stays checked across page reloads until its credits change or the description parser is updated; "Recheck checked videos too" still includes everything.

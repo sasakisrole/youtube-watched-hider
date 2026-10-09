@@ -2059,7 +2059,11 @@ const CREDIT_ROLE_KEYWORDS = {
 
 const CREDIT_KNOWN_LABEL = String.raw`(?:(?:作詞|作詩|作曲|編曲)(?:(?:作詞|作詩|作曲|編曲)|絵|動画|映像|イラスト)+|(?:作詞|作詩|作曲|編曲)(?:\s*[・&＆/／]?\s*(?:作詞|作詩|作曲|編曲))+|作編曲|(?:words|lyrics?)\s*(?:&|and|\/)\s*music|music\s*(?:&|and|\/)\s*(?:words|lyrics?)|compose(?:r)?\s*(?:&|and|\/|／)\s*arrange(?:r)?|composer\s*[,，]?\s*(?:writer|lyricist)|composer\s+lyricist|composers?|composed\s+by|composition|compose|music\s+by|original\s+music|music\s+composer|lyricists?|lyrics\s+by|written\s+by|lyrics?|songwriters?|words|arrangers?|arranged\s+by|arrangement|recording\s+arranger|arrange|作詞家|作詞者|作詞|作詩|作曲家|作曲者|作曲|編曲家|編曲者|編曲)`;
 // Unknown role tokens can delimit a list but never imply a musical role.
-const CREDIT_LIST_ITEM = String.raw`(?:${CREDIT_KNOWN_LABEL}|associated\s+performer|re-\s*mixer|[a-z][a-z0-9_-]*)`;
+// Unknown roles in a comma list may span words ("Double Bass", "Mixing  Engineer");
+// they only bound the list and never assign a role themselves. Role words are
+// excluded so prose such as "Notes about Composer" cannot open a list.
+const CREDIT_LIST_ROLE_FREE_WORD = String.raw`(?!(?:compos|lyric|arrang|music|words?|written|songwriter))[a-z][a-z0-9_-]*`;
+const CREDIT_LIST_ITEM = String.raw`(?:${CREDIT_KNOWN_LABEL}|associated\s+performer|re-\s*mixer|[a-z][a-z0-9_-]*|${CREDIT_LIST_ROLE_FREE_WORD}(?:\s+${CREDIT_LIST_ROLE_FREE_WORD}){1,2})`;
 const CREDIT_LABEL_TOKEN_RE = new RegExp(String.raw`(?:^|[\s/／|｜;；]\s*)((?:${CREDIT_LIST_ITEM}\s*[,，、]\s*)+${CREDIT_LIST_ITEM}|${CREDIT_KNOWN_LABEL})\s*[:：]`, 'giu');
 const CREDIT_KNOWN_LABEL_RE = new RegExp(String.raw`^(?:${CREDIT_KNOWN_LABEL})$`, 'iu');
 // A single ASCII label token followed by a colon is also a segment boundary,

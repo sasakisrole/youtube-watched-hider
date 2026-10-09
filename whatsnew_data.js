@@ -3,6 +3,111 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.39",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "Read role lists that contain multi-word roles such as \"Double Bass\" or \"Mixing Engineer\", so a composer on such a line is no longer dropped from recheck proposals."
+    ]
+  },
+  {
+    "version": "1.60.38",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "Remember which credit rechecks are done. A video stays checked across page reloads until its credits change or the description parser is updated; \"Recheck checked videos too\" still includes everything."
+    ]
+  },
+  {
+    "version": "1.60.37",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "Disable \"Adopt all proposals\" when nothing is left to adopt, and keep the batch undo available after an empty run."
+    ]
+  },
+  {
+    "version": "1.60.36",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "Ask for confirmation before undoing a batch of adopted credit proposals."
+    ]
+  },
+  {
+    "version": "1.60.35",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "Treat a remix's own title stored in a credit field by older parsing as invalid, so \"Repair invalid credit values\" can clear it after preview."
+    ]
+  },
+  {
+    "version": "1.60.34",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "Adopt all credit recheck proposals at once, and undo that batch at once. Each role still goes through the stored-value check, manual values are untouched, and only roles whose single proposal came from the recheck are adopted."
+    ]
+  },
+  {
+    "version": "1.60.33",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "Do not treat the label and publisher names ASOBINOTES and Bandai Namco Music Live, Inc. as composers or lyricists."
+    ]
+  },
+  {
+    "version": "1.60.32",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "Save credit recheck results as a JSON file in the youtube-watched-hider-reports folder under Downloads.",
+      "Do not treat the label name MOTTO MUSIC as a composer or lyricist."
+    ]
+  },
+  {
+    "version": "1.60.31",
+    "date": "2026-10-08",
+    "summary": "",
+    "points": [
+      "Avoid credit recheck proposals when contributor lists differ only in separator spacing, comma style, or order. Preserve meaningful differences within names and continue showing actual contributor additions and removals."
+    ]
+  },
+  {
+    "version": "1.60.30",
+    "date": "2026-10-08",
+    "summary": "",
+    "points": [
+      "Recover remix composition and lyrics from original credits, recognize decorated role lists and exact song-title variants, and keep notices and hashtags out of song scoping without inheriting original arrangement credits."
+    ]
+  },
+  {
+    "version": "1.60.29",
+    "date": "2026-10-08",
+    "summary": "",
+    "points": [
+      "Copy credit recheck results as JSON with role-specific evidence, held reasons, and retrieval failures for troubleshooting."
+    ]
+  },
+  {
+    "version": "1.60.28",
+    "date": "2026-10-08",
+    "summary": "",
+    "points": [
+      "Show role-specific reasons for held credit rechecks and distinct retrieval failure messages, keeping proposed roles out of the held list."
+    ]
+  },
+  {
+    "version": "1.60.27",
+    "date": "2026-10-08",
+    "summary": "",
+    "points": [
+      "Fix missing roles in comma-separated credit labels and preserve co-contributors across lines during enrichment and rechecking, while keeping song/version boundaries and excluding remix-only credits from arrangement."
+    ]
+  },
+  {
     "version": "1.60.26",
     "date": "2026-10-08",
     "summary": "保存済みクレジットを再点検する共通機能に変更しました。 特定の動画の修正表を廃止し、どの利用者の履歴でも現在の概要欄から変更案を生成します。「データ管理・一括処理 → データ修復 → 保存済みクレジットを再点検」でRemix系・履歴全体と1回の件数を選べます。",
