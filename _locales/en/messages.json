@@ -3822,7 +3822,7 @@
     }
   },
   "history_recheckAdoptAllConfirmReading": {
-    "message": "Adopt all listed proposals? Confirmed values change only where $COUNT$ romanized names become the Japanese spelling with the same reading. Adopted items can be undone.",
+    "message": "Adopt all listed proposals? Only $COUNT$ confirmed values change: values matching the description return to the recheck source unchanged, and romanized names become the Japanese spelling with the same reading. Adopted items can be undone.",
     "placeholders": {
       "count": {
         "content": "$1"

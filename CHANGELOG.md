@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.54 (2026-10-09)
+
+- Correct the adopt-all confirmation: it now says that confirmed values matching the description only return to the recheck source with their value unchanged, besides romanized names unified to Japanese.
+
 ## v1.60.53 (2026-10-09)
 
 - A recheck with MusicBrainz now revisits every video last checked without it, so a quick pass without MusicBrainz can be followed by one with it.

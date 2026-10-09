@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.54",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "Correct the adopt-all confirmation: it now says that confirmed values matching the description only return to the recheck source with their value unchanged, besides romanized names unified to Japanese."
+    ]
+  },
+  {
     "version": "1.60.53",
     "date": "2026-10-09",
     "summary": "",

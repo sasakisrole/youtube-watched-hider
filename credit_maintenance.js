@@ -340,7 +340,7 @@
       if (port || adopting || (!reviewCount && !readingFixes.size)) return;
       var question = readingFixes.size
         ? message('history_recheckAdoptAllConfirmReading',
-          '一覧の変更案をまとめて採用します。手動確定値は、同じ読みの日本語表記への統一と、概要欄と一致する値を再点検扱いに戻すもの、合わせて ' + readingFixes.size + '件だけ変更します。採用した項目は元に戻せます。よろしいですか？', [readingFixes.size])
+          '一覧の変更案をまとめて採用します。手動確定値は ' + readingFixes.size + '件だけ変更します（概要欄と一致する値を、値はそのままで再点検扱いに戻すものと、ローマ字を同じ読みの日本語表記にするもの）。採用した項目は元に戻せます。よろしいですか？', [readingFixes.size])
         : message('history_recheckAdoptAllConfirm',
           '一覧の変更案をまとめて採用します。手動確定値は変更しません。採用した項目は1件ずつ元に戻せます。よろしいですか？');
       if (typeof root.confirm === 'function' && !root.confirm(question)) return;
