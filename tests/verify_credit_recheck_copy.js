@@ -18,7 +18,8 @@ async function check(name, fn) {
 
 function boot(locale = 'en', clipboardMode = 'success', downloadMode = 'success') {
   const elements = {}, copied = [], ports = [], keys = new Set(), downloads = [], revoked = [];
-  const runtime = {lastError: undefined};
+  const runtime = {lastError: undefined, mbSent: [], mbResponse: null,
+    sendMessage(message, callback) { this.mbSent.push(message); setImmediate(() => callback(this.mbResponse)); }};
   const confirms = [], accepted = [];
   let confirmAnswer = true;
   const review = {busy: new Set(), refreshReviewList() {}, lastBatch: [], pending: 0,
@@ -69,7 +70,7 @@ function boot(locale = 'en', clipboardMode = 'success', downloadMode = 'success'
   ctx.CreditMaintenanceUI.create({getRecords: () => records, begin: () => true, end() {}, saveCreditRole() { saves++; },
     markRechecked(videoId, stamp) { marked.push([videoId, stamp]); const live = records.find(r => r.videoId === videoId); if (live) live.creditsRecheck = stamp; return Promise.resolve(true); }});
   const click = id => elements[id].listeners.click();
-  return {elements, keys, copied, downloads, revoked, confirms, accepted, review, marked, click, get saves() { return saves; },
+  return {elements, keys, copied, downloads, revoked, confirms, accepted, review, marked, runtime, click, get saves() { return saves; },
     set confirmAnswer(value) { confirmAnswer = value; },
     start(rows, scope = 'all') {
       records = rows; elements.creditRecheckScope.value = scope; elements.creditRecheckLimit.value = '50';
@@ -264,6 +265,41 @@ async function main() {
     ui.progress(port, ok, success('Composer: Saved credit'));
     assert.equal(ui.marked.length, 2, 'reset includes the stamped video again');
   });
+  const mbFound = (stage) => ({success: true, candidate: {composer: 'Saved credit', lyricist: 'Carol・Dave', arranger: '',
+    mbid: 'mb-1', roleRecordingIds: {lyricist: 'mb-2'}, mbTitle: 'Alpha', stage, manualReviewReason: ''}});
+  const settle = () => new Promise((resolve) => setImmediate(() => setImmediate(resolve)));
+  await check('MB-1: MusicBrainz is never queried unless the user opts in', async () => {
+    const ui = boot(), record = {...row(), lyricist: 'Old lyric'}, port = ui.start([record]);
+    ui.progress(port, record, success('Unrelated text')); await settle();
+    assert.equal(ui.runtime.mbSent.length, 0);
+    assert.match(read('history.html'), /<input id="creditRecheckMb" type="checkbox">/);
+  });
+  await check('MB-2: a strict match proposes held roles one by one; a fuzzy match proposes nothing', async () => {
+    for (const [stage, proposals] of [['strict', 1], ['fuzzy', 0]]) {
+      const ui = boot(), record = {...row(), lyricist: 'Old lyric'};
+      ui.runtime.mbResponse = mbFound(stage);
+      ui.elements.creditRecheckMb.checked = true;
+      const port = ui.start([record]);
+      ui.progress(port, record, success('Unrelated text')); await settle();
+      assert.equal(JSON.stringify(ui.runtime.mbSent), JSON.stringify([{type: 'enrichCreditsMb', artist: 'Example channel', title: 'Alpha'}]));
+      const report = await ui.report();
+      assert.equal(report.counts.proposals, proposals, stage);
+      assert.equal(report.items[0].musicbrainz.status, 'found');
+      assert.equal(report.items[0].musicbrainz.stage, stage);
+    }
+  });
+  await check('MB-3: an agreeing or failed lookup proposes nothing', async () => {
+    for (const response of [mbFound('strict'), null, {success: true, candidate: null, reason: 'no-recording'}]) {
+      const ui = boot(), record = {...row(), lyricist: 'Dave, Carol'};
+      ui.runtime.mbResponse = response;
+      ui.elements.creditRecheckMb.checked = true;
+      const port = ui.start([record]);
+      ui.progress(port, record, success('Unrelated text')); await settle();
+      const report = await ui.report();
+      assert.equal(report.counts.proposals, 0);
+      assert.equal(report.items[0].musicbrainz.status, response ? (response.candidate ? 'found' : 'no-recording') : 'error');
+    }
+  });
   await check('REQ-6: release and locale metadata', () => {
     assert.equal(JSON.parse(read('manifest.json')).version, read('CHANGELOG.md').match(/^## v(\d+\.\d+\.\d+)/m)[1]);
     assert.match(read('CHANGELOG.md'), /## v1\.60\.29[^]*?Copy credit recheck results as JSON/);
@@ -273,7 +309,8 @@ async function main() {
       'history_recheckSave', 'history_recheckSaveSuccess', 'history_recheckSaveFailure',
       'history_recheckAdoptAll', 'history_recheckAdoptAllConfirm', 'history_recheckAdoptAllRunning', 'history_recheckAdoptAllDone',
       'history_recheckAdoptAllPartial', 'history_recheckAdoptAllFailure', 'history_recheckUndoAll', 'history_recheckUndoAllConfirm', 'history_recheckUndoAllRunning',
-      'history_recheckUndoAllDone', 'history_recheckUndoAllPartial', 'history_recheckUndoAllFailure']) assert(ja[key] && en[key]);
+      'history_recheckUndoAllDone', 'history_recheckUndoAllPartial', 'history_recheckUndoAllFailure',
+      'history_recheckMb', 'history_recheckMbProgress']) assert(ja[key] && en[key]);
   });
   console.log(`RESULT: ${passed} passed / ${failed} failed / 0 skipped`);
   process.exitCode = failed ? 1 : 0;

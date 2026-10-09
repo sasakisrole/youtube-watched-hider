@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.40",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "Optionally look up held credit roles on MusicBrainz during a recheck (off by default). Only strict title and artist matches become proposals, and they are reviewed one by one rather than adopted in bulk."
+    ]
+  },
+  {
     "version": "1.60.39",
     "date": "2026-10-09",
     "summary": "",

@@ -49,10 +49,12 @@
     var adoptAll = document.getElementById('creditRecheckAdoptAll');
     var undoAll = document.getElementById('creditRecheckUndoAll');
     var adopting = false, includeStamped = false;
+    var mbToggle = document.getElementById('creditRecheckMb');
+    var mbQueue = [], mbRunning = false, mbFound = 0;
     var review = root.CreditReview.create({
       getRecords: function () { return Array.from(snapshots.values()); },
       getMaterials: function () { return { candidates: Array.from(candidates.values()) }; },
-      filterItem: function (item) { return item.candidates.some(function (candidate) { return candidate.source === 'description-recheck'; }); },
+      filterItem: function (item) { return item.candidates.some(function (candidate) { return candidate.source === 'description-recheck' || candidate.source === 'musicbrainz-recheck'; }); },
       allowReject: false,
       limit: 1500,
       emptyMessage: message('history_recheckEmpty', '再点検で見つかった変更案をここに表示します。変更案がなくても、すべて正しいと確認できたわけではありません。'),
@@ -76,6 +78,55 @@
       status.textContent = message('history_recheckProgress',
         'このページで点検 ' + checked.size + '件／変更案 ' + candidates.size + '項目／保留 ' + held + '件／取得失敗 ' + failed + '件／未点検 ' + (remaining === 500 ? '500+' : remaining) + '件',
         [checked.size, candidates.size, held, failed, remaining === 500 ? '500+' : remaining]);
+      if (mbRunning || mbFound) {
+        status.textContent += ' ' + message('history_recheckMbProgress', 'MusicBrainz照合: 残り ' + (mbQueue.length + (mbRunning ? 1 : 0)) + '件／変更案 ' + mbFound + '項目',
+          [mbQueue.length + (mbRunning ? 1 : 0), mbFound]);
+      }
+      if (!port) stop.disabled = !mbRunning;
+    }
+    // Held roles only, and only when the user opted in for this run (privacy policy).
+    // The background queue keeps MusicBrainz at one request per second.
+    function lookupMb(record) {
+      return new Promise(function (resolve) {
+        try {
+          chrome.runtime.sendMessage({ type: 'enrichCreditsMb', artist: record.channel || '', title: record.title || '' }, function (response) {
+            void chrome.runtime.lastError;
+            resolve(response || null);
+          });
+        } catch (_error) { resolve(null); }
+      });
+    }
+    function applyMb(job, response) {
+      var found = response && response.success && response.candidate;
+      var item = exports.get(job.record.videoId);
+      if (item) {
+        item.musicbrainz = found
+          ? { status: 'found', mbid: found.mbid, title: found.mbTitle, stage: found.stage, review: found.manualReviewReason || '',
+            composer: found.composer, lyricist: found.lyricist, arranger: found.arranger }
+          : { status: response ? (response.reason || 'not-found') : 'error' };
+      }
+      // A fuzzy title match may be a different song; only strict matches become proposals.
+      if (!found || found.stage !== 'strict') return;
+      job.roles.forEach(function (role) {
+        var value = String(found[role] || '').split('・').join(', ');
+        var key = job.record.videoId + ':' + role;
+        if (!value || candidates.has(key) || !root.CreditTarget.isValidCreditValue(value, job.record.title)) return;
+        if (root.CreditMaintenance.sameContributors(value, String(job.record[role] || '').split('・').join(', '))) return;
+        candidates.set(key, { videoId: job.record.videoId, role: role, value: value, source: 'musicbrainz-recheck',
+          sourceDetail: 'https://musicbrainz.org/recording/' + ((found.roleRecordingIds || {})[role] || found.mbid),
+          evidence: 'MusicBrainz: ' + found.mbTitle + (found.manualReviewReason ? ' (' + found.manualReviewReason + ')' : ''),
+          selected: false });
+        mbFound++;
+      });
+    }
+    async function drainMb() {
+      mbRunning = true; summary();
+      while (mbQueue.length) {
+        var job = mbQueue.shift();
+        applyMb(job, await lookupMb(job.record));
+        review.refreshReviewList(); summary();
+      }
+      mbRunning = false; summary();
     }
     function issue(record, reason, isHeld) {
       if (isHeld) held++;
@@ -149,6 +200,14 @@
               return message('history_recheckRoleReason', roleLabels[role] + ': ' + reason, [roleLabels[role], reason]);
             });
             if (heldRoles.length) issue(record, heldRoles.join(' / '), true);
+            var mbRoles = ['composer', 'lyricist', 'arranger'].filter(function (role) {
+              return !root.CreditTarget.creditIsBlank(record[role]) && root.CreditTarget.effectiveRoleSource(record, role) !== 'manual'
+                && !changed.has(role) && !(maintenance.credits || {})[role];
+            });
+            if (mbToggle && mbToggle.checked && mbRoles.length) {
+              mbQueue.push({ record: record, roles: mbRoles });
+              if (!mbRunning) drainMb();
+            }
           }
           review.refreshReviewList(); summary(); return;
         }
@@ -166,7 +225,9 @@
       activePort.postMessage({ type: 'START', videoIds: records.map(function (record) { return record.videoId; }) });
     });
     stop.addEventListener('click', function () {
+      mbQueue.length = 0;
       if (port) { port.postMessage({ type: 'ABORT' }); stop.disabled = true; }
+      summary();
     });
     adoptAll.addEventListener('click', async function () {
       if (port || adopting || !review.adoptable(ownProposal).length) return;

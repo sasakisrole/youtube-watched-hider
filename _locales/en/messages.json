@@ -3757,5 +3757,19 @@
   },
   "history_recheckUndoAllFailure": {
     "message": "Could not finish undoing adoptions. Check the list for their current state."
+  },
+  "history_recheckMb": {
+    "message": "Also check MusicBrainz"
+  },
+  "history_recheckMbProgress": {
+    "message": "MusicBrainz: $REMAINING$ left / $FOUND$ proposed roles",
+    "placeholders": {
+      "remaining": {
+        "content": "$1"
+      },
+      "found": {
+        "content": "$2"
+      }
+    }
   }
 }

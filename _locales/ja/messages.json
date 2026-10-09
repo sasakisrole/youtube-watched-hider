@@ -3757,5 +3757,19 @@
   },
   "history_recheckUndoAllFailure": {
     "message": "まとめて元に戻すことを完了できませんでした。一覧で状態を確認してください。"
+  },
+  "history_recheckMb": {
+    "message": "MusicBrainzでも照合する"
+  },
+  "history_recheckMbProgress": {
+    "message": "MusicBrainz照合: 残り $REMAINING$件／変更案 $FOUND$項目",
+    "placeholders": {
+      "remaining": {
+        "content": "$1"
+      },
+      "found": {
+        "content": "$2"
+      }
+    }
   }
 }
