@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.50",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "Keep rechecking batch after batch until no unchecked videos remain (\"Keep going until none are left\", on by default). The stop button, a YouTube-side stop such as a bot check, or unticking the box ends the run."
+    ]
+  },
+  {
     "version": "1.60.49",
     "date": "2026-10-09",
     "summary": "",

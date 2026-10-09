@@ -3781,6 +3781,9 @@
   "history_recheckIncludeChecked": {
     "message": "Include videos already checked"
   },
+  "history_recheckContinue": {
+    "message": "Keep going until none are left"
+  },
   "history_recheckOptionsHelp": {
     "message": "The options apply to the next run. Checking starts when you press \"Scan unchecked videos\". With \"Include videos already checked\" selected, videos checked before are checked again."
   },

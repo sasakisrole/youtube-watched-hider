@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.50 (2026-10-09)
+
+- Keep rechecking batch after batch until no unchecked videos remain ("Keep going until none are left", on by default). The stop button, a YouTube-side stop such as a bot check, or unticking the box ends the run.
+
 ## v1.60.49 (2026-10-09)
 
 - In the credit ranking, count one person once when the same credited name differs only in letter case, character width or spacing (for example Mitsukiyo and MITSUKIYO), shown under the spelling used most. Stored credits are unchanged.

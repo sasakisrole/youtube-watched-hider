@@ -71,12 +71,12 @@ function boot(locale = 'en', clipboardMode = 'success', downloadMode = 'success'
   ctx.CreditMaintenanceUI.create({getRecords: () => records, begin: () => true, end() {}, saveCreditRole(payload) { saves++; return saveImpl ? saveImpl(payload) : undefined; },
     markRechecked(videoId, stamp) { marked.push([videoId, stamp]); const live = records.find(r => r.videoId === videoId); if (live) live.creditsRecheck = stamp; return Promise.resolve(true); }});
   const click = id => elements[id].listeners.click();
-  return {elements, keys, copied, downloads, revoked, confirms, accepted, review, marked, runtime, click, get saves() { return saves; },
+  return {elements, keys, copied, downloads, revoked, confirms, accepted, review, marked, runtime, ports, click, get saves() { return saves; },
     set confirmAnswer(value) { confirmAnswer = value; },
     setSave(fn) { saveImpl = fn; },
     includeChecked(value) { elements.creditRecheckIncludeChecked.checked = value; elements.creditRecheckIncludeChecked.listeners.change(); },
-    start(rows, scope = 'all') {
-      records = rows; elements.creditRecheckScope.value = scope; elements.creditRecheckLimit.value = '50';
+    start(rows, scope = 'all', limitValue = '50') {
+      records = rows; elements.creditRecheckScope.value = scope; elements.creditRecheckLimit.value = limitValue;
       click('creditRecheckStart'); return ports.at(-1);
     },
     progress(port, record, result) { port.receive({type: 'PROGRESS', videoId: record.videoId, result}); },
@@ -406,6 +406,27 @@ async function main() {
     assert.equal(ui.elements.creditRecheckAdoptAll.disabled, true);
     assert.equal(writes.length, 0);
   });
+  await check('CONT-1: a finished batch starts the next while unchecked videos remain', async () => {
+    assert.match(read('history.html'), /<input id="creditRecheckContinue" type="checkbox" checked>/);
+    const ui = boot(), rows = [row(), row('sampleVid02'), row('sampleVid03')];
+    ui.elements.creditRecheckContinue.checked = true;
+    let port = ui.start(rows, 'all', '1');
+    const before = ui.ports.length;
+    ui.progress(port, rows[0], success('Composer: Saved credit')); ui.done(port);
+    assert.equal(ui.ports.length, before + 1, 'the next batch started by itself');
+    port = ui.ports.at(-1);
+    port.receive({type: 'DONE', stopped: 'sorry-redirect'});
+    assert.equal(ui.ports.length, before + 1, 'a YouTube-side stop ends the run');
+  });
+  await check('CONT-2: the stop button ends a continuous run', async () => {
+    const ui = boot(), rows = [row(), row('sampleVid02')];
+    ui.elements.creditRecheckContinue.checked = true;
+    const port = ui.start(rows, 'all', '1');
+    const before = ui.ports.length;
+    ui.click('creditRecheckStop');
+    ui.progress(port, rows[0], success('Composer: Saved credit')); ui.done(port);
+    assert.equal(ui.ports.length, before);
+  });
   await check('REQ-6: release and locale metadata', () => {
     assert.equal(JSON.parse(read('manifest.json')).version, read('CHANGELOG.md').match(/^## v(\d+\.\d+\.\d+)/m)[1]);
     assert.match(read('CHANGELOG.md'), /## v1\.60\.29[^]*?Copy credit recheck results as JSON/);
@@ -417,7 +438,7 @@ async function main() {
       'history_recheckAdoptAllPartial', 'history_recheckAdoptAllFailure', 'history_recheckUndoAll', 'history_recheckUndoAllConfirm', 'history_recheckUndoAllRunning',
       'history_recheckUndoAllDone', 'history_recheckUndoAllPartial', 'history_recheckUndoAllFailure',
       'history_recheckMb', 'history_recheckMbProgress', 'history_recheckIncludeChecked', 'history_recheckOptionsHelp',
-      'history_recheckMbReading', 'history_recheckMbKeepJapanese', 'history_recheckMbReadingManual',
+      'history_recheckMbReading', 'history_recheckMbKeepJapanese', 'history_recheckMbReadingManual', 'history_recheckContinue',
       'history_recheckAdoptAllConfirmReading']) assert(ja[key] && en[key]);
   });
   console.log(`RESULT: ${passed} passed / ${failed} failed / 0 skipped`);

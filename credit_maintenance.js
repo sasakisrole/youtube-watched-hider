@@ -211,12 +211,22 @@
       note.textContent = ' — ' + reason;
       item.append(link, note); issues.appendChild(item);
     }
+    var continueBox = document.getElementById('creditRecheckContinue');
+    var stopRequested = false;
     function finish(activePort, text) {
       if (port !== activePort) return;
       port = null; controls(false); env.end(); summary();
       if (text) status.textContent += ' ' + text;
     }
-    start.addEventListener('click', function () {
+    start.addEventListener('click', function () { stopRequested = false; runBatch(); });
+    // A finished batch starts the next one while unchecked videos remain. A stop,
+    // a YouTube-side stop (bot check, no tab) or unticking the box ends the run.
+    function continueRun() {
+      if (stopRequested || !continueBox || !continueBox.checked || port) return;
+      if (!root.CreditMaintenance.targets(env.getRecords(), scope.value, checked, 1, root.CreditTarget, includeStamped, mbOn()).length) return;
+      root.setTimeout(function () { if (!stopRequested && !port) runBatch(); }, 1500);
+    }
+    function runBatch() {
       if (port || review.busy.size) return;
       if (!limit.checkValidity()) { limit.reportValidity(); return; }
       var records = root.CreditMaintenance.targets(env.getRecords(), scope.value, checked, limit.value, root.CreditTarget, includeStamped, mbOn());
@@ -295,9 +305,11 @@
           review.refreshReviewList(); summary(); return;
         }
         if (data.type === 'DONE') {
-          finish(activePort, data.aborted || data.stopped
+          var halted = data.aborted || data.stopped;
+          finish(activePort, halted
             ? message('history_recheckStopped', '点検を停止しました。取得済みの変更案は確認できます。')
             : message('history_recheckDone', 'この範囲の点検が完了しました。続けると未点検の動画を調べます。'));
+          if (!halted) continueRun();
         } else if (data.type === 'ERROR') {
           finish(activePort, message('history_recheckConnection', '接続できませんでした。拡張を再読み込みしてから再試行してください。'));
         }
@@ -306,8 +318,9 @@
         finish(activePort, message('history_recheckDisconnected', '通信が終了しました。取得済みの変更案は残っています。未点検分は再開できます。'));
       });
       activePort.postMessage({ type: 'START', videoIds: records.map(function (record) { return record.videoId; }) });
-    });
+    }
     stop.addEventListener('click', function () {
+      stopRequested = true;
       mbQueue.length = 0;
       if (port) { port.postMessage({ type: 'ABORT' }); stop.disabled = true; }
       summary();
