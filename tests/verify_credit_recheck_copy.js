@@ -330,6 +330,25 @@ async function main() {
     assert.equal(ui.elements.creditRecheckIncludeChecked.disabled, false);
     assert.equal(ui.runtime.mbSent.length, before);
   });
+  await check('ADOPT-2: only added or removed contributors are bulk-adoptable', async () => {
+    const ui = boot(), add = {...row(), composer: 'Saved credit'}, swap = {...row('sampleVid02'), composer: '漢字名'},
+      upper = {...row('sampleVid03'), composer: 'Hayato'};
+    let seen = [];
+    ui.review.adoptAll = async (accept) => {
+      seen = [accept({videoId: 'sampleVid01', role: 'composer', candidates: [{source: 'description-recheck', value: 'Saved credit, Guest'}]}, 'Saved credit, Guest'),
+        accept({videoId: 'sampleVid02', role: 'composer', candidates: [{source: 'description-recheck', value: 'Romaji Name'}]}, 'Romaji Name'),
+        accept({videoId: 'sampleVid03', role: 'composer', candidates: [{source: 'description-recheck', value: 'HAYATO'}]}, 'HAYATO')];
+      return {targets: 0, adopted: 0, failed: 0};
+    };
+    ui.review.pending = 1;
+    const port = ui.start([add, swap, upper]);
+    ui.progress(port, add, success('Composer: Saved credit\nComposer: Guest'));
+    ui.progress(port, swap, success('Composer: Romaji Name'));
+    ui.progress(port, upper, success('Composer: HAYATO'));
+    ui.done(port);
+    await ui.click('creditRecheckAdoptAll');
+    assert.deepEqual(seen, [true, false, false]);
+  });
   await check('REQ-6: release and locale metadata', () => {
     assert.equal(JSON.parse(read('manifest.json')).version, read('CHANGELOG.md').match(/^## v(\d+\.\d+\.\d+)/m)[1]);
     assert.match(read('CHANGELOG.md'), /## v1\.60\.29[^]*?Copy credit recheck results as JSON/);

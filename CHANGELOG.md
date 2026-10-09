@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.45 (2026-10-09)
+
+- Limit "Adopt all proposals" to proposals that add or remove contributors. Changes of spelling, letter case or script, and replacements that share no name with the saved credit, can still be adopted one by one.
+
 ## v1.60.44 (2026-10-09)
 
 - In credit enrichment, skip channels whose every video is waiting on the MusicBrainz cooldown without showing them as work, and spend a limited run on videos that can still produce a result first. Results are unchanged.

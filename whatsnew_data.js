@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.45",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "Limit \"Adopt all proposals\" to proposals that add or remove contributors. Changes of spelling, letter case or script, and replacements that share no name with the saved credit, can still be adopted one by one."
+    ]
+  },
+  {
     "version": "1.60.44",
     "date": "2026-10-09",
     "summary": "",

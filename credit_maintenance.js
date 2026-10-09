@@ -65,9 +65,17 @@
       stop.disabled = !running;
     }
     // Only roles whose sole proposal came from this recheck; other sources need their own review.
+    // Only proposals that add or remove contributors are bulk-adoptable. A change
+    // of spelling, case or script may only restyle the same person, and a
+    // replacement sharing no name may be another alias; both are reviewed one by one.
     function ownProposal(item, value) {
       var own = item.candidates.filter(function (candidate) { return candidate.source === 'description-recheck'; });
-      return own.length === 1 && own[0].value === value;
+      if (own.length !== 1 || own[0].value !== value) return false;
+      var record = snapshots.get(item.videoId);
+      if (!record) return true;
+      var forward = root.CreditMaintenance.compareNames(record[item.role], value);
+      var backward = root.CreditMaintenance.compareNames(value, record[item.role]);
+      return forward === 'adds' || backward === 'adds';
     }
     function summary() {
       copy.disabled = checked.size === 0;
