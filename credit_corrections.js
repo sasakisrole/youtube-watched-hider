@@ -3,7 +3,7 @@
   var ROLES = ['composer', 'lyricist', 'arranger'];
   // Bump whenever description parsing or candidate rules change, so every
   // stored recheck stamp expires and those videos become recheck targets again.
-  var PARSER_REVISION = '2026-10-09.2';
+  var PARSER_REVISION = '2026-10-09.3';
   function normalized(value) {
     return String(value || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
   }
@@ -259,9 +259,12 @@
       var stamp = record.creditsRecheck, base = recheckStamp(record);
       var manualReading = !!withMb && hasManualRomanized(record, creditTarget);
       var auto = ROLES.some(function (role) { return !creditTarget.creditIsBlank(record[role]) && creditTarget.effectiveRoleSource(record, role) !== 'manual'; });
+      // A confirmed value may be one adopted before adoptions kept the recheck
+      // source; checking it once lets a description-backed one become correctable.
+      var manualValue = ROLES.some(function (role) { return !creditTarget.creditIsBlank(record[role]) && creditTarget.effectiveRoleSource(record, role) === 'manual'; });
       var due = includeStamped || (stamp !== base && stamp !== base + ':mb') || (manualReading && stamp !== base + ':mb');
       return /^[\w-]{11}$/.test(record.videoId || '') && (!checked || !checked.has(record.videoId))
-        && due && (scope !== 'remix' || isRemix(record.title)) && (auto || manualReading);
+        && due && (scope !== 'remix' || isRemix(record.title)) && (auto || manualReading || manualValue);
     }).slice(0, Math.max(1, Math.min(500, Number(limit) || 50)));
   }
 

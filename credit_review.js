@@ -344,8 +344,8 @@
     if (hasRestore) {
       if (restoreRoleSource === null) delete sources[role];
       else sources[role] = restoreRoleSource;
-    } else if (post.source === 'manual') {
-      sources[role] = 'manual';
+    } else if (post.source === 'manual' || post.source === 'recheck') {
+      sources[role] = post.source;
     }
     if (Object.keys(sources).length) record.creditRoleSources = sources;
     else delete record.creditRoleSources;
@@ -374,6 +374,7 @@
         videoId: String(videoId), role: role, value: value,
         expectedCurrent: record[role], expectedSource: expectedSource,
         adoptCandidate: true,
+        adoptSource: this.env.adoptSource === 'recheck' ? 'recheck' : undefined,
       });
       if (!result || result.updated !== true) {
         this.messages.set(key, { text: scriptMessage('history_scripts_review_save_failed', label + 'の保存に失敗しました。データは変更されていません。', [label]), tone: 'error' });

@@ -2308,6 +2308,9 @@
   "history_scripts_manual_entry_46": {
     "message": "手動入力"
   },
+  "history_scripts_recheck_source": {
+    "message": "再点検"
+  },
   "history_scripts_no_source_47": {
     "message": "由来なし"
   },

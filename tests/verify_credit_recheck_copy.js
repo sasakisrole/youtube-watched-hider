@@ -427,6 +427,28 @@ async function main() {
     ui.progress(port, rows[0], success('Composer: Saved credit')); ui.done(port);
     assert.equal(ui.ports.length, before);
   });
+  await check('SOURCE-1: adoption keeps the recheck source, and a description-backed confirmed value can return to it', async () => {
+    assert.match(read('credit_maintenance.js'), /adoptSource: 'recheck'/);
+    const writes = [];
+    const ui = boot(), record = {...row(), composer: 'Saved credit', creditRoleSources: {composer: 'manual'}};
+    ui.setSave(async (payload) => { writes.push(payload); return {updated: true}; });
+    const port = ui.start([record]);
+    ui.progress(port, record, success('Composer: Saved credit')); ui.done(port);
+    assert.equal(ui.elements.creditRecheckAdoptAll.disabled, false);
+    await ui.click('creditRecheckAdoptAll');
+    assert.equal(JSON.stringify(writes[0]), JSON.stringify({videoId: 'sampleVid01', role: 'composer', value: 'Saved credit', expectedCurrent: 'Saved credit', expectedSource: 'manual', restoreRoleSource: 'recheck'}));
+    await ui.click('creditRecheckUndoAll');
+    assert.equal(JSON.stringify(writes[1]), JSON.stringify({videoId: 'sampleVid01', role: 'composer', value: 'Saved credit', expectedCurrent: 'Saved credit', expectedSource: 'recheck', adoptCandidate: true}));
+  });
+  await check('SOURCE-2: a confirmed value the description does not back is left alone', async () => {
+    const writes = [];
+    const ui = boot(), record = {...row(), composer: 'Typed by hand', creditRoleSources: {composer: 'manual'}};
+    ui.setSave(async (payload) => { writes.push(payload); return {updated: true}; });
+    const port = ui.start([record]);
+    ui.progress(port, record, success('Composer: Someone else')); ui.done(port);
+    assert.equal(ui.elements.creditRecheckAdoptAll.disabled, true);
+    assert.equal(writes.length, 0);
+  });
   await check('REQ-6: release and locale metadata', () => {
     assert.equal(JSON.parse(read('manifest.json')).version, read('CHANGELOG.md').match(/^## v(\d+\.\d+\.\d+)/m)[1]);
     assert.match(read('CHANGELOG.md'), /## v1\.60\.29[^]*?Copy credit recheck results as JSON/);

@@ -67,6 +67,7 @@
       limit: 1500,
       emptyMessage: message('history_recheckEmpty', '再点検で見つかった変更案をここに表示します。変更案がなくても、すべて正しいと確認できたわけではありません。'),
       saveCreditRole: env.saveCreditRole,
+      adoptSource: 'recheck',
     });
     function controls(running) {
       start.disabled = running; scope.disabled = running; limit.disabled = running; includeChecked.disabled = running;
@@ -181,7 +182,7 @@
         var unified = root.CreditMaintenance.unifyReading(saved, found.sortNames);
         if (!unified || root.CreditMaintenance.sameContributors(unified, saved)
           || !root.CreditTarget.isValidCreditValue(unified, job.record.title)) return;
-        readingFixes.set(job.record.videoId + ':' + role, { videoId: job.record.videoId, role: role, from: saved, to: unified });
+        readingFixes.set(job.record.videoId + ':' + role, { videoId: job.record.videoId, role: role, from: saved, to: unified, kind: 'reading' });
         if (item && item.roles[role]) { item.roles[role].musicbrainz = 'reading'; item.roles[role].candidate = unified; }
         notes.push(roleLabel(role) + ': ' + message('history_recheckMbReadingManual', '日本語表記に統一（確定済みの値） ' + unified, [unified]));
       });
@@ -284,6 +285,15 @@
               return message('history_recheckRoleReason', roleLabels[role] + ': ' + reason, [roleLabels[role], reason]);
             });
             if (heldRoles.length) issue(record, heldRoles.join(' / '), true);
+            // A confirmed value exactly backed by this description (typically one
+            // adopted earlier) can return to the recheck source; its value is kept.
+            ['composer', 'lyricist', 'arranger'].forEach(function (role) {
+              var parsed = (maintenance.credits || {})[role];
+              if (root.CreditTarget.effectiveRoleSource(record, role) === 'manual' && parsed
+                && root.CreditMaintenance.sameContributors(parsed, record[role])) {
+                readingFixes.set(record.videoId + ':' + role, { videoId: record.videoId, role: role, from: record[role], to: record[role], kind: 'source' });
+              }
+            });
             var mbRoles = ['composer', 'lyricist', 'arranger'].filter(function (role) {
               return !root.CreditTarget.creditIsBlank(record[role]) && root.CreditTarget.effectiveRoleSource(record, role) !== 'manual'
                 && !changed.has(role) && !(maintenance.credits || {})[role];
@@ -330,7 +340,7 @@
       if (port || adopting || (!reviewCount && !readingFixes.size)) return;
       var question = readingFixes.size
         ? message('history_recheckAdoptAllConfirmReading',
-          '一覧の変更案をまとめて採用します。手動確定値は、ローマ字を同じ読みの日本語表記にする ' + readingFixes.size + '件だけ変更します。採用した項目は元に戻せます。よろしいですか？', [readingFixes.size])
+          '一覧の変更案をまとめて採用します。手動確定値は、同じ読みの日本語表記への統一と、概要欄と一致する値を再点検扱いに戻すもの、合わせて ' + readingFixes.size + '件だけ変更します。採用した項目は元に戻せます。よろしいですか？', [readingFixes.size])
         : message('history_recheckAdoptAllConfirm',
           '一覧の変更案をまとめて採用します。手動確定値は変更しません。採用した項目は1件ずつ元に戻せます。よろしいですか？');
       if (typeof root.confirm === 'function' && !root.confirm(question)) return;
@@ -343,8 +353,9 @@
           for (var fix of Array.from(readingFixes.values())) {
             var saved = null;
             try {
-              saved = await env.saveCreditRole({ videoId: fix.videoId, role: fix.role, value: fix.to,
-                expectedCurrent: fix.from, expectedSource: 'manual' });
+              saved = await env.saveCreditRole(fix.kind === 'source'
+                ? { videoId: fix.videoId, role: fix.role, value: fix.from, expectedCurrent: fix.from, expectedSource: 'manual', restoreRoleSource: 'recheck' }
+                : { videoId: fix.videoId, role: fix.role, value: fix.to, expectedCurrent: fix.from, expectedSource: 'manual' });
             } catch (_error) { saved = null; }
             if (saved && saved.updated === true) {
               readingFixes.delete(fix.videoId + ':' + fix.role);
@@ -377,7 +388,9 @@
         for (var fix of readingBatch) {
           var restored = null;
           try {
-            restored = await env.saveCreditRole({ videoId: fix.videoId, role: fix.role, value: fix.from,
+            restored = await env.saveCreditRole(fix.kind === 'source'
+              ? { videoId: fix.videoId, role: fix.role, value: fix.from, expectedCurrent: fix.from, expectedSource: 'recheck', adoptCandidate: true }
+              : { videoId: fix.videoId, role: fix.role, value: fix.from,
               expectedCurrent: fix.to, expectedSource: 'manual' });
           } catch (_error) { restored = null; }
           if (restored && restored.updated === true) {

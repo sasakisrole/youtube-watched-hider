@@ -49,7 +49,7 @@
   const CREDIT_SOURCE_LABELS = Object.freeze({
     get topic() { return scriptMessage('history_scripts_topic_description_42', 'Topic 概要欄'); }, get general() { return scriptMessage('history_scripts_video_description_43', '一般動画の概要欄'); },
     get 'enrich:rule'() { return scriptMessage('history_scripts_fixed_rule_44', '固定ルール'); }, get 'enrich:same-song'() { return scriptMessage('history_scripts_another_video_of_the_same_song_45', '同一楽曲の別動画'); },
-    'enrich:mb': 'MusicBrainz', get manual() { return scriptMessage('history_scripts_manual_entry_46', '手動入力'); },
+    'enrich:mb': 'MusicBrainz', get recheck() { return scriptMessage('history_scripts_recheck_source', '再点検'); }, get manual() { return scriptMessage('history_scripts_manual_entry_46', '手動入力'); },
     get ''() { return scriptMessage('history_scripts_no_source_47', '由来なし'); },
   });
 

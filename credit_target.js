@@ -21,7 +21,7 @@
   'use strict';
 
   var CREDIT_ROLES = ['composer', 'lyricist', 'arranger'];
-  var CREDIT_ROLE_SOURCES = ['topic', 'general', 'enrich:rule', 'enrich:mb', 'manual'];
+  var CREDIT_ROLE_SOURCES = ['topic', 'general', 'enrich:rule', 'enrich:mb', 'recheck', 'manual'];
 
   // 30 days — matches DESIGN B-9 RETRY.YOUTUBE_NOT_FOUND.
   var CREDIT_RECHECK_MS = 30 * 24 * 60 * 60 * 1000;

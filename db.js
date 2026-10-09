@@ -8,7 +8,7 @@ if (typeof WatchedDB === 'undefined') {
     const LIKED_STORE = 'likedVideos';
     const CREDIT_ROLES = ['composer', 'lyricist', 'arranger'];
     const CREDITS_RAW_RESPONSE_MAX_LENGTH = 4096;
-    const CREDIT_ROLE_SOURCES = new Set(['topic', 'general', 'enrich:rule', 'enrich:mb', 'manual']);
+    const CREDIT_ROLE_SOURCES = new Set(['topic', 'general', 'enrich:rule', 'enrich:mb', 'recheck', 'manual']);
 
     let dbInstance = null;
 
@@ -514,6 +514,10 @@ if (typeof WatchedDB === 'undefined') {
             else roleSources[role] = restoreRoleSource;
           } else if (nextIsBlank) {
             delete roleSources[role];
+          } else if (adoptCandidate && args.adoptSource === 'recheck') {
+            // A value adopted from a recheck stays correctable by later rechecks;
+            // only values a person entered are protected as manual.
+            roleSources[role] = 'recheck';
           } else {
             roleSources[role] = 'manual';
           }

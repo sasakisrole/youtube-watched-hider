@@ -79,6 +79,27 @@ async function main() {
     assert.equal(store.get(base.videoId).creditsRecheck, stamp);
     assert.equal('creditsRecheck' in store.get('stampVid002'), false);
   });
+  await check('an adoption from a recheck keeps the recheck source and stays correctable', async () => {
+    const { api, store } = fakeDb([{ ...base, creditsSource: 'topic' }]);
+    const first = await api.setManualCreditRole({ videoId: base.videoId, role: 'composer', value: 'Bob', expectedCurrent: 'Alice', expectedSource: 'topic', adoptCandidate: true, adoptSource: 'recheck' });
+    assert.equal(first.updated, true);
+    assert.equal(store.get(base.videoId).creditRoleSources.composer, 'recheck');
+    const again = await api.setManualCreditRole({ videoId: base.videoId, role: 'composer', value: 'Carol', expectedCurrent: 'Bob', expectedSource: 'recheck', adoptCandidate: true, adoptSource: 'recheck' });
+    assert.equal(again.updated, true, 'a later recheck may correct it');
+    const plain = await api.setManualCreditRole({ videoId: base.videoId, role: 'composer', value: 'Dave', expectedCurrent: 'Carol', expectedSource: 'recheck', adoptCandidate: true });
+    assert.equal(store.get(base.videoId).creditRoleSources.composer, 'manual', 'other adoptions still confirm');
+    assert.equal(plain.updated, true);
+  });
+  await check('a confirmed value can return to the recheck source without changing it, and back', async () => {
+    const { api, store } = fakeDb([{ ...base, creditRoleSources: { composer: 'manual' } }]);
+    const toRecheck = await api.setManualCreditRole({ videoId: base.videoId, role: 'composer', value: 'Alice', expectedCurrent: 'Alice', expectedSource: 'manual', restoreRoleSource: 'recheck' });
+    assert.equal(toRecheck.updated, true);
+    assert.equal(store.get(base.videoId).composer, 'Alice');
+    assert.equal(store.get(base.videoId).creditRoleSources.composer, 'recheck');
+    const back = await api.setManualCreditRole({ videoId: base.videoId, role: 'composer', value: 'Alice', expectedCurrent: 'Alice', expectedSource: 'recheck', adoptCandidate: true });
+    assert.equal(back.updated, true);
+    assert.equal(store.get(base.videoId).creditRoleSources.composer, 'manual');
+  });
   console.log(`RESULT: ${passed} passed / ${failed} failed / 0 skipped`);
   process.exitCode = failed ? 1 : 0;
 }

@@ -3,6 +3,15 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.51",
+    "date": "2026-10-09",
+    "summary": "",
+    "points": [
+      "Values adopted from a credit recheck now keep the source \"Recheck\" instead of becoming manual, so later rechecks can still correct them. Only values a person enters are protected as manual.",
+      "A recheck also lists confirmed values that exactly match the video's description (typically ones adopted earlier) and, with \"Adopt all proposals\", returns them to the recheck source without changing the value. This can be undone."
+    ]
+  },
+  {
     "version": "1.60.50",
     "date": "2026-10-09",
     "summary": "",

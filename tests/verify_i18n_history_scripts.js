@@ -186,6 +186,10 @@ const golden = {
     "手動入力",
     "Manual entry"
   ],
+  "history_scripts_recheck_source": [
+    "再点検",
+    "Recheck"
+  ],
   "history_scripts_no_source_47": [
     "由来なし",
     "No source"

@@ -2308,6 +2308,9 @@
   "history_scripts_manual_entry_46": {
     "message": "Manual entry"
   },
+  "history_scripts_recheck_source": {
+    "message": "Recheck"
+  },
   "history_scripts_no_source_47": {
     "message": "No source"
   },

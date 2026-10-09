@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.60.51 (2026-10-09)
+
+- Values adopted from a credit recheck now keep the source "Recheck" instead of becoming manual, so later rechecks can still correct them. Only values a person enters are protected as manual.
+- A recheck also lists confirmed values that exactly match the video's description (typically ones adopted earlier) and, with "Adopt all proposals", returns them to the recheck source without changing the value. This can be undone.
+
 ## v1.60.50 (2026-10-09)
 
 - Keep rechecking batch after batch until no unchecked videos remain ("Keep going until none are left", on by default). The stop button, a YouTube-side stop such as a bot check, or unticking the box ends the run.

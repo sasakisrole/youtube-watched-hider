@@ -61,17 +61,22 @@ check('manual and unchanged values are not proposed', () => {
 check('empty evidence never clears a saved value', () => assert.deepEqual(CM.candidates(record,{ok:true,maintenance:analyze('')},CT),[]));
 check('scope and same-page continuation cover arbitrary history', () => {
   const rows=[record,{...record,videoId:'anyVideo002',title:'Other Song'},{...record,videoId:'anyVideo003',creditsSource:'manual'}];
-  assert.equal(CM.targets(rows,'remix',new Set(),50,CT).length,1);
-  assert.equal(CM.targets(rows,'all',new Set(),50,CT).length,2);
+  assert.equal(CM.targets(rows,'remix',new Set(),50,CT).length,2);
+  assert.equal(CM.targets(rows,'all',new Set(),50,CT).length,3,'a confirmed value is checked once');
+  const stampedManual={...rows[2],creditsRecheck:CM.recheckStamp(rows[2])};
+  assert.equal(CM.targets([rows[0],rows[1],stampedManual],'all',new Set(),50,CT).length,2,'and not again once stamped');
   assert.equal(CM.targets(rows,'all',new Set([record.videoId]),1,CT)[0].videoId,'anyVideo002');
 });
 check('multi-word unknown roles in a list keep the composer', () => {
   assert.equal(analyze('Composer, Mixing  Engineer, Producer, Recording  Engineer: Joseph Reiser').credits.composer,'Joseph Reiser');
   assert.equal(analyze('Composer, Associated Performer, Double Bass: Nick Blacka').credits.composer,'Nick Blacka');
 });
-check('confirmed romanized values are revisited only by a MusicBrainz check', () => {
-  const manual={videoId:'manualVid01',title:'Song (X Remix)',composer:'Satoshi Yaginuma',creditRoleSources:{composer:'manual'}};
+check('confirmed values are checked once; romanized ones again only by a MusicBrainz check', () => {
+  const plain={videoId:'manualVid01',title:'Song (X Remix)',composer:'Satoshi Yaginuma',creditRoleSources:{composer:'manual'}};
+  const manual={...plain,creditsRecheck:CM.recheckStamp(plain)};
   const kanji={...manual,videoId:'manualVid02',composer:'八木沼悟志'};
+  kanji.creditsRecheck=CM.recheckStamp(kanji);
+  assert.equal(CM.targets([plain],'remix',new Set(),50,CT).length,1,'an unchecked confirmed value is checked once');
   assert.equal(CM.targets([manual,kanji],'remix',new Set(),50,CT).length,0);
   assert.deepEqual(CM.targets([manual,kanji],'remix',new Set(),50,CT,false,true).map(r=>r.videoId),['manualVid01']);
   const stamped={...manual,creditsRecheck:CM.recheckStamp(manual,true)};
