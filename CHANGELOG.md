@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.46 (2026-10-09)
+
+- When "Also check MusicBrainz" is selected, propose the Japanese spelling for a romanized credit whose reading matches the artist's MusicBrainz sort name, and drop description proposals that only romanize a Japanese credit. Aliases are not used, so another name of a person is still reported, not merged.
+
 ## v1.60.45 (2026-10-09)
 
 - Limit "Adopt all proposals" to proposals that add or remove contributors. Changes of spelling, letter case or script, and replacements that share no name with the saved credit, can still be adopted one by one.

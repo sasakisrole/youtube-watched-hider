@@ -3800,5 +3800,11 @@
         "content": "$1"
       }
     }
+  },
+  "history_recheckMbReading": {
+    "message": "use the Japanese spelling"
+  },
+  "history_recheckMbKeepJapanese": {
+    "message": "kept: same person in Japanese spelling"
   }
 }

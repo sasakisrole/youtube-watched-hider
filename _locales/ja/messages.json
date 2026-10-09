@@ -3800,5 +3800,11 @@
         "content": "$1"
       }
     }
+  },
+  "history_recheckMbReading": {
+    "message": "日本語表記に統一"
+  },
+  "history_recheckMbKeepJapanese": {
+    "message": "同じ人の日本語表記のため変更しない"
   }
 }

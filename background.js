@@ -1006,11 +1006,14 @@ async function mbGet(path, params) {
   });
 }
 
-function collectMbRole(roles, rel) {
+function collectMbRole(roles, rel, sortNames) {
   const type = rel && rel.type;
   if (!Object.prototype.hasOwnProperty.call(roles, type)) return;
   const name = rel.artist && rel.artist.name;
   if (name) roles[type].add(name);
+  // The sort name is the artist's reading; it lets a romanized credit be
+  // matched to the same person written in Japanese.
+  if (name && sortNames && rel.artist['sort-name']) sortNames[name] = rel.artist['sort-name'];
 }
 
 async function getMbRecordingRoles(recordingId) {
@@ -1023,9 +1026,10 @@ async function getMbRecordingRoles(recordingId) {
     lyricist: new Set(),
     arranger: new Set(),
   };
+  const sortNames = {};
   const workIds = new Set();
   for (const rel of full.relations || []) {
-    collectMbRole(roles, rel);
+    collectMbRole(roles, rel, sortNames);
     if (rel.work && rel.work.id) workIds.add(rel.work.id);
   }
   for (const workId of Array.from(workIds).slice(0, 3)) {
@@ -1033,12 +1037,13 @@ async function getMbRecordingRoles(recordingId) {
       inc: 'artist-rels',
       fmt: 'json',
     });
-    for (const rel of work.relations || []) collectMbRole(roles, rel);
+    for (const rel of work.relations || []) collectMbRole(roles, rel, sortNames);
   }
   return {
     composer: Array.from(roles.composer).sort(),
     lyricist: Array.from(roles.lyricist).sort(),
     arranger: Array.from(roles.arranger).sort(),
+    sortNames,
   };
 }
 
@@ -1147,6 +1152,7 @@ async function enrichCreditsLookupMb(artist, title, missingRoles = null) {
   let chosenTitle = parseMbTitle(chosen.title || '');
   let versionMatch = mbRecordingVersionsMatch(requestedTitle, chosenTitle);
   const roles = await getMbRecordingRoles(chosen.id);
+  const sortNames = { ...roles.sortNames };
   let safeRoles = {
     composer: roles.composer,
     lyricist: roles.lyricist,
@@ -1166,6 +1172,7 @@ async function enrichCreditsLookupMb(artist, title, missingRoles = null) {
       if (inspected.has(alternate.id)) continue;
       inspected.add(alternate.id);
       const alternateRoles = await getMbRecordingRoles(alternate.id);
+      Object.assign(sortNames, alternateRoles.sortNames);
       // A matching title does not prove that a different recording shares its arrangement.
       const supplied = wanted.filter(role => !safeRoles[role].length && alternateRoles[role].length);
       if (!supplied.length) continue;
@@ -1209,6 +1216,7 @@ async function enrichCreditsLookupMb(artist, title, missingRoles = null) {
       composer: joinMbRoles(safeRoles.composer),
       lyricist: joinMbRoles(safeRoles.lyricist),
       arranger: joinMbRoles(safeRoles.arranger),
+      sortNames,
       mbid: chosen.id,
       roleRecordingIds,
       mbTitle: chosen.title || '',

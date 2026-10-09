@@ -42,6 +42,46 @@
   // Names on the auto-generated "Title · Artist · …" row. The row has no role
   // labels and its order varies by distributor, so it can show that a name is
   // present but never which role that name holds.
+  // Romanized readings: case, word order and Hepburn long vowels
+  // (ou/oo/oh, uu) are ignored, so "Ko Nakamura" matches "Nakamura, Kou".
+  var JAPANESE_SCRIPT = /[\u3040-\u30ff\u3400-\u9fff]/u;
+  function isLatinName(name) { return /[a-z]/iu.test(name) && !JAPANESE_SCRIPT.test(name); }
+  function readingKey(value) {
+    return String(value || '').normalize('NFKC').toLowerCase().split(/[\s,，.・]+/u)
+      .map(function (token) { return token.replace(/[^a-z]/g, '').replace(/ou|oo|oh(?![aeiou])/g, 'o').replace(/uu/g, 'u'); })
+      .filter(Boolean).sort().join(' ');
+  }
+  // The Japanese-script name whose reading (MusicBrainz sort name) is this
+  // romanized name, or ''. Aliases are deliberately not used: an alias may be
+  // another name of the person, not the same name in another script.
+  function japaneseForReading(latin, sortNames) {
+    if (!isLatinName(latin) || !sortNames) return '';
+    var key = readingKey(latin), found = '';
+    Object.keys(sortNames).forEach(function (name) {
+      if (!found && JAPANESE_SCRIPT.test(name) && key && readingKey(sortNames[name]) === key) found = name;
+    });
+    return found;
+  }
+  // Rewrites romanized saved names into the Japanese script MusicBrainz
+  // records for the same reading; names without such a reading stay as
+  // credited. Returns '' when nothing changes.
+  function unifyReading(saved, sortNames) {
+    var names = creditNames(String(saved || '')), changed = false;
+    if (!names.length) return '';
+    var out = names.map(function (name) {
+      var japanese = japaneseForReading(name, sortNames);
+      if (japanese) { changed = true; return japanese; }
+      return name;
+    });
+    return changed ? Array.from(new Set(out)).join(', ') : '';
+  }
+  // True when the two lists name the same people, allowing a romanized name
+  // on one side to stand for its Japanese-script reading on the other.
+  function sameByReading(left, right, sortNames) {
+    var a = unifyReading(left, sortNames) || String(left || '');
+    var b = unifyReading(right, sortNames) || String(right || '');
+    return compareNames(a, b) === 'same';
+  }
   function topicLineNames(description) {
     var lines = String(description || '').split(/\r?\n/), provided = false;
     for (var i = 0; i < lines.length; i++) {
@@ -265,7 +305,8 @@
   }
   var api = { exportItem: exportItem, analyze: analyze, targets: targets, candidates: candidates, scan: scan, isRemix: isRemix,
     recheckStamp: recheckStamp, PARSER_REVISION: PARSER_REVISION, sameContributors: sameContributors,
-    compareNames: compareNames, namesOnTopicLine: namesOnTopicLine, topicLineNames: topicLineNames };
+    compareNames: compareNames, namesOnTopicLine: namesOnTopicLine, topicLineNames: topicLineNames,
+    unifyReading: unifyReading, sameByReading: sameByReading, isLatinName: isLatinName };
   if (root) root.CreditMaintenance = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

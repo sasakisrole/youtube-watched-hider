@@ -349,6 +349,33 @@ async function main() {
     await ui.click('creditRecheckAdoptAll');
     assert.deepEqual(seen, [true, false, false]);
   });
+  const readingFound = {success: true, candidate: {composer: '八木沼悟志', lyricist: '', arranger: '', mbid: 'mb-9', roleRecordingIds: {},
+    mbTitle: 'Alpha', stage: 'strict', manualReviewReason: '', sortNames: {'八木沼悟志': 'Yaginuma, Satoshi'}}};
+  await check('READING-1: a romanized credit is proposed in Japanese and is bulk-adoptable', async () => {
+    const ui = boot(), record = {...row(), composer: 'Satoshi Yaginuma'};
+    ui.runtime.mbResponse = readingFound;
+    ui.elements.creditRecheckMb.checked = true;
+    let accepted;
+    ui.review.adoptAll = async (accept) => { accepted = accept({videoId: 'sampleVid01', role: 'composer', candidates: [{source: 'musicbrainz-reading', value: '八木沼悟志'}]}, '八木沼悟志'); return {targets: 0, adopted: 0, failed: 0}; };
+    const port = ui.start([record]);
+    ui.progress(port, record, success('Unrelated text')); await settle(); ui.done(port);
+    const report = await ui.report();
+    assert.equal(report.counts.proposals, 1);
+    assert.equal(report.items[0].roles.composer.musicbrainz, 'reading');
+    ui.review.pending = 1;
+    await ui.click('creditRecheckAdoptAll');
+    assert.equal(accepted, true);
+  });
+  await check('READING-2: a description that only romanizes a Japanese credit is dropped', async () => {
+    const ui = boot(), record = {...row(), composer: '八木沼悟志'};
+    ui.runtime.mbResponse = readingFound;
+    ui.elements.creditRecheckMb.checked = true;
+    const port = ui.start([record]);
+    ui.progress(port, record, success('Composer: Satoshi Yaginuma'));
+    assert.equal((await ui.report()).counts.proposals, 1, 'proposed until MusicBrainz answers');
+    await settle();
+    assert.equal((await ui.report()).counts.proposals, 0);
+  });
   await check('REQ-6: release and locale metadata', () => {
     assert.equal(JSON.parse(read('manifest.json')).version, read('CHANGELOG.md').match(/^## v(\d+\.\d+\.\d+)/m)[1]);
     assert.match(read('CHANGELOG.md'), /## v1\.60\.29[^]*?Copy credit recheck results as JSON/);
@@ -359,7 +386,8 @@ async function main() {
       'history_recheckAdoptAll', 'history_recheckAdoptAllConfirm', 'history_recheckAdoptAllRunning', 'history_recheckAdoptAllDone',
       'history_recheckAdoptAllPartial', 'history_recheckAdoptAllFailure', 'history_recheckUndoAll', 'history_recheckUndoAllConfirm', 'history_recheckUndoAllRunning',
       'history_recheckUndoAllDone', 'history_recheckUndoAllPartial', 'history_recheckUndoAllFailure',
-      'history_recheckMb', 'history_recheckMbProgress', 'history_recheckIncludeChecked', 'history_recheckOptionsHelp']) assert(ja[key] && en[key]);
+      'history_recheckMb', 'history_recheckMbProgress', 'history_recheckIncludeChecked', 'history_recheckOptionsHelp',
+      'history_recheckMbReading', 'history_recheckMbKeepJapanese']) assert(ja[key] && en[key]);
   });
   console.log(`RESULT: ${passed} passed / ${failed} failed / 0 skipped`);
   process.exitCode = failed ? 1 : 0;

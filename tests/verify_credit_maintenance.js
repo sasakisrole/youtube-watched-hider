@@ -69,6 +69,17 @@ check('multi-word unknown roles in a list keep the composer', () => {
   assert.equal(analyze('Composer, Mixing  Engineer, Producer, Recording  Engineer: Joseph Reiser').credits.composer,'Joseph Reiser');
   assert.equal(analyze('Composer, Associated Performer, Double Bass: Nick Blacka').credits.composer,'Nick Blacka');
 });
+check('romanized readings unify to the Japanese name, aliases do not', () => {
+  const sort={'八木沼悟志':'Yaginuma, Satoshi','中村航':'Nakamura, Kou','白戸佑輔':'Shirato, Yuusuke','吉田菫':'Yoshida, Sumire','齋藤真也':'Saito, Shinya'};
+  assert.equal(CM.unifyReading('Satoshi Yaginuma',sort),'八木沼悟志');
+  assert.equal(CM.unifyReading('Ko Nakamura',sort),'中村航');
+  assert.equal(CM.unifyReading('Yusuke Shirato, Guest',sort),'白戸佑輔, Guest');
+  assert.equal(CM.unifyReading('Suu',sort),'');
+  assert.equal(CM.unifyReading('八木沼悟志',sort),'');
+  assert.equal(CM.sameByReading('八木沼悟志・齋藤真也','Satoshi Yaginuma, Shinya Saito',sort),true);
+  assert.equal(CM.sameByReading('すぅ','吉田菫',sort),false);
+  assert.equal(CM.sameByReading('Satoshi Yaginuma','Satoshi Yaginuma, Guest',sort),false);
+});
 check('credits keep the credited name; other spellings are different, not corrections', () => {
   assert.equal(CM.compareNames('Ko Nakamura','中村航'),'different');
   assert.equal(CM.compareNames('SUPER STAR 満-MITSURU-','田口康裕'),'different');

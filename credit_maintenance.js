@@ -54,7 +54,7 @@
     var review = root.CreditReview.create({
       getRecords: function () { return Array.from(snapshots.values()); },
       getMaterials: function () { return { candidates: Array.from(candidates.values()) }; },
-      filterItem: function (item) { return item.candidates.some(function (candidate) { return candidate.source === 'description-recheck' || candidate.source === 'musicbrainz-recheck'; }); },
+      filterItem: function (item) { return item.candidates.some(function (candidate) { return /^(?:description-recheck|musicbrainz-recheck|musicbrainz-reading)$/.test(candidate.source); }); },
       allowReject: false,
       limit: 1500,
       emptyMessage: message('history_recheckEmpty', '再点検で見つかった変更案をここに表示します。変更案がなくても、すべて正しいと確認できたわけではありません。'),
@@ -69,6 +69,8 @@
     // of spelling, case or script may only restyle the same person, and a
     // replacement sharing no name may be another alias; both are reviewed one by one.
     function ownProposal(item, value) {
+      // Same person written in Japanese, proven by the MusicBrainz reading.
+      if (item.candidates.length === 1 && item.candidates[0].source === 'musicbrainz-reading') return item.candidates[0].value === value;
       var own = item.candidates.filter(function (candidate) { return candidate.source === 'description-recheck'; });
       if (own.length !== 1 || own[0].value !== value) return false;
       var record = snapshots.get(item.videoId);
@@ -124,7 +126,19 @@
         var relation = root.CreditMaintenance.compareNames(job.record[role], value);
         if (item && item.roles[role]) item.roles[role].musicbrainz = relation;
         if (relation === 'same') { mbSame++; notes.push(roleLabel(role) + ': ' + message('history_recheckMbSame', '一致')); return; }
-        // Only additions are proposed; a different spelling of a person is kept as credited.
+        // A romanized credit becomes the Japanese name whose reading it is;
+        // any other different name (an alias, another person) is only reported.
+        var unified = relation === 'different' ? root.CreditMaintenance.unifyReading(job.record[role], found.sortNames) : '';
+        if (unified && !root.CreditMaintenance.sameContributors(unified, job.record[role])
+          && root.CreditTarget.isValidCreditValue(unified, job.record.title) && !candidates.has(job.record.videoId + ':' + role)) {
+          candidates.set(job.record.videoId + ':' + role, { videoId: job.record.videoId, role: role, value: unified, source: 'musicbrainz-reading',
+            sourceDetail: 'https://musicbrainz.org/recording/' + ((found.roleRecordingIds || {})[role] || found.mbid),
+            evidence: 'MusicBrainz: ' + job.record[role] + ' = ' + unified, selected: false });
+          mbFound++;
+          if (item && item.roles[role]) item.roles[role].musicbrainz = 'reading';
+          notes.push(roleLabel(role) + ': ' + message('history_recheckMbReading', '日本語表記に統一'));
+          return;
+        }
         if (relation === 'different') {
           mbDifferent++;
           notes.push(roleLabel(role) + ': ' + message('history_recheckMbDifferent', '名義違い（別名義か別人の可能性） ' + value, [value]));
@@ -138,6 +152,20 @@
           selected: false });
         mbFound++;
         notes.push(roleLabel(role) + ': ' + message('history_recheckMbAdds', '追加の変更案'));
+      });
+      // A description that only romanizes a Japanese credit does not replace it;
+      // a Japanese description of a romanized credit becomes bulk-adoptable.
+      (job.readingRoles || []).forEach(function (role) {
+        var key = job.record.videoId + ':' + role, proposal = candidates.get(key);
+        if (!proposal || proposal.source !== 'description-recheck'
+          || !root.CreditMaintenance.sameByReading(job.record[role], proposal.value, found.sortNames)) return;
+        if (root.CreditMaintenance.isLatinName(proposal.value)) {
+          candidates.delete(key);
+          notes.push(roleLabel(role) + ': ' + message('history_recheckMbKeepJapanese', '同じ人の日本語表記のため変更しない'));
+        } else {
+          proposal.source = 'musicbrainz-reading';
+          notes.push(roleLabel(role) + ': ' + message('history_recheckMbReading', '日本語表記に統一'));
+        }
       });
       if (notes.length) issue(job.record, 'MusicBrainz: ' + notes.join(' / '), false);
     }
@@ -233,8 +261,12 @@
               return !root.CreditTarget.creditIsBlank(record[role]) && root.CreditTarget.effectiveRoleSource(record, role) !== 'manual'
                 && !changed.has(role) && !(maintenance.credits || {})[role];
             });
-            if (mbToggle && mbToggle.checked && mbRoles.length) {
-              mbQueue.push({ record: record, roles: mbRoles });
+            var readingRoles = proposed.filter(function (candidate) {
+              return root.CreditMaintenance.compareNames(record[candidate.role], candidate.value) === 'different'
+                && root.CreditMaintenance.isLatinName(record[candidate.role]) !== root.CreditMaintenance.isLatinName(candidate.value);
+            }).map(function (candidate) { return candidate.role; });
+            if (mbToggle && mbToggle.checked && (mbRoles.length || readingRoles.length)) {
+              mbQueue.push({ record: record, roles: mbRoles, readingRoles: readingRoles });
               if (!mbRunning) drainMb();
             }
           }
