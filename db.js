@@ -557,6 +557,26 @@ if (typeof WatchedDB === 'undefined') {
       });
     }
 
+    async function markCreditsRechecked(videoId, stamp) {
+      if (typeof stamp !== 'string' || !stamp || stamp.length > 100) return false;
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        let marked = false;
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const getReq = store.get(videoId);
+        getReq.onsuccess = () => {
+          const existing = getReq.result;
+          if (!existing) return;
+          existing.creditsRecheck = stamp;
+          store.put(existing);
+          marked = true;
+        };
+        tx.oncomplete = () => resolve(marked);
+        tx.onerror = (event) => reject(event.target.error);
+      });
+    }
+
     // Strip URLs / Twitter handles from credit-line text. Mirrors the same
     // function in background.js — credits arrive cleaned from new fetches,
     // but old records may have been saved before this regex was added.
@@ -1258,6 +1278,9 @@ if (typeof WatchedDB === 'undefined') {
       };
       const mbLookup = sanitizeMbLookup(record.mbLookup);
       if (mbLookup) normalized.mbLookup = mbLookup;
+      if (typeof record.creditsRecheck === 'string' && record.creditsRecheck && record.creditsRecheck.length <= 100) {
+        normalized.creditsRecheck = record.creditsRecheck;
+      }
       return normalized;
     }
 
@@ -1673,7 +1696,7 @@ if (typeof WatchedDB === 'undefined') {
       return { total: all.length, accounts: [...accounts.entries()] };
     }
 
-    return { openDB, addWatched, updateDuration, markDurationFailed, markDurationLive, updateTitle, updateTitleAndChannel, updateCredits, recordMbLookup, getCreditsForVideoIds, setManualCreditRole, markCreditsChecked, markCreditsFailed, cleanAllCredits, repairInvalidCredits, restoreRepairedCredits, verifyCreditRepair, isWatched, checkMultiple, getStats, getAllIds, getWatchedIdsPage, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport, unwrapWatchedRecords, parseImportData, diffImport,
+    return { openDB, addWatched, updateDuration, markDurationFailed, markDurationLive, updateTitle, updateTitleAndChannel, updateCredits, recordMbLookup, getCreditsForVideoIds, setManualCreditRole, markCreditsChecked, markCreditsRechecked, markCreditsFailed, cleanAllCredits, repairInvalidCredits, restoreRepairedCredits, verifyCreditRepair, isWatched, checkMultiple, getStats, getAllIds, getWatchedIdsPage, exportAll, importData, mergeImport, clearAll, deleteOne, wrapExport, unwrapImport, unwrapWatchedRecords, parseImportData, diffImport,
       upsertLiked, getAllLiked, importLikedData, mergeLikedData, clearLikedByAccount, deleteManyRecords, replaceRecords, getLikedStats };
   })();
 }

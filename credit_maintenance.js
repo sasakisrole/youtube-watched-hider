@@ -48,7 +48,7 @@
     var save = document.getElementById('creditRecheckSave');
     var adoptAll = document.getElementById('creditRecheckAdoptAll');
     var undoAll = document.getElementById('creditRecheckUndoAll');
-    var adopting = false;
+    var adopting = false, includeStamped = false;
     var review = root.CreditReview.create({
       getRecords: function () { return Array.from(snapshots.values()); },
       getMaterials: function () { return { candidates: Array.from(candidates.values()) }; },
@@ -72,7 +72,7 @@
       save.disabled = copy.disabled;
       adoptAll.disabled = !!port || adopting || !review.adoptable(ownProposal).length;
       undoAll.disabled = !!port || adopting || !(review.lastBatch && review.lastBatch.length);
-      var remaining = root.CreditMaintenance.targets(env.getRecords(), scope.value, checked, 500, root.CreditTarget).length;
+      var remaining = root.CreditMaintenance.targets(env.getRecords(), scope.value, checked, 500, root.CreditTarget, includeStamped).length;
       status.textContent = message('history_recheckProgress',
         'このページで点検 ' + checked.size + '件／変更案 ' + candidates.size + '項目／保留 ' + held + '件／取得失敗 ' + failed + '件／未点検 ' + (remaining === 500 ? '500+' : remaining) + '件',
         [checked.size, candidates.size, held, failed, remaining === 500 ? '500+' : remaining]);
@@ -96,7 +96,7 @@
     start.addEventListener('click', function () {
       if (port || review.busy.size) return;
       if (!limit.checkValidity()) { limit.reportValidity(); return; }
-      var records = root.CreditMaintenance.targets(env.getRecords(), scope.value, checked, limit.value, root.CreditTarget);
+      var records = root.CreditMaintenance.targets(env.getRecords(), scope.value, checked, limit.value, root.CreditTarget, includeStamped);
       if (!records.length) { summary(); return; }
       if (!env.begin()) {
         status.textContent = message('history_enrich_busy', '他のメンテナンス処理が実行中'); return;
@@ -119,6 +119,10 @@
           exports.set(record.videoId, root.CreditMaintenance.exportItem(record, result, root.CreditTarget));
           exportScopes.add(batchScope);
           copyStatus.textContent = '';
+          // Only a successful fetch counts as checked; failures stay targets.
+          if (result && result.ok && typeof env.markRechecked === 'function') {
+            Promise.resolve(env.markRechecked(record.videoId, root.CreditMaintenance.recheckStamp(record))).catch(function () {});
+          }
           if (!result || !result.ok) {
             failed++;
             issue(record, fetchFailure(result && result.reason), false);
@@ -200,7 +204,7 @@
     });
     reset.addEventListener('click', function () {
       if (port) return;
-      checked.clear(); copyStatus.textContent = ''; summary();
+      checked.clear(); includeStamped = true; copyStatus.textContent = ''; summary();
     });
     function buildReport() {
       // Keep the latest snapshot for every video seen on this page, even

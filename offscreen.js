@@ -264,6 +264,8 @@ async function handleDbRpc(message) {
     }
     case 'MARK_CREDITS_CHECKED':
       return WatchedDB.markCreditsChecked(message.videoId);
+    case 'MARK_CREDITS_RECHECKED':
+      return WatchedDB.markCreditsRechecked(message.videoId, message.stamp);
     case 'MARK_CREDITS_FAILED':
       return WatchedDB.markCreditsFailed(message.videoId, message.reason || 'unknown');
     case 'UPDATE_CREDITS':

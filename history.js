@@ -1572,6 +1572,12 @@ if (creditReviewBtn && window.CreditReview && window.CreditMaintenanceUI) {
       if (result && result.updated) loadData();
       return result;
     },
+    markRechecked: async (videoId, stamp) => {
+      const result = await sendHistoryDbRpc('MARK_CREDITS_RECHECKED', { videoId, stamp });
+      const live = allData.find(record => record.videoId === videoId);
+      if (live && result === true) live.creditsRecheck = stamp;
+      return result;
+    },
     begin: () => beginMaintenance('recheckCredits', { allowAbort: true }),
     end: () => endMaintenance('recheckCredits'),
   });

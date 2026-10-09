@@ -65,9 +65,11 @@ function boot(locale = 'en', clipboardMode = 'success', downloadMode = 'success'
       .replace(/\$(\d+)/g, (_, n) => values[n - 1]);
   };
   vm.runInNewContext(read('credit_maintenance.js'), ctx);
-  ctx.CreditMaintenanceUI.create({getRecords: () => records, begin: () => true, end() {}, saveCreditRole() { saves++; }});
+  const marked = [];
+  ctx.CreditMaintenanceUI.create({getRecords: () => records, begin: () => true, end() {}, saveCreditRole() { saves++; },
+    markRechecked(videoId, stamp) { marked.push([videoId, stamp]); const live = records.find(r => r.videoId === videoId); if (live) live.creditsRecheck = stamp; return Promise.resolve(true); }});
   const click = id => elements[id].listeners.click();
-  return {elements, keys, copied, downloads, revoked, confirms, accepted, review, click, get saves() { return saves; },
+  return {elements, keys, copied, downloads, revoked, confirms, accepted, review, marked, click, get saves() { return saves; },
     set confirmAnswer(value) { confirmAnswer = value; },
     start(rows, scope = 'all') {
       records = rows; elements.creditRecheckScope.value = scope; elements.creditRecheckLimit.value = '50';
@@ -248,6 +250,19 @@ async function main() {
     await ui.click('creditRecheckUndoAll');
     assert.equal(ui.elements.creditRecheckCopyStatus.textContent, '1件を元に戻しました。');
     assert.equal(ui.elements.creditRecheckUndoAll.disabled, true);
+  });
+  await check('STAMP-1: only successful fetches are stamped, and reset rechecks stamped videos', async () => {
+    const ui = boot(), ok = row(), bad = row('sampleVid02');
+    let port = ui.start([ok, bad]);
+    ui.progress(port, ok, success('Composer: Saved credit'));
+    ui.progress(port, bad, {ok: false, reason: 'timeout'});
+    ui.done(port);
+    assert.deepEqual(ui.marked, [['sampleVid01', CM.recheckStamp(ok)]]);
+    assert.equal(CM.targets([ok, bad], 'all', new Set(), 50, CT).map(r => r.videoId).join(), 'sampleVid02');
+    ui.click('creditRecheckReset');
+    port = ui.start([ok, bad]);
+    ui.progress(port, ok, success('Composer: Saved credit'));
+    assert.equal(ui.marked.length, 2, 'reset includes the stamped video again');
   });
   await check('REQ-6: release and locale metadata', () => {
     assert.equal(JSON.parse(read('manifest.json')).version, read('CHANGELOG.md').match(/^## v(\d+\.\d+\.\d+)/m)[1]);

@@ -1,6 +1,9 @@
 (function (root) {
   'use strict';
   var ROLES = ['composer', 'lyricist', 'arranger'];
+  // Bump whenever description parsing or candidate rules change, so every
+  // stored recheck stamp expires and those videos become recheck targets again.
+  var PARSER_REVISION = '2026-10-09';
   function normalized(value) {
     return String(value || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
   }
@@ -158,9 +161,18 @@
     return { credits: credits, evidence: evidence, held: held, reasons: reasons, candidateLines: candidateLines };
   }
 
-  function targets(records, scope, checked, limit, creditTarget) {
+  // A stamp covers the parser revision and the role values it saw; a later
+  // edit to any role makes the video a target again.
+  function recheckStamp(record) {
+    var text = PARSER_REVISION + '\u001f' + ROLES.map(function (role) { return String((record && record[role]) || ''); }).join('\u001f');
+    var hash = 5381;
+    for (var i = 0; i < text.length; i++) hash = ((hash * 33) ^ text.charCodeAt(i)) >>> 0;
+    return PARSER_REVISION + ':' + hash.toString(16);
+  }
+  function targets(records, scope, checked, limit, creditTarget, includeStamped) {
     return (records || []).filter(function (record) {
       return /^[\w-]{11}$/.test(record.videoId || '') && (!checked || !checked.has(record.videoId))
+        && (includeStamped || record.creditsRecheck !== recheckStamp(record))
         && (scope !== 'remix' || isRemix(record.title))
         && ROLES.some(function (role) { return !creditTarget.creditIsBlank(record[role]) && creditTarget.effectiveRoleSource(record, role) !== 'manual'; });
     }).slice(0, Math.max(1, Math.min(500, Number(limit) || 50)));
@@ -217,7 +229,8 @@
     }
     return { success: true, processed: processed, total: ids.length, failed: failed, stopped: stopped, aborted: !!(signal && signal.aborted) };
   }
-  var api = { exportItem: exportItem, analyze: analyze, targets: targets, candidates: candidates, scan: scan, isRemix: isRemix };
+  var api = { exportItem: exportItem, analyze: analyze, targets: targets, candidates: candidates, scan: scan, isRemix: isRemix,
+    recheckStamp: recheckStamp, PARSER_REVISION: PARSER_REVISION };
   if (root) root.CreditMaintenance = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

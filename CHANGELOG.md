@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.38 (2026-10-09)
+
+- Remember which credit rechecks are done. A video stays checked across page reloads until its credits change or the description parser is updated; "Recheck checked videos too" still includes everything.
+
 ## v1.60.37 (2026-10-09)
 
 - Disable "Adopt all proposals" when nothing is left to adopt, and keep the batch undo available after an empty run.
