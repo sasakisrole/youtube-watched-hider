@@ -3,6 +3,15 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.69",
+    "date": "2026-10-10",
+    "summary": "",
+    "points": [
+      "Keep part arrangement credits (for example \"Drums arrange: Kenbo\", \"Strings Arrangement\", \"ピアノ編曲\") as participants with their role, outside composer, lyricist, arranger and the unassigned list. History > Analysis > Credits gains a Participants list with a role column, and history search finds participant names.",
+      "To fill existing videos, choose \"participants only\" and run description credit enrichment; composer, lyricist and arranger values stay unchanged."
+    ]
+  },
+  {
     "version": "1.60.68",
     "date": "2026-10-10",
     "summary": "",

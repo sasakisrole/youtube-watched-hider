@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.60.69 (2026-10-10)
+
+- Keep part arrangement credits (for example "Drums arrange: Kenbo", "Strings Arrangement", "ピアノ編曲") as participants with their role, outside composer, lyricist, arranger and the unassigned list. History > Analysis > Credits gains a Participants list with a role column, and history search finds participant names.
+- To fill existing videos, choose "participants only" and run description credit enrichment; composer, lyricist and arranger values stay unchanged.
+
 ## v1.60.68 (2026-10-10)
 
 - A part arrangement credit such as "Strings Arrangement:" or "Drums arrange:" no longer counts as the song's arranger, matching how "ピアノ編曲" was already read. The parser revision changes, so every video becomes a recheck target again.

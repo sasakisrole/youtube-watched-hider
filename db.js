@@ -253,6 +253,17 @@ if (typeof WatchedDB === 'undefined') {
         getReq.onsuccess = () => {
           const existing = getReq.result;
           if (!existing) return;
+          if (credits && Array.isArray(credits.participants)) {
+            const participants = globalThis.CreditTarget.normalizeParticipants(credits.participants);
+            didUpdate = JSON.stringify(existing.participants || []) !== JSON.stringify(participants);
+            existing.participants = participants;
+            existing.participantsCheckedAt = Date.now();
+            // Participant-only enrichment must not run the musical-role update path.
+            if (!['composer', 'lyricist', 'arranger', 'creditsRaw'].some(k => Object.prototype.hasOwnProperty.call(credits, k))) {
+              store.put(existing);
+              return;
+            }
+          }
           const writtenRoles = [];
           for (const k of [...CREDIT_ROLES, 'creditsRaw']) {
             const v = credits && credits[k];
@@ -1285,6 +1296,8 @@ if (typeof WatchedDB === 'undefined') {
         creditsCheckedAt: typeof record.creditsCheckedAt === 'number' && Number.isFinite(record.creditsCheckedAt) && record.creditsCheckedAt > 0 ? record.creditsCheckedAt : 0,
         creditsSource: typeof record.creditsSource === 'string' ? record.creditsSource : '',
         creditRoleSources: sanitizeCreditRoleSources(record.creditRoleSources),
+        participants: globalThis.CreditTarget.normalizeParticipants(record.participants),
+        participantsCheckedAt: Number.isFinite(record.participantsCheckedAt) && record.participantsCheckedAt > 0 ? record.participantsCheckedAt : 0,
         creditsRaw: typeof record.creditsRaw === 'string' ? record.creditsRaw : '',
         creditsFetchFailReason: typeof record.creditsFetchFailReason === 'string' ? record.creditsFetchFailReason : '',
         creditsFetchAttemptedAt: typeof record.creditsFetchAttemptedAt === 'number' && Number.isFinite(record.creditsFetchAttemptedAt) && record.creditsFetchAttemptedAt > 0 ? record.creditsFetchAttemptedAt : 0,
@@ -1471,6 +1484,11 @@ if (typeof WatchedDB === 'undefined') {
                   else delete existing.creditRoleSources;
                   updated = true;
                 }
+              }
+              if (record.participants?.length && !existing.participants?.length) {
+                existing.participants = globalThis.CreditTarget.normalizeParticipants(record.participants);
+                existing.participantsCheckedAt = record.participantsCheckedAt || 0;
+                updated = true;
               }
               if (record.creditsRaw && !existing.creditsRaw) {
                 existing.creditsRaw = record.creditsRaw;

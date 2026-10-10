@@ -2231,6 +2231,46 @@ function findTopicCreditsLine(desc) {
   return null;
 }
 
+// Keep part arrangement evidence separate from the song-level role tokenizer.
+function extractParticipantCredits(desc, videoTitle) {
+  const instrument = String.raw`strings?|drums?|brass|horns?|guitars?|piano|bass|keyboards?|synth(?:esizer)?s?|chorus|vocals?|percussion|winds?|ストリングス|弦楽器|弦|ドラム|ブラス|ホーン|ギター|ピアノ|ベース|キーボード|シンセ|コーラス|ボーカル|パーカッション|管楽器`;
+  const arrangement = String.raw`arrangement|arranged\s+by|arrangers?|arrange|編曲`;
+  const label = new RegExp(String.raw`^(?:[\s・•●■◆▶*\-]*)(${instrument})\s*(${arrangement})\s*[:：]\s*(.+)$`, 'iu');
+  const inlinePartLabel = new RegExp(String.raw`(?:^|[\s/／|｜;；])(?:${instrument})\s*(?:${arrangement})\s*[:：]`, 'iu');
+  const matchLine = line => {
+    const match = line.match(label);
+    if (!match) return null;
+    let value = match[3];
+    CREDIT_LABEL_TOKEN_RE.lastIndex = 0;
+    CREDIT_UNKNOWN_LABEL_BOUNDARY_RE.lastIndex = 0;
+    const boundaries = [inlinePartLabel.exec(value), CREDIT_LABEL_TOKEN_RE.exec(value), CREDIT_UNKNOWN_LABEL_BOUNDARY_RE.exec(value)];
+    for (const boundary of boundaries) if (boundary) value = value.slice(0, boundary.index);
+    value = value.replace(/[\s/／|｜;；]+$/u, '');
+    return {role: (match[1] + (/^[a-z]/i.test(match[2]) ? ' ' : '') + match[2]).trim(), value};
+  };
+  const roles = new Map();
+  for (const line of desc.split(/\r?\n/)) {
+    const match = matchLine(line);
+    if (match) roles.set(match.role.toLowerCase(), match.role);
+  }
+  const participants = [];
+  for (const [key, role] of roles) {
+    const extract = line => {
+      const match = matchLine(line);
+      return match && match.role.toLowerCase() === key
+        ? [{roles: ['arranger'], value: match.value, prefix: ''}] : [];
+    };
+    // Reuse song/version scoping without feeding these labels into saved musical roles.
+    const safe = self.CreditMaintenance && self.CreditMaintenance.analyze(desc, videoTitle, extract, cleanCreditLine, self.CreditTarget);
+    const values = safe ? [safe.credits.arranger] : desc.split(/\r?\n/).flatMap(line => extract(line).map(s => cleanCreditLine(s.value)));
+    for (const value of values) {
+      if (!self.CreditTarget.isValidCreditValue(value, videoTitle)) continue;
+      for (const name of self.CreditTarget.splitParticipantNames(value)) participants.push({name, role});
+    }
+  }
+  return self.CreditTarget.normalizeParticipants(participants);
+}
+
 function parseCreditsFromDescription(desc, videoTitle) {
   if (!desc) return { composer: '', lyricist: '', arranger: '', creditsRaw: '' };
 
@@ -2280,7 +2320,10 @@ function parseCreditsFromDescription(desc, videoTitle) {
   }
 
   const safe = self.CreditMaintenance && self.CreditMaintenance.analyze(desc, videoTitle, extractCreditSegments, cleanCreditLine, self.CreditTarget);
-  return safe ? { ...safe.credits, creditsRaw } : { composer, lyricist, arranger, creditsRaw };
+  const participants = extractParticipantCredits(desc, videoTitle);
+  const result = safe ? { ...safe.credits, creditsRaw } : { composer, lyricist, arranger, creditsRaw };
+  if (participants.length) result.participants = participants;
+  return result;
 }
 
 async function fetchCreditsFromWatch(videoId, abortSignal, maintenance = false) {
@@ -2314,7 +2357,7 @@ async function fetchCreditsFromWatch(videoId, abortSignal, maintenance = false) 
         maintenance: self.CreditMaintenance.analyze(desc, title, extractCreditSegments, cleanCreditLine, self.CreditTarget) };
     }
     const credits = parseCreditsFromDescription(desc, title);
-    const hasAny = credits.composer || credits.lyricist || credits.arranger || credits.creditsRaw;
+    const hasAny = credits.composer || credits.lyricist || credits.arranger || credits.creditsRaw || credits.participants?.length;
     if (!hasAny) return { videoId, ok: true, credits, hasAny: false, reason: 'no-credits', title, artist };
     return { videoId, ok: true, credits, hasAny: true, title, artist };
   } catch (e) {
@@ -2449,11 +2492,11 @@ async function fixDurationsBatch(videoIds, onProgress, abortSignal) {
   return { success: true, updated, live, fetchFailed, failReasons, total: videoIds.length, processed, aborted, autoStopped };
 }
 
-async function fixCreditsBatch(videoIds, sources, force, onProgress, abortSignal) {
+async function fixCreditsBatch(videoIds, sources, force, onProgress, abortSignal, participantsOnly = false) {
   if (!videoIds.length) return { success: true, updated: 0, noCredits: 0, fetchFailed: 0, total: 0 };
 
   // Best-effort: clean polluted records once before this batch starts.
-  await runCreditsCleanupOnce();
+  if (!participantsOnly) await runCreditsCleanupOnce();
 
   // Watch HTML fetch pacing is owned by fetchWatchHtmlQueue above. Too
   // aggressive a rate trips YouTube's bot challenge and blocks the user's
@@ -2474,6 +2517,10 @@ async function fixCreditsBatch(videoIds, sources, force, onProgress, abortSignal
       if (autoStopped) return;
       const vid = videoIds[idx++];
       const result = await fetchCreditsFromWatch(vid, abortSignal);
+      if (participantsOnly && result.ok) {
+        result.credits = { participants: result.credits?.participants || [] };
+        result.hasAny = result.credits.participants.length > 0;
+      }
       if (result.aborted) return;
       let wasUpdated = false;
       if (!result.ok) {
@@ -2497,8 +2544,17 @@ async function fixCreditsBatch(videoIds, sources, force, onProgress, abortSignal
         noCredits++;
         // Stamp DB so next run can skip this videoId.
         try {
-          await sendToOffscreenDb('MARK_CREDITS_CHECKED', { videoId: vid });
-        } catch (_e) { /* ignore */ }
+          if (participantsOnly) {
+            wasUpdated = !!(await sendToOffscreenDb('UPDATE_CREDITS', { videoId: vid, credits: result.credits }));
+            if (wasUpdated) updated++;
+          } else await sendToOffscreenDb('MARK_CREDITS_CHECKED', { videoId: vid });
+        } catch (_e) {
+          if (participantsOnly) {
+            noCredits--;
+            fetchFailed++;
+            failReasons['db-error'] = (failReasons['db-error'] || 0) + 1;
+          }
+        }
       } else {
         try {
           const didUpdate = await sendToOffscreenDb('UPDATE_CREDITS', {
@@ -2605,7 +2661,7 @@ registerJobPort({
     abortable: true,
   }),
   run: (msg, onProgress, abortSignal) => fixCreditsBatch(
-    msg.videoIds || [], msg.sources || {}, !!msg.force, onProgress, abortSignal),
+    msg.videoIds || [], msg.sources || {}, !!msg.force, onProgress, abortSignal, !!msg.participantsOnly),
   progressPatch: (progress) => ({
     total: progress.total,
     processed: progress.processed,

@@ -215,6 +215,7 @@
   function buildCreditCount(data, field, sourceFilter) {
     const m = new Map();
     const isRaw = field === 'raw';
+    const isParticipant = field === 'participants';
     // self列（セルフアレンジ曲数）は作曲・編曲タブのみ計算する。
     // 作詞/未割当タブで「その人が関わった曲が作曲＝編曲だったか」を表示しても
     // 当該人物の指標として意味を成さないため、ここでは集計しない。
@@ -224,10 +225,11 @@
         if (!d.creditsRaw) continue;
         if (d.composer || d.lyricist || d.arranger) continue;
       } else {
-        if (!d.composer && !d.lyricist && !d.arranger) continue;
+        if (!isParticipant && !d.composer && !d.lyricist && !d.arranger) continue;
       }
       if (sourceFilter && sourceFilter !== 'all' && sourceOf(d) !== sourceFilter) continue;
-      const names = splitCreditField(isRaw ? d.creditsRaw : d[field]);
+      const participants = isParticipant ? window.CreditTarget.normalizeParticipants(d.participants) : [];
+      const names = isParticipant ? participants.map(p => p.name) : splitCreditField(isRaw ? d.creditsRaw : d[field]);
       if (!names.length) continue;
       let isSelfArrange = false;
       if (computeSelf) {
@@ -243,6 +245,10 @@
         if (seen.has(key)) continue;
         seen.add(key);
         const cur = m.get(key) || { count: 0, totalSec: 0, unknown: 0, known: 0, self: 0, hasSelf: computeSelf, spellings: new Map() };
+        if (isParticipant) {
+          if (!cur.roles) cur.roles = new Set();
+          for (const p of participants) if (creditNameKey(p.name) === key) cur.roles.add(p.role);
+        }
         cur.count++;
         cur.spellings.set(name, (cur.spellings.get(name) || 0) + 1);
         addDurationStat(cur, d);
@@ -271,6 +277,7 @@
   function renderCredits(data) {
     setSortHeaderState('#azCreditsTable', currentCreditSort);
     const cm = buildCreditCount(data, currentCreditField, currentCreditSource);
+    document.getElementById('azParticipantRoleHeader').hidden = currentCreditField !== 'participants';
     const q = document.getElementById('azCreditFilter').value.trim().toLowerCase();
     let list = [...cm.entries()];
     if (q) list = list.filter(([k]) => k.toLowerCase().includes(q));
@@ -298,6 +305,7 @@
       }
       appendCell(tr, i + 1);
       appendCell(tr, name);
+      if (currentCreditField === 'participants') appendCell(tr, [...(v.roles || [])].join(' / '));
       appendCell(tr, v.count);
       const durationCell = appendCell(tr, formatDurationStat(v));
       if (!v.known) durationCell.style.color = 'var(--text-muted)';

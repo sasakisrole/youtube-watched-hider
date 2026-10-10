@@ -1,4 +1,8 @@
 {
+  "history_participants": {"message": "Participation"},
+  "history_participantRole": {"message": "Role"},
+  "history_participantsOnly": {"message": "Fill participation only (keep composer, lyricist and arranger unchanged)"},
+  "history_participantsConfirm": {"message": "Fill participation from $1 video descriptions. Composer, lyricist and arranger remain unchanged. Keep a YouTube tab open to continue."},
   "history_recheckHeldOnly": {"message": "Held and needs review only"},
   "history_recheckChangeLabel": {"message": "Change: $VALUE$", "placeholders": {"value": {"content": "$1"}}},
   "history_recheckChangeFormat": {"message": "Separators only become \", \" (names stay the same)"},

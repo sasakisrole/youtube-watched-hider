@@ -487,7 +487,39 @@
     return true;
   }
 
+  function splitParticipantNames(value) {
+    var result = [], depth = 0, start = 0;
+    for (var i = 0; i < value.length; i++) {
+      if ('(（[【'.includes(value[i])) depth++;
+      if (')）]】'.includes(value[i])) depth = Math.max(0, depth - 1);
+      if (!depth && /[,、，;；]/u.test(value[i])) { result.push(value.slice(start, i).trim()); start = i + 1; }
+    }
+    result.push(value.slice(start).trim());
+    return result.filter(Boolean);
+  }
+
+  function normalizeParticipants(value) {
+    if (!Array.isArray(value)) return [];
+    var seen = new Set();
+    return value.filter(function (p) {
+      if (!p || typeof p.name !== 'string' || typeof p.role !== 'string'
+        || !isValidCreditValue(p.name) || !p.role.trim() || p.role.length > 80) return false;
+      var key = creditNameKey(p.name) + '\n' + creditNameKey(p.role);
+      if (seen.has(key)) return false;
+      seen.add(key); return true;
+    }).map(function (p) { return {name: p.name.trim(), role: p.role.trim()}; });
+  }
+
+  function isParticipantCreditsTarget(record, opts) {
+    opts = opts || {};
+    return opts.skipChecked === false || !recentlyCreditChecked(
+      {creditsCheckedAt: record && record.participantsCheckedAt}, opts.now, CREDIT_RECHECK_MS);
+  }
+
   var api = {
+    splitParticipantNames: splitParticipantNames,
+    normalizeParticipants: normalizeParticipants,
+    isParticipantCreditsTarget: isParticipantCreditsTarget,
     CREDIT_ROLES: CREDIT_ROLES,
     CREDIT_RECHECK_MS: CREDIT_RECHECK_MS,
     CREDIT_RECHECK_EMPTY_MS: CREDIT_RECHECK_EMPTY_MS,

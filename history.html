@@ -1239,6 +1239,7 @@
         <span class="toolbar-label" data-i18n="history_complete">補完</span>
         <button class="sort-btn" id="fixChannels" data-i18n-title="history_fillChannelsHint" title="oEmbed APIでチャンネル名を補正（未記録のみ）" data-i18n="history_enrich_channels_label">チャンネル名を補完</button>
         <button class="sort-btn" id="fixChannelsForce" data-i18n-title="history_refetchChannelsHint" title="oEmbed APIでチャンネル名を上書き補正（表示中の全件）" data-i18n="history_enrich_refetch_label">チャンネル名を再取得</button>
+        <label class="chk"><input type="checkbox" id="participantsOnly"><span data-i18n="history_participantsOnly">参加のみ補完（作曲・作詞・編曲は変更しない）</span></label>
         <button class="sort-btn" id="fixCredits" data-i18n-title="history_fillCreditsHint" title="動画の作曲・作詞・編曲を概要欄から補完（ラベル行のみ採用）" data-i18n="history_enrich_credits_label">概要欄からクレジット補完</button>
         <button class="sort-btn enrich-btn" id="enrichCredits" data-i18n-title="history_externalCreditsHint" title="未割当creditsRawを外部DB照合で補完">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 12H3"></path><path d="M16 6H3"></path><path d="M16 18H3"></path><path d="M18 9v6"></path><path d="M21 12h-6"></path></svg>
@@ -1467,13 +1468,14 @@
           <button class="sort-btn az-credit-tab active" data-credit="composer" data-i18n="officialComposer">作曲</button>
           <button class="sort-btn az-credit-tab" data-credit="lyricist" data-i18n="officialLyricist">作詞</button>
           <button class="sort-btn az-credit-tab" data-credit="arranger" data-i18n="officialArranger">編曲</button>
+          <button class="sort-btn az-credit-tab" data-credit="participants" data-i18n="history_participants">参加</button>
           <button class="sort-btn az-credit-tab" data-credit="raw" data-i18n-title="history_unassignedHint" title="役割不明（Topic「·」区切りで取得した名前のみ。役割が確定したものはここに出ません）" data-i18n="officialUnassigned">未割当</button>
         </div>
         <label class="chk" data-i18n-title="history_includeGeneralHint" title="非Topicチャンネルのクレジットも集計対象にする"><input type="checkbox" id="azIncludeGeneral"><span data-i18n="history_includeGeneral">一般も含める</span></label>
         <input type="text" id="azCreditFilter" data-i18n-placeholder="history_nameFilterPlaceholder" placeholder="名前で絞り込み" class="search-box" style="max-width:260px;">
         <span id="azCreditStats" style="color:var(--text-muted);font-size:12px;"></span>
       </div>
-      <table class="az-table" id="azCreditsTable"><thead><tr><th style="width:40px;">#</th><th data-i18n="history_name">名前</th><th style="width:60px;" data-sort="count" data-i18n-title="history_videoCountSortHint" title="動画の本数です。同じ動画を何回見ても1本と数えます（playCount＝再生回数は集計していません）。クリックで本数順に並べ替え" data-i18n="history_videoCount">本数</th><th style="width:150px;" data-sort="duration" data-i18n-title="history_durationSortHint" title="lengthSeconds は動画の長さです。実視聴時間ではありません（途中離脱・倍速・リピートは反映されません）。本数と同じく1本につき1回だけ足しています。クリックで合計時間順に並べ替え" data-i18n="history_totalDuration">合計時間</th><th style="width:110px;" data-i18n-title="history_selfArrangedHint" title="作曲者と編曲者が同一人物だった曲数（作曲・編曲タブのみ集計）" data-i18n="history_selfArranged">セルフアレンジ曲</th></tr></thead><tbody></tbody></table>
+      <table class="az-table" id="azCreditsTable"><thead><tr><th style="width:40px;">#</th><th data-i18n="history_name">名前</th><th id="azParticipantRoleHeader" hidden data-i18n="history_participantRole">役割</th><th style="width:60px;" data-sort="count" data-i18n-title="history_videoCountSortHint" title="動画の本数です。同じ動画を何回見ても1本と数えます（playCount＝再生回数は集計していません）。クリックで本数順に並べ替え" data-i18n="history_videoCount">本数</th><th style="width:150px;" data-sort="duration" data-i18n-title="history_durationSortHint" title="lengthSeconds は動画の長さです。実視聴時間ではありません（途中離脱・倍速・リピートは反映されません）。本数と同じく1本につき1回だけ足しています。クリックで合計時間順に並べ替え" data-i18n="history_totalDuration">合計時間</th><th style="width:110px;" data-i18n-title="history_selfArrangedHint" title="作曲者と編曲者が同一人物だった曲数（作曲・編曲タブのみ集計）" data-i18n="history_selfArranged">セルフアレンジ曲</th></tr></thead><tbody></tbody></table>
     </div>
     <div class="az-panel" id="azLikedPanel" style="display:none;">
       <div style="margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">

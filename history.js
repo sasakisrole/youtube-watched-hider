@@ -370,7 +370,8 @@ function render() {
     filtered = filtered.filter(v =>
       (v.title || v.videoId).toLowerCase().includes(filter) ||
       (v.channel || '').toLowerCase().includes(filter) ||
-      v.videoId.toLowerCase().includes(filter)
+      v.videoId.toLowerCase().includes(filter) ||
+      (Array.isArray(v.participants) && v.participants.some(p => typeof p?.name === 'string' && p.name.toLowerCase().includes(filter)))
     );
   }
   if (noChannelOnly) {
@@ -1216,7 +1217,7 @@ if (fixBtn) {
 
 // Fix credits (composer/lyricist/arranger) for Topic-channel videos.
 let activeCreditsPort = null;
-function runFixCredits(videoIds, sources, label, heldBack) {
+function runFixCredits(videoIds, sources, label, heldBack, participantsOnly = false) {
   // 間隔待ちで今回外れた件数を添える。設定の説明がツールチップにしか無く気づけないため。
   const held = Number(heldBack) > 0 ? Number(heldBack) : 0;
   const heldNote = held
@@ -1228,7 +1229,7 @@ function runFixCredits(videoIds, sources, label, heldBack) {
       : historyMessage('history_enrich_none', '対象なし'));
     return;
   }
-  if (!confirm(historyMessage(videoIds.length === 1 ? 'history_enrich_credits_one' : 'history_enrich_credits_many', `${label}: ${videoIds.length}件の動画から作曲/作詞/編曲を概要欄で補完します。続行しますか？${heldNote}\n\n※YouTubeタブを1つ以上開いたままにしてください（Cookie経由でfetchするため）。`, [label, videoIds.length, heldNote]))) {
+  if (!confirm(participantsOnly ? historyMessage('history_participantsConfirm', `${videoIds.length}件の概要欄から参加のみ補完します。作曲・作詞・編曲は変更しません。YouTubeタブを開いたまま続行してください。`, [videoIds.length]) : historyMessage(videoIds.length === 1 ? 'history_enrich_credits_one' : 'history_enrich_credits_many', `${label}: ${videoIds.length}件の動画から作曲/作詞/編曲を概要欄で補完します。続行しますか？${heldNote}\n\n※YouTubeタブを1つ以上開いたままにしてください（Cookie経由でfetchするため）。`, [label, videoIds.length, heldNote]))) {
     return;
   }
 
@@ -1265,6 +1266,7 @@ function runFixCredits(videoIds, sources, label, heldBack) {
       if (msg.wasUpdated && msg.credits) {
         const rec = allData.find(v => v.videoId === msg.videoId);
         if (rec) {
+          if (Array.isArray(msg.credits.participants)) rec.participants = msg.credits.participants;
           if (msg.credits.composer && !rec.composer) rec.composer = msg.credits.composer;
           if (msg.credits.lyricist && !rec.lyricist) rec.lyricist = msg.credits.lyricist;
           if (msg.credits.arranger && !rec.arranger) rec.arranger = msg.credits.arranger;
@@ -1304,7 +1306,7 @@ function runFixCredits(videoIds, sources, label, heldBack) {
       finish();
     }
   });
-  port.postMessage({ type: 'START', videoIds, sources, force: false });
+  port.postMessage({ type: 'START', videoIds, sources, force: false, participantsOnly });
 }
 
 const fixCreditsBtn = document.getElementById('fixCredits');
@@ -1328,6 +1330,8 @@ if (fixCreditsBtn) {
     const includeGeneral = document.getElementById('includeGeneralCredits');
     const includeGen = !!(includeGeneral && includeGeneral.checked);
     const sources = {};
+    const participantsOnly = !!document.getElementById('participantsOnly')?.checked;
+    const isTarget = participantsOnly ? window.CreditTarget.isParticipantCreditsTarget : window.CreditTarget.isFixCreditsTarget;
     // Role-unit targeting + re-fetch cool-down (HANDOFF §3.1/§3.4 lightweight).
     // OLD behavior excluded a video as soon as ANY role or creditsRaw was present,
     // permanently stranding partial-credit videos ("composer filled, arranger
@@ -1343,18 +1347,18 @@ if (fixCreditsBtn) {
       return isTopic || includeGen;
     });
     const targets = inScope
-      .filter(v => window.CreditTarget.isFixCreditsTarget(v, { skipChecked: skip, now }))
+      .filter(v => isTarget(v, { skipChecked: skip, now }))
       .map(v => {
         sources[v.videoId] = window.CreditTarget.isTopicChannelName(v.channel) ? 'topic' : 'general';
         return v.videoId;
       });
     // 役割は空いているのに、再取得の間隔待ちで今回だけ外れた数。
     const heldBack = skip
-      ? inScope.filter(v => window.CreditTarget.hasMissingCreditRole(v)
-          && !window.CreditTarget.isFixCreditsTarget(v, { skipChecked: true, now })).length
+      ? inScope.filter(v => (participantsOnly || window.CreditTarget.hasMissingCreditRole(v))
+          && !isTarget(v, { skipChecked: true, now })).length
       : 0;
     const label = includeGen ? historyMessage('history_enrich_general_label', 'クレジット補完（Topic+一般）') : historyMessage('history_enrich_topic_label', 'Topic動画のクレジット補完');
-    runFixCredits(targets, sources, label, heldBack);
+    runFixCredits(targets, sources, label, heldBack, participantsOnly);
   });
 }
 
