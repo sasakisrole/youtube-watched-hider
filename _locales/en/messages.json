@@ -1,4 +1,12 @@
 {
+  "history_recheckChangeLabel": {"message": "Change: $VALUE$", "placeholders": {"value": {"content": "$1"}}},
+  "history_recheckChangeFormat": {"message": "Separators only become \", \" (names stay the same)"},
+  "history_recheckChangeClear": {"message": "Clears this role"},
+  "history_recheckChangeCleanup": {"message": "Removes extra text that is not part of the names"},
+  "history_recheckChangeReading": {"message": "Uses the same person's Japanese name"},
+  "history_recheckChangeSpelling": {"message": "Changes how the same name is written (case or symbols)"},
+  "history_recheckChangeAdded": {"message": "Adds $VALUE$", "placeholders": {"value": {"content": "$1"}}},
+  "history_recheckChangeRemoved": {"message": "Removes $VALUE$", "placeholders": {"value": {"content": "$1"}}},
   "history_recheckNonSong": {"message": "Clear non-song credit: background/material music or annotation without a matching song title"},
   "history_recheckCleanupRemoved": {"message": "Removed (review individually):"},
   "popup_playlistCards": {

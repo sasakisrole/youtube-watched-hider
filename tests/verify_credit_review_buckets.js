@@ -16,6 +16,26 @@ function real(storage) { return boot('en', 'success', 'success', 'ja', true, sto
     ['Alice、Bob', 'Alice, Bob', 'description-format', 'bulk'],
     ['Hayato', 'HAYATO', 'description-recheck', 'bulk'],
   ]) await check(`bucket ${saved} -> ${value}`, () => assert.equal(CM.proposalBucket(saved, {value, source}), bucket));
+  for (const [saved, value, source, expected] of [
+    ['Alice、Bob', 'Alice, Bob', 'description-format', {kind: 'format'}],
+    ['nayuta', 'nayuta, narry', 'description-recheck', {kind: 'names', added: ['narry'], removed: []}],
+    ['Alice, Bob', 'Alice, Carol', 'musicbrainz-recheck', {kind: 'names', added: ['Carol'], removed: ['Bob']}],
+    ['Hayato', 'HAYATO', 'description-recheck', {kind: 'spelling'}],
+    ['Alice (Vocal)', 'Alice', 'description-cleanup', {kind: 'cleanup'}],
+    ['Satoshi Yaginuma', '八木沼悟志', 'musicbrainz-reading', {kind: 'reading'}],
+    ['Some BGM', '', 'description-nonsong', {kind: 'clear'}],
+  ]) await check(`change summary ${source} ${saved} -> ${value}`, () => assert.deepEqual(CM.changeSummary(saved, {value, source}), expected));
+  await check('cards say what a proposal changes', async () => {
+    const rows = [{...row(), composer: 'Alice、Bob'}, {...row('sampleVid02'), composer: 'nayuta'}];
+    const ui = boot('ja', 'success', 'success', 'ja', true, {}); ui.setRecords(rows); await ui.review.restoreProposals();
+    const port = ui.start(rows);
+    ui.progress(port, rows[0], success('Composer: Alice、Bob'));
+    ui.progress(port, rows[1], success('Composer: nayuta\nComposer: narry')); ui.done(port); await settle();
+    ui.review.refreshReviewList();
+    const text = ui.elements.creditReviewList.textContent;
+    assert.match(text, /変更の内容：区切りを「, 」に揃えるだけです/);
+    assert.match(text, /変更の内容：追加 narry/);
+  });
   await check('adopted overrides visual', () => assert.equal(CM.proposalBucket('藤永龍太郎', {value:'Ryutaro Fujinaga'}, true), 'adopted'));
   await check('persist, reload, bulk excludes visual, adopted counts and undo', async () => {
     const storage = {}, rows = [{...row(), composer:'Mili'}, {...row('sampleVid02'), composer:'藤永龍太郎'}];

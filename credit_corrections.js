@@ -464,7 +464,21 @@
         && entry.savedSource === creditTarget.effectiveRoleSource(record, entry.role);
     });
   }
-  var api = { proposalBucket: proposalBucket, pendingProposals: pendingProposals, exportItem: exportItem, analyze: analyze, targets: targets, candidates: candidates, scan: scan, isRemix: isRemix,
+  // What a recheck proposal changes, so a card can say it in words; current and
+  // candidate values often differ only by a separator or one added name.
+  function changeSummary(saved, proposal) {
+    var source = proposal && proposal.source, value = String(proposal && proposal.value || '');
+    if (source === 'description-format') return { kind: 'format' };
+    if (source === 'description-nonsong' || !value) return { kind: 'clear' };
+    if (source === 'description-cleanup') return { kind: 'cleanup' };
+    if (source === 'musicbrainz-reading') return { kind: 'reading' };
+    var before = creditNames(String(saved || '')), after = creditNames(value);
+    var beforeKeys = before.map(normalized), afterKeys = after.map(normalized);
+    var added = after.filter(function (name, i) { return beforeKeys.indexOf(afterKeys[i]) === -1; });
+    var removed = before.filter(function (name, i) { return afterKeys.indexOf(beforeKeys[i]) === -1; });
+    return added.length || removed.length ? { kind: 'names', added: added, removed: removed } : { kind: 'spelling' };
+  }
+  var api = { changeSummary: changeSummary, proposalBucket: proposalBucket, pendingProposals: pendingProposals, exportItem: exportItem, analyze: analyze, targets: targets, candidates: candidates, scan: scan, isRemix: isRemix,
     recheckStamp: recheckStamp, PARSER_REVISION: PARSER_REVISION, PROPOSAL_REVISION: PROPOSAL_REVISION, sameContributors: sameContributors,
     compareNames: compareNames, namesOnTopicLine: namesOnTopicLine, topicLineNames: topicLineNames,
     mixedJapaneseNames: mixedJapaneseNames, createArtistReadingLookup: createArtistReadingLookup,

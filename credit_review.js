@@ -80,6 +80,27 @@
     return button;
   }
 
+  var RECHECK_SOURCES = /^(?:description-recheck|description-format|description-cleanup|description-nonsong|musicbrainz-recheck|musicbrainz-reading)$/;
+  function changeSummaryText(currentValue, candidate) {
+    var maintenance = root.CreditMaintenance;
+    if (!candidate || !RECHECK_SOURCES.test(candidate.source || '') || !maintenance || typeof maintenance.changeSummary !== 'function') return '';
+    var summary = maintenance.changeSummary(currentValue, candidate), detail;
+    switch (summary.kind) {
+      case 'format': detail = scriptMessage('history_recheckChangeFormat', '区切りを「, 」に揃えるだけです（名前は変わりません）'); break;
+      case 'clear': detail = scriptMessage('history_recheckChangeClear', 'この役割の値を消します'); break;
+      case 'cleanup': detail = scriptMessage('history_recheckChangeCleanup', '名前以外の余分な表記を除きます'); break;
+      case 'reading': detail = scriptMessage('history_recheckChangeReading', '同じ人の日本語表記に揃えます'); break;
+      case 'spelling': detail = scriptMessage('history_recheckChangeSpelling', '同じ名前の書き方（大文字・小文字や記号）を変えます'); break;
+      default: {
+        var parts = [];
+        if (summary.added.length) parts.push(scriptMessage('history_recheckChangeAdded', '追加 ' + summary.added.join(', '), [summary.added.join(', ')]));
+        if (summary.removed.length) parts.push(scriptMessage('history_recheckChangeRemoved', '削除 ' + summary.removed.join(', '), [summary.removed.join(', ')]));
+        detail = parts.join(' / ');
+      }
+    }
+    return scriptMessage('history_recheckChangeLabel', '変更の内容：' + detail, [detail]);
+  }
+
   function createReviewItem(item, currentValue, options) {
     options = options || {};
     var card = document.createElement('article');
@@ -106,6 +127,14 @@
     var candidates = uniqueCandidateValues(item.candidates);
     appendValueRow(values, scriptMessage('history_scripts_candidate_13', '候補'), candidates.length ? candidates.join(' / ') : scriptMessage('history_scripts_none_14', 'なし'));
     card.append(header, values);
+    (item.candidates || []).forEach(function (candidate) {
+      var summary = changeSummaryText(currentValue, candidate);
+      if (!summary) return;
+      var change = document.createElement('p');
+      change.className = 'credit-review-change';
+      change.textContent = summary;
+      card.appendChild(change);
+    });
     (item.candidates || []).filter(function (candidate) {
       return /^(?:description-recheck|description-cleanup|description-nonsong)$/.test(candidate.source) && /^https:\/\//.test(candidate.sourceDetail);
     }).forEach(function (candidate) {

@@ -3,6 +3,22 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.65",
+    "date": "2026-10-10",
+    "summary": "",
+    "points": [
+      "Say what each recheck proposal changes on its card: separators only, names added or removed, extra text removed, a Japanese reading, a spelling change, or a cleared role. Separator-only proposals previously showed two values that looked identical."
+    ]
+  },
+  {
+    "version": "1.60.64",
+    "date": "2026-10-10",
+    "summary": "",
+    "points": [
+      "Keep the recheck's end-of-run message visible. Each progress update rebuilt the status line and erased it, so a finished overnight run looked stopped; the run now ends with an explicit completion message, including a note when some videos could not be fetched."
+    ]
+  },
+  {
     "version": "1.60.63",
     "date": "2026-10-10",
     "summary": "",

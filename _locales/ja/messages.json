@@ -1,4 +1,12 @@
 {
+  "history_recheckChangeLabel": {"message": "変更の内容：$VALUE$", "placeholders": {"value": {"content": "$1"}}},
+  "history_recheckChangeFormat": {"message": "区切りを「, 」に揃えるだけです（名前は変わりません）"},
+  "history_recheckChangeClear": {"message": "この役割の値を消します"},
+  "history_recheckChangeCleanup": {"message": "名前以外の余分な表記を除きます"},
+  "history_recheckChangeReading": {"message": "同じ人の日本語表記に揃えます"},
+  "history_recheckChangeSpelling": {"message": "同じ名前の書き方（大文字・小文字や記号）を変えます"},
+  "history_recheckChangeAdded": {"message": "追加 $VALUE$", "placeholders": {"value": {"content": "$1"}}},
+  "history_recheckChangeRemoved": {"message": "削除 $VALUE$", "placeholders": {"value": {"content": "$1"}}},
   "history_recheckNonSong": {"message": "曲の動画ではないため消す：BGM・素材表記、または曲名に結びつかない注記"},
   "history_recheckCleanupRemoved": {"message": "除去する部分（1件ずつ確認）："},
   "popup_playlistCards": {

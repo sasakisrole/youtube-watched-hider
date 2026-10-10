@@ -1,5 +1,13 @@
 // Frozen original Japanese and reviewed English.
 const golden = {
+  "history_recheckChangeLabel": ["変更の内容：$VALUE$", "Change: $VALUE$"],
+  "history_recheckChangeFormat": ["区切りを「, 」に揃えるだけです（名前は変わりません）", "Separators only become \", \" (names stay the same)"],
+  "history_recheckChangeClear": ["この役割の値を消します", "Clears this role"],
+  "history_recheckChangeCleanup": ["名前以外の余分な表記を除きます", "Removes extra text that is not part of the names"],
+  "history_recheckChangeReading": ["同じ人の日本語表記に揃えます", "Uses the same person's Japanese name"],
+  "history_recheckChangeSpelling": ["同じ名前の書き方（大文字・小文字や記号）を変えます", "Changes how the same name is written (case or symbols)"],
+  "history_recheckChangeAdded": ["追加 $VALUE$", "Adds $VALUE$"],
+  "history_recheckChangeRemoved": ["削除 $VALUE$", "Removes $VALUE$"],
   "history_recheckNonSong": ["曲の動画ではないため消す：BGM・素材表記、または曲名に結びつかない注記", "Clear non-song credit: background/material music or annotation without a matching song title"],
   "history_correctionEvidence": ["確認元の資料を開く", "Open supporting source"],
   "history_recheckCleanupRemoved": ["除去する部分（1件ずつ確認）：", "Removed (review individually):"],
