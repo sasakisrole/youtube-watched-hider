@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.78 (2026-10-11)
+
+- The proposals-to-review scope checks only videos with a kept proposal or a check that recorded one, instead of revisiting every video held before v1.60.77.
+
 ## v1.60.77 (2026-10-11)
 
 - The held recheck scope is split into three: proposals to review, held credits that could not be read, and held videos with no credit in the description. Each check now records why a video stays held, so a scope revisits only its own videos; videos checked before this version are revisited once by every held scope.

@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.78",
+    "date": "2026-10-11",
+    "summary": "",
+    "points": [
+      "The proposals-to-review scope checks only videos with a kept proposal or a check that recorded one, instead of revisiting every video held before v1.60.77."
+    ]
+  },
+  {
     "version": "1.60.77",
     "date": "2026-10-11",
     "summary": "",

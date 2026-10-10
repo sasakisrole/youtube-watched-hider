@@ -415,7 +415,7 @@
       return creditTarget.effectiveRoleSource(record, role) === 'manual' && isLatinName(String(record[role] || ''));
     });
   }
-  function targets(records, scope, checked, limit, creditTarget, includeStamped, withMb) {
+  function targets(records, scope, checked, limit, creditTarget, includeStamped, withMb, reviewIds) {
     return (records || []).filter(function (record) {
       var flags = stampFlags(record);
       var manualReading = !!withMb && hasManualRomanized(record, creditTarget);
@@ -434,6 +434,8 @@
       // in the description); a stamp without the reason counts for every held scope.
       var kind = { review: 'r', 'held-parse': 'p', 'held-none': 'n' }[scope];
       if (kind) due = !flags || flags.held === undefined || (flags.held && (!flags.kinds || flags.kinds.indexOf(kind) !== -1));
+      // Proposals to review are kept on the page, so that scope never falls back to unknown stamps.
+      if (scope === 'review') due = !!(reviewIds && reviewIds.has(record.videoId)) || !!(flags && flags.kinds.indexOf('r') !== -1);
       return /^[\w-]{11}$/.test(record.videoId || '') && (!checked || !checked.has(record.videoId))
         && due && (scope !== 'remix' || isRemix(record.title)) && (auto || manualReading || manualValue);
     }).slice(0, Math.max(1, Math.min(500, Number(limit) || 50)));

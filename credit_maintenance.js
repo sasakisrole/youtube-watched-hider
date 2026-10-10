@@ -181,6 +181,9 @@
       return (review ? 'r' : '') + (list.some(function (reason) { return reason !== 'no-evidence'; }) ? 'p' : '')
         + (list.indexOf('no-evidence') !== -1 ? 'n' : '');
     }
+    function reviewIds() {
+      return new Set(allProposals().filter(function (p) { return bucketFor(p) === 'visual'; }).map(function (p) { return p.videoId; }));
+    }
     function stampRecord(record, withMb, withArtist, heldReasons) {
       if (typeof env.markRechecked !== 'function') return;
       var stamp = root.CreditMaintenance.recheckStamp(record, withMb, true, withArtist, heldKinds(record.videoId, heldReasons));
@@ -228,7 +231,7 @@
       save.disabled = copy.disabled;
       adoptAll.disabled = !!port || mbRunning || adopting || !review.adoptable(ownProposal).length;
       undoAll.disabled = !!port || adopting || !((review.lastBatch && review.lastBatch.length));
-      var remaining = root.CreditMaintenance.targets(scanRecords(), scope.value, scanned, 500, root.CreditTarget, includeStamped, mbOn()).length;
+      var remaining = root.CreditMaintenance.targets(scanRecords(), scope.value, scanned, 500, root.CreditTarget, includeStamped, mbOn(), reviewIds()).length;
       status.textContent = message('history_recheckProgress',
         'このページで点検 ' + checked.size + '件／変更案 ' + candidates.size + '項目／保留 ' + held + '件／取得失敗 ' + failed + '件／未点検 ' + (remaining === 500 ? '500+' : remaining) + '件',
         [checked.size, candidates.size, held, failed, remaining === 500 ? '500+' : remaining]);
@@ -418,13 +421,13 @@
     // a YouTube-side stop (bot check, no tab) or unticking the box ends the run.
     function continueRun() {
       if (stopRequested || !continueBox || !continueBox.checked || port) return;
-      if (!root.CreditMaintenance.targets(scanRecords(), scope.value, scanned, 1, root.CreditTarget, includeStamped, mbOn()).length) return;
+      if (!root.CreditMaintenance.targets(scanRecords(), scope.value, scanned, 1, root.CreditTarget, includeStamped, mbOn(), reviewIds()).length) return;
       root.setTimeout(function () { if (!stopRequested && !port) runBatch(); }, 1500);
     }
     function runBatch() {
       if (port || review.busy.size || restoring) return;
       if (!limit.checkValidity()) { limit.reportValidity(); return; }
-      var records = root.CreditMaintenance.targets(scanRecords(), scope.value, scanned, limit.value, root.CreditTarget, includeStamped, mbOn());
+      var records = root.CreditMaintenance.targets(scanRecords(), scope.value, scanned, limit.value, root.CreditTarget, includeStamped, mbOn(), reviewIds());
       if (!records.length) { summary(); return; }
       if (!env.begin()) {
         status.textContent = message('history_enrich_busy', '他のメンテナンス処理が実行中'); return;

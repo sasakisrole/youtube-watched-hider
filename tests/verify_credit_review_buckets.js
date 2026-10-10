@@ -75,7 +75,9 @@ function real(storage) { return boot('en', 'success', 'success', 'ja', true, sto
     assert.deepEqual(CM.targets([held, clear, legacy], 'all', new Set(), 50, CT).map(r => r.videoId), []);
     const kinds = ['r', 'p', 'n', 'pn', ''].map((k, i) => ({...base, videoId: 'kindVideo0' + i, creditsRecheck: CM.recheckStamp(base, false, true, false, k)}));
     assert.equal(CM.stampFlags(kinds[3]).kinds, 'pn'); assert.equal(CM.stampFlags(kinds[4]).held, false);
-    for (const [scope, expected] of [['review', ['kindVideo00']], ['held-parse', ['kindVideo01', 'kindVideo03']], ['held-none', ['kindVideo02', 'kindVideo03']]])
+    assert.deepEqual(CM.targets([...kinds, held, clear, legacy], 'review', new Set(), 50, CT).map(r => r.videoId), ['kindVideo00'], 'unknown stamps stay out of review');
+    assert.deepEqual(CM.targets([...kinds, held, clear, legacy], 'review', new Set(), 50, CT, false, false, new Set(['sampleVid02'])).map(r => r.videoId), ['kindVideo00', 'sampleVid02'], 'a kept proposal is reviewed');
+    for (const [scope, expected] of [['held-parse', ['kindVideo01', 'kindVideo03']], ['held-none', ['kindVideo02', 'kindVideo03']]])
       assert.deepEqual(CM.targets([...kinds, held, clear, legacy], scope, new Set(), 50, CT).map(r => r.videoId), [...expected, 'sampleVid01', 'sampleVid03'], scope);
   });
   await check('cards say what a proposal changes', async () => {
