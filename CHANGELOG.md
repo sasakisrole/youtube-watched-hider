@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.60.70 (2026-10-10)
+
+- Split the unassigned credit list: the channel's artist and characters credited with a voice actor move to a new Performers list, labels and sound teams to a new Labels list, and Unassigned keeps only names whose role is unknown.
+- External DB credit enrichment remembers a completed search that found nothing for the missing roles, together with the rule version and the saved values. Such a video leaves the targets, estimates and slot limits until the rules or its saved credits change. It is not shown as confirmed, and errors or partial results are not remembered.
+
 ## v1.60.69 (2026-10-10)
 
 - Keep part arrangement credits (for example "Drums arrange: Kenbo", "Strings Arrangement", "ピアノ編曲") as participants with their role, outside composer, lyricist, arranger and the unassigned list. History > Analysis > Credits gains a Participants list with a role column, and history search finds participant names.

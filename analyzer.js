@@ -220,13 +220,14 @@
     if (RAW_LABEL_RE.test(name.replace(/[（(][^）)]*[）)]/gu, ''))) return 'label';
     return 'unknown';
   }
-  const RAW_FIELDS = { raw: 'unknown', rawPerformer: 'performer', rawLabel: 'label' };
 
   // Build credit -> {count, duration, selfArrangeCount} filtered by source ('all'|'topic'|'general').
   // field === 'raw' = role-unassigned creditsRaw names (Phase B `·` parser output that did not resolve to a role).
   function buildCreditCount(data, field, sourceFilter) {
     const m = new Map();
-    const isRaw = Object.prototype.hasOwnProperty.call(RAW_FIELDS, field);
+    // Kept inside the function: some test harnesses extract functions by name.
+    const rawKind = field === 'raw' ? 'unknown' : field === 'rawPerformer' ? 'performer' : field === 'rawLabel' ? 'label' : '';
+    const isRaw = !!rawKind;
     const isParticipant = field === 'participants';
     // self列（セルフアレンジ曲数）は作曲・編曲タブのみ計算する。
     // 作詞/未割当タブで「その人が関わった曲が作曲＝編曲だったか」を表示しても
@@ -242,7 +243,7 @@
       if (sourceFilter && sourceFilter !== 'all' && sourceOf(d) !== sourceFilter) continue;
       const participants = isParticipant ? window.CreditTarget.normalizeParticipants(d.participants) : [];
       const names = isParticipant ? participants.map(p => p.name)
-        : isRaw ? splitCreditField(d.creditsRaw).filter(name => rawCreditKind(name, d) === RAW_FIELDS[field])
+        : isRaw ? splitCreditField(d.creditsRaw).filter(name => rawCreditKind(name, d) === rawKind)
         : splitCreditField(d[field]);
       if (!names.length) continue;
       let isSelfArrange = false;

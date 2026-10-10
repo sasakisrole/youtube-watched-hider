@@ -33,6 +33,8 @@
   var MB_RECHECK_MS = 90 * 24 * 60 * 60 * 1000;
   var MB_ERROR_BASE_MS = 60 * 60 * 1000;
   var MB_ERROR_MAX_MS = 24 * 60 * 60 * 1000;
+  // Bump when credit parsing, matching, or enrichment rules change.
+  var ENRICHMENT_RULE_VERSION = 1;
   var MB_LOOKUP_STATUSES = ['found', 'not-found', 'no-roles', 'error'];
 
   var TOPIC_SUFFIX_RE = /\s*-\s*(?:topic|トピック)\s*$/i;
@@ -317,10 +319,28 @@
     return true;
   }
 
+  function enrichmentSnapshot(record) {
+    return JSON.stringify(['composer', 'lyricist', 'arranger', 'creditsRaw'].map(function (key) {
+      return (record && record[key]) == null ? null : record[key];
+    }));
+  }
+
+  function hasCurrentEnrichmentNotFound(record) {
+    var lookup = record && record.mbLookup;
+    var stamp = lookup && lookup.notFound;
+    return !!(isValidMbLookup(lookup) && lookup.status !== 'error' && stamp
+      && stamp.version === ENRICHMENT_RULE_VERSION
+      && stamp.snapshot === enrichmentSnapshot(record)
+      && lookup.queryFingerprint === mbQueryFingerprint(stripTopicChannelSuffix(record.channel || ''), record.title || ''));
+  }
+
   function shouldQueryMb(record, opts) {
     opts = opts || {};
+    if (hasCurrentEnrichmentNotFound(record)) return false;
     if (opts.ignoreCooldown === true) return true;
     var lookup = record && record.mbLookup;
+    // A stale negative stamp must not fall back into its old 90-day cooldown.
+    if (lookup && lookup.notFound) return true;
     if (!isValidMbLookup(lookup)) return true;
     var now = typeof opts.now === 'number' && Number.isFinite(opts.now) ? opts.now : Date.now();
     if (now >= lookup.nextEligibleAt) return true;
@@ -527,6 +547,9 @@
     CREDIT_RECHECK_SPREAD_MS: CREDIT_RECHECK_SPREAD_MS,
     creditRecheckSpreadMs: creditRecheckSpreadMs,
     MB_RECHECK_MS: MB_RECHECK_MS,
+    ENRICHMENT_RULE_VERSION: ENRICHMENT_RULE_VERSION,
+    enrichmentSnapshot: enrichmentSnapshot,
+    hasCurrentEnrichmentNotFound: hasCurrentEnrichmentNotFound,
     MB_ERROR_BASE_MS: MB_ERROR_BASE_MS,
     MB_ERROR_MAX_MS: MB_ERROR_MAX_MS,
     creditIsBlank: creditIsBlank,

@@ -3,6 +3,15 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.70",
+    "date": "2026-10-10",
+    "summary": "",
+    "points": [
+      "Split the unassigned credit list: the channel's artist and characters credited with a voice actor move to a new Performers list, labels and sound teams to a new Labels list, and Unassigned keeps only names whose role is unknown.",
+      "External DB credit enrichment remembers a completed search that found nothing for the missing roles, together with the rule version and the saved values. Such a video leaves the targets, estimates and slot limits until the rules or its saved credits change. It is not shown as confirmed, and errors or partial results are not remembered."
+    ]
+  },
+  {
     "version": "1.60.69",
     "date": "2026-10-10",
     "summary": "",

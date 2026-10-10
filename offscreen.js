@@ -275,6 +275,7 @@ async function handleDbRpc(message) {
         status: message.status,
         missingRoles: message.missingRoles,
         queryFingerprint: message.queryFingerprint,
+        notFound: message.notFound,
         now: message.now,
         ignoreCooldown: !!message.ignoreCooldown,
       });

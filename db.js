@@ -376,8 +376,17 @@ if (typeof WatchedDB === 'undefined') {
             ? 0
             : (prior && prior.status === 'error' ? prior.attempts : 0);
           const attempts = status === 'error' ? priorAttempts + 1 : 0;
+          const api = globalThis.CreditTarget;
+          const notFound = details.notFound;
+          // Compare inside the write transaction: an in-flight lookup cannot
+          // suppress a record whose credits changed while the network was busy.
+          if (notFound && (status === 'error'
+            || notFound.version !== api.ENRICHMENT_RULE_VERSION
+            || notFound.snapshot !== api.enrichmentSnapshot(existing)
+            || details.queryFingerprint !== api.mbQueryFingerprint(api.stripTopicChannelSuffix(existing.channel || ''), existing.title || ''))) return;
           existing.mbLookup = {
             status,
+            ...(notFound ? { notFound: { version: notFound.version, snapshot: notFound.snapshot } } : {}),
             checkedAt: now,
             nextEligibleAt: globalThis.CreditTarget.computeMbNextEligibleAt(status, attempts, now),
             queryFingerprint: details.queryFingerprint,
@@ -1175,6 +1184,10 @@ if (typeof WatchedDB === 'undefined') {
         queryFingerprint: value.queryFingerprint,
         missingRoles: value.missingRoles.slice(),
         attempts: value.attempts,
+        ...(value.status !== 'error' && value.notFound
+          && Number.isInteger(value.notFound.version) && value.notFound.version > 0
+          && typeof value.notFound.snapshot === 'string'
+          ? { notFound: { version: value.notFound.version, snapshot: value.notFound.snapshot } } : {}),
       };
     }
 

@@ -65,6 +65,8 @@
   // to role-unit judgement does not suddenly target every non-music video.
   function needsCreditEnrichment(record, { requireRawHint = true } = {}) {
     if (!record) return false;
+    if (window.CreditTarget && typeof window.CreditTarget.hasCurrentEnrichmentNotFound === 'function'
+      && window.CreditTarget.hasCurrentEnrichmentNotFound(record)) return false;
     if (getMissingCreditRoles(record).length === 0) return false;
     if (!requireRawHint) return true;
     return !isBlank(record.creditsRaw);
@@ -496,7 +498,7 @@
   function collectSameSongDonorCandidates(records, donorIndex) {
     const candidates = [];
     for (const record of Array.isArray(records) ? records : []) {
-      if (!getMissingCreditRoles(record).length) continue;
+      if (!needsCreditEnrichment(record, { requireRawHint: false })) continue;
       const candidate = createSameSongDonorCandidate(record, donorIndex);
       if (candidate) candidates.push({ record, candidate });
     }
@@ -1569,6 +1571,8 @@
             const queryFingerprint = api && typeof api.mbQueryFingerprint === 'function'
               ? api.mbQueryFingerprint(artist, title)
               : `${String(artist).normalize('NFKC').trim().replace(/\s+/gu, ' ').toLowerCase()}\u0000${String(title).normalize('NFKC').trim().replace(/\s+/gu, ' ').toLowerCase()}`;
+            const initialSnapshot = api && typeof api.enrichmentSnapshot === 'function'
+              ? api.enrichmentSnapshot(state.video) : null;
             let mb = null;
             try {
               mb = await this.fetchMb(channel, title, missingRoles);
@@ -1592,17 +1596,32 @@
               if (mb && mb.reason === 'no-roles') outcomes.noRoles++;
               else outcomes.noRecording++;
             }
+            if (this.abortRequested) break;
+            const noProgress = state.missing.size === getMissingCreditRoles(state.video).length;
+            const searchedWithoutResult = mb && mb.success === true && (mb.candidate
+              ? !coveredNeededRoles(mb.candidate, state.missing).length
+              : ['no-recording', 'no-roles'].includes(mb.reason));
+            const notFound = typeof initialSnapshot === 'string' && noProgress && searchedWithoutResult
+              ? { version: api.ENRICHMENT_RULE_VERSION, snapshot: initialSnapshot } : null;
             const status = mb && mb.candidate
               ? 'found'
               : (mb && mb.reason === 'no-roles' ? 'no-roles' : 'not-found');
             try {
-              await this.recordMbLookup(state.video.videoId, {
+              const recorded = await this.recordMbLookup(state.video.videoId, {
                 status,
+                notFound,
                 missingRoles,
                 queryFingerprint,
                 now: Date.now(),
                 ignoreCooldown: confirmation.ignoreCooldown === true,
               });
+              if (recorded && notFound) {
+                // Keep repeated runs in this open history page in sync with the DB.
+                state.video.mbLookup = {
+                  status, notFound, missingRoles, queryFingerprint, attempts: 0,
+                  checkedAt: Date.now(), nextEligibleAt: Date.now() + api.MB_RECHECK_MS,
+                };
+              }
             } catch (error) {
               this.errors.push(scriptMessage('history_scripts_1_musicbrainz_record_2_231', `${channel}: MusicBrainz 記録 ${error.message}`, [channel, error.message]));
             }
