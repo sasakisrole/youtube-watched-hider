@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.60.74 (2026-10-10)
+
+- Saved credit rechecks use the matching song section before cleaning old values, and hold ambiguous multi-song credits. Compound music, lyrics and arrangement labels are read together.
+- Typo annotations no longer add another contributor. Japanese spellings with a confirmed shared MusicBrainz artist identity are combined while preserving the credited Japanese spelling.
+- Instrumental and off-vocal titles keep their saved lyricists during MusicBrainz rechecks.
+
 ## v1.60.73 (2026-10-10)
 
 - The saved credit recheck also stores participants (part arrangers) from each description it reads, so no separate pass over the whole history is needed. Composer, lyricist and arranger are still never changed by a recheck; the summary reports how many participants were saved.

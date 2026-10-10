@@ -270,6 +270,7 @@
       if (!found || found.stage !== 'strict') return;
       var notes = [];
       job.roles.forEach(function (role) {
+        if (role === 'lyricist' && root.CreditMaintenance.isInstrumental(job.record.title)) return;
         var value = String(found[role] || '').split('・').join(', ');
         if (!value) return;
         var relation = root.CreditMaintenance.compareNames(job.record[role], value);
@@ -305,6 +306,7 @@
       // A description that only romanizes a Japanese credit does not replace it;
       // a Japanese description of a romanized credit becomes bulk-adoptable.
       (job.readingRoles || []).forEach(function (role) {
+        if (role === 'lyricist' && root.CreditMaintenance.isInstrumental(job.record.title)) return;
         var key = job.record.videoId + ':' + role, proposal = candidates.get(key);
         if (!proposal || proposal.source !== 'description-recheck'
           || !root.CreditMaintenance.sameByReading(job.record[role], proposal.value, found.sortNames)) return;
@@ -317,6 +319,7 @@
         }
       });
       (job.manualRoles || []).forEach(function (role) {
+        if (role === 'lyricist' && root.CreditMaintenance.isInstrumental(job.record.title)) return;
         var saved = String(job.record[role] || '');
         var unified = root.CreditMaintenance.unifyReading(saved, found.sortNames);
         if (!unified || root.CreditMaintenance.sameContributors(unified, saved)
@@ -340,6 +343,7 @@
     async function applyArtistReadings(job) {
       var complete = true;
       for (var role of job.artistRoles || []) {
+        if (role === 'lyricist' && root.CreditMaintenance.isInstrumental(job.record.title)) continue;
         var key = job.record.videoId + ':' + role;
         var proposal = candidates.get(key);
         var saved = String(job.record[role] || '');

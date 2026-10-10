@@ -1032,8 +1032,14 @@ async function lookupMbArtistReading(name) {
   for (let offset = 0; offset < 1000; offset += 100) {
     const page = await mbGet('artist/', { query, fmt: 'json', limit: '100', offset: String(offset) });
     if (!Array.isArray(page.artists) || !Number.isInteger(page.count) || page.count < 0) return { success: false, reason: 'incomplete' };
-    artists.push(...page.artists.filter(artist => String(artist.name || '').normalize('NFKC') === name)
-      .map(artist => ({ id: artist.id, name: artist.name, 'sort-name': artist['sort-name'] })));
+    for (const artist of page.artists) {
+      const exact = String(artist.name || '').normalize('NFKC') === name;
+      // Alias evidence is identity-only; it cannot supply a romanized reading.
+      const alias = /[\u3040-\u30ff\u3400-\u9fff]/u.test(name)
+        && (artist.aliases || []).some(entry => String(entry.name || '').normalize('NFKC') === name);
+      if (exact || alias) artists.push({ id: artist.id, name: artist.name, 'sort-name': artist['sort-name'],
+        ...(!exact ? { matchedName: name } : {}) });
+    }
     if (offset + page.artists.length >= page.count) return { success: true, artists };
     if (page.artists.length < 100) break;
   }
@@ -2105,7 +2111,7 @@ const CREDIT_ROLE_KEYWORDS = {
   arranger: ['arrangers', 'arranged by', 'arrangement', 'recording arranger', 'arranger', 'arrange', '編曲家', '編曲者', '編曲'],
 };
 
-const CREDIT_KNOWN_LABEL = String.raw`(?:(?:作詞|作詩|作曲|編曲)(?:(?:作詞|作詩|作曲|編曲)|絵|動画|映像|イラスト)+|(?:作詞|作詩|作曲|編曲)(?:\s*[・&＆/／]?\s*(?:作詞|作詩|作曲|編曲))+|作編曲|(?:words|lyrics?)\s*(?:&|and|\/)\s*music|music\s*(?:&|and|\/)\s*(?:words|lyrics?)|compose(?:r)?\s*(?:&|and|\/|／)\s*arrange(?:r)?|composer\s*[,，]?\s*(?:writer|lyricist)|composer\s+lyricist|composers?|composed\s+by|composition|compose|music\s+by|original\s+music|music\s+composer|lyricists?|lyrics\s+by|written\s+by|lyrics?|songwriters?|words|arrangers?|arranged\s+by|arrangement|recording\s+arranger|arrange|作詞家|作詞者|作詞|作詩|作曲家|作曲者|作曲|編曲家|編曲者|編曲)`;
+const CREDIT_KNOWN_LABEL = String.raw`(?:music\s*(?:&|＆|and|\/)\s*(?:words|lyrics?)\s*(?:&|＆|and|\/)\s*(?:arrangement|arrangers?|arrange)|(?:作詞|作詩|作曲|編曲)(?:(?:作詞|作詩|作曲|編曲)|絵|動画|映像|イラスト)+|(?:作詞|作詩|作曲|編曲)(?:\s*[・&＆/／]?\s*(?:作詞|作詩|作曲|編曲))+|作編曲|(?:words|lyrics?)\s*(?:&|and|\/)\s*music|music\s*(?:&|and|\/)\s*(?:words|lyrics?)|compose(?:r)?\s*(?:&|and|\/|／)\s*arrange(?:r)?|composer\s*[,，]?\s*(?:writer|lyricist)|composer\s+lyricist|composers?|composed\s+by|composition|compose|music\s+by|original\s+music|music\s+composer|lyricists?|lyrics\s+by|written\s+by|lyrics?|songwriters?|words|arrangers?|arranged\s+by|arrangement|recording\s+arranger|arrange|作詞家|作詞者|作詞|作詩|作曲家|作曲者|作曲|編曲家|編曲者|編曲)`;
 // Unknown role tokens can delimit a list but never imply a musical role.
 // Unknown roles in a comma list may span words ("Double Bass", "Mixing  Engineer");
 // they only bound the list and never assign a role themselves. Role words are
@@ -2145,7 +2151,7 @@ function rolesForCreditLabel(label) {
   if (/作編曲|作曲\s*[・&＆/／]\s*編曲|compose(?:r)?\s*(?:&|and|\/|／)\s*arrange(?:r)?/iu.test(labelLower)) {
     roles.push('composer', 'arranger');
   }
-  if (/(?:words|lyrics?)\s*(?:&|and|\/)\s*music|music\s*(?:&|and|\/)\s*(?:words|lyrics?)/iu.test(labelLower)) {
+  if (/(?:words|lyrics?)\s*(?:&|＆|and|\/)\s*music|music\s*(?:&|＆|and|\/)\s*(?:words|lyrics?)/iu.test(labelLower)) {
     roles.push('composer', 'lyricist');
   }
   for (const role of Object.keys(CREDIT_ROLE_KEYWORDS)) {

@@ -3,6 +3,16 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.74",
+    "date": "2026-10-10",
+    "summary": "",
+    "points": [
+      "Saved credit rechecks use the matching song section before cleaning old values, and hold ambiguous multi-song credits. Compound music, lyrics and arrangement labels are read together.",
+      "Typo annotations no longer add another contributor. Japanese spellings with a confirmed shared MusicBrainz artist identity are combined while preserving the credited Japanese spelling.",
+      "Instrumental and off-vocal titles keep their saved lyricists during MusicBrainz rechecks."
+    ]
+  },
+  {
     "version": "1.60.73",
     "date": "2026-10-10",
     "summary": "",

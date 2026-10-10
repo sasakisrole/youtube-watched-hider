@@ -3,10 +3,10 @@
   var ROLES = ['composer', 'lyricist', 'arranger'];
   // Bump whenever description parsing or candidate rules change, so every
   // stored recheck stamp expires and those videos become recheck targets again.
-  var PARSER_REVISION = '2026-10-10.1';
+  var PARSER_REVISION = '2026-10-10.2';
   // Bump when proposal rules change without a parser change: stored proposals
   // from older rules are dropped and their videos become recheck targets again.
-  var PROPOSAL_REVISION = '2026-10-10.3';
+  var PROPOSAL_REVISION = '2026-10-10.4';
   function normalized(value) {
     return String(value || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
   }
@@ -29,6 +29,7 @@
     var b = creditNames(String(right || '')).sort();
     return a.length === b.length && a.every(function (name, index) { return name === b[index]; });
   }
+  function isInstrumental(title) { return /\b(?:instrumental|off[\s-]*vocal)(?:\b|_)/iu.test(String(title || '').normalize('NFKC')); }
   function isRemix(title) { return /remix|リミックス/iu.test(title || ''); }
   function nameKeys(value) {
     return Array.from(new Set(String(value || '').split(/[,，、・\/／]/u).map(normalized).filter(Boolean)));
@@ -91,6 +92,7 @@
     return async function (value, enabled, japanese) {
       if (!enabled || !japanese) return null;
       var names = mixedJapaneseNames(value), sortNames = {}, urls = [], complete = true, error = '';
+      var identities = new Map(), spelling = new Map();
       for (var name of names) {
         var normalizedName = name.normalize('NFKC');
         if (!cache.has(normalizedName)) cache.set(normalizedName, Promise.resolve().then(function (n) {
@@ -101,6 +103,15 @@
         var exact = (response.artists || []).filter(function (artist) {
           return String(artist.name || '').normalize('NFKC') === normalizedName;
         });
+        var identified = (response.artists || []).filter(function (artist) {
+          return String(artist.name || '').normalize('NFKC') === normalizedName || artist.matchedName === normalizedName;
+        });
+        var ids = Array.from(new Set(identified.map(function (artist) { return artist.id; })));
+        if (ids.length === 1 && ids[0]) {
+          if (!identities.has(ids[0])) identities.set(ids[0], name);
+          spelling.set(name, identities.get(ids[0]));
+          if (spelling.get(name) !== name) urls.push('https://musicbrainz.org/artist/' + encodeURIComponent(ids[0]));
+        }
         var keys = exact.map(function (artist) { return readingKey(artist['sort-name']); });
         if (!keys.length || !keys[0] || !keys.every(function (key) { return key === keys[0]; })) continue;
         // Keep the spelling already credited, including its normalization form.
@@ -109,7 +120,9 @@
           exact.forEach(function (artist) { if (artist.id) urls.push('https://musicbrainz.org/artist/' + encodeURIComponent(artist.id)); });
         }
       }
-      return { value: unifyReading(value, sortNames), urls: Array.from(new Set(urls)), complete: complete, error: error };
+      var unified = unifyReading(value, sortNames);
+      var merged = Array.from(new Set(creditNames(unified || value).map(function (name) { return spelling.get(name) || name; }))).join(', ');
+      return { value: unified || !sameContributors(value, merged) ? merged : '', urls: Array.from(new Set(urls)), complete: complete, error: error };
     };
   }
   // True when the two lists name the same people, allowing a romanized name
@@ -234,7 +247,7 @@
     };
     var namedSections = new Set(), matchedSections = new Set();
     var namedKey = '';
-    var entries = [], excluded = [], hasVersionSections = false;
+    var entries = [], excluded = [], hasVersionSections = false, hasBoundary = false;
     var candidateLines = { composer: [], lyricist: [], arranger: [] };
     var nonSongLines = [], linkedSong = false, metaValues = [];
     var materialHeading = '';
@@ -252,7 +265,9 @@
       var marker = headingLine.normalize('NFKC').replace(/^[\s#■◆●・*\[【「『(]+|[\s\]】」』):：]+$/gu, '').trim();
       if (materialPattern.test(headingLine)) materialHeading = trimmed;
       var original = /^(?:original(?:\s+(?:song|version|credits?))?|原曲(?:情報|クレジット)?)(?=\s*(?:[:：/|]|https?:\/\/|$))/iu.test(marker);
-      if (original) {
+      if (/^[-─━=*_]{3,}(?:☆彡|[^\p{L}\p{N}])*$/u.test(trimmed)) {
+        namedKey = ''; section++; scope = 'unknown'; heading = trimmed; hasBoundary = true;
+      } else if (original) {
         namedKey = ''; section++; scope = 'original'; heading = trimmed; hasVersionSections = true;
       } else if (/^(?:remix(?:\s+(?:version|credits?))?|リミックス(?:クレジット)?)$/iu.test(marker)) {
         namedKey = ''; section++; scope = isRemix(title) ? 'current' : 'unknown'; heading = trimmed; hasVersionSections = true;
@@ -307,13 +322,26 @@
         });
       });
     });
-    var credits = {}, evidence = {}, held = [], reasons = {};
+    var credits = {}, evidence = {}, held = [], reasons = {}, scopedRoles = {};
     ROLES.forEach(function (role) {
       var selected = entries.filter(function (entry) { return entry.role === role; });
       // Only composition and lyrics survive a remix; explicit current roles win.
       if (!selected.length && isRemix(title) && role !== 'arranger') {
         selected = excluded.filter(function (entry) { return entry.role === role && entry.scope === 'original'; });
       }
+      // A typo correction is not evidence of another contributor; retain independently credited names.
+      var ambiguousAnnotation = false;
+      selected = selected.map(function (entry) {
+        var names = creditNames(entry.value);
+        var kept = names.filter(function (name) {
+          var note = /[（(]\s*×[^)）]*[)）]/u.exec(name);
+          // Slash-joined names may be coauthors or one stage name; do not guess which to remove.
+          if (note && /[/／&＆・]/u.test(name.slice(0, note.index))) ambiguousAnnotation = true;
+          return !note;
+        });
+        return kept.length === names.length ? entry : Object.assign({}, entry, { value: kept.join(', ') });
+      }).filter(function (entry) { return entry.value; });
+      scopedRoles[role] = namedSections.size > 0 || hasBoundary;
       // Repeated role lines in the same scope describe co-contributors.
       // Split only list punctuation; preserve slashes and parenthesized band names.
       var values = Array.from(new Set(selected.flatMap(function (entry) {
@@ -333,7 +361,7 @@
         if (!sections.has(entry.section)) sections.set(entry.section, new Set());
         creditNames(entry.value).forEach(function (name) { sections.get(entry.section).add(normalized(name)); });
       });
-      var conflict = new Set(Array.from(sections.values()).map(function (names) {
+      var conflict = ambiguousAnnotation || new Set(Array.from(sections.values()).map(function (names) {
         return Array.from(names).sort().join('|');
       })).size > 1;
       credits[role] = !conflict && !ambiguous && creditTarget.isValidCreditValue(joined, title) ? joined : '';
@@ -349,7 +377,7 @@
           : 'unknown';
       }
     });
-    return { credits: credits, evidence: evidence, held: held, reasons: reasons, candidateLines: candidateLines,
+    return { credits: credits, evidence: evidence, held: held, reasons: reasons, candidateLines: candidateLines, scopedRoles: scopedRoles, multipleSongs: namedSections.size > 1 || hasBoundary,
       topicNames: topicLineNames(description), nonSongLines: nonSongLines, linkedSong: linkedSong, metaValues: metaValues };
   }
 
@@ -429,6 +457,7 @@
       if (creditTarget.creditIsBlank(saved) || creditTarget.effectiveRoleSource(record, role) === 'manual') return null;
       var cleanup = creditTarget.cleanupCreditValue(saved, record.title);
       var analysis = result.maintenance;
+      if ((analysis.multipleSongs && !value) || (analysis.reasons || {})[role] === 'conflict') return null;
       // Soundtrack uploads are the music itself even when the description says BGM.
       var nonSongCheck = creditTarget.effectiveRoleSource(record, role) === 'general'
         && !/\bOST\b|サウンドトラック|soundtrack/iu.test(record.title || '') && analysis.linkedSong === false;
@@ -441,11 +470,20 @@
       // An honorific alone is usual in cover credits, so it is cleaned rather than cleared.
       var annotated = nonSongCheck && chunks.length && chunks.every(function (chunk) { return creditTarget.cleanupCreditValue(chunk, record.title); })
         && chunks.some(function (chunk) { return !HONORIFIC_ONLY.test(creditTarget.cleanupCreditValue(chunk, record.title).removed); })
-        && (analysis.candidateLines[role] || []).length;
+        && ((analysis.candidateLines[role] || []).length || /耐久動画/u.test(record.title || ''));
       if (material || annotated) {
         return { videoId: record.videoId, role: role, value: '', source: 'description-nonsong',
           sourceDetail: 'https://www.youtube.com/watch?v=' + record.videoId,
-          evidence: material ? (material.heading + '\n' + material.line).trim() : analysis.candidateLines[role].join('\n'), selected: false };
+          evidence: material ? (material.heading + '\n' + material.line).trim() : analysis.candidateLines[role].join('\n') || (record.title + '\n' + saved), selected: false };
+      }
+      // Scoped evidence takes precedence over cosmetic cleanup of a contaminated saved list.
+      if (cleanup && analysis.scopedRoles && analysis.scopedRoles[role]) {
+        if (!value) return null;
+        var scopedCleanup = creditTarget.cleanupCreditValue(value, record.title);
+        var scopedValue = scopedCleanup ? scopedCleanup.value : value;
+        if (sameContributors(scopedValue, saved) || !creditTarget.isValidCreditValue(scopedValue, result.title)) return null;
+        return { videoId: record.videoId, role: role, value: scopedValue, source: 'description-cleanup',
+          sourceDetail: 'https://www.youtube.com/watch?v=' + record.videoId, evidence: analysis.evidence[role], selected: false };
       }
       // A name followed by a separate singer credit came from another song's line; a slash-joined singer is the same line.
       if (nonSongCheck && chunks.length > 1) {
@@ -549,7 +587,7 @@
     var removed = before.filter(function (name, i) { return afterKeys.indexOf(beforeKeys[i]) === -1; });
     return added.length || removed.length ? { kind: 'names', added: added, removed: removed } : { kind: 'spelling' };
   }
-  var api = { distinctNames: distinctNames, removesOnlyMeta: removesOnlyMeta, stampFlags: stampFlags, changeSummary: changeSummary, scriptOnlyRename: scriptOnlyRename, proposalBucket: proposalBucket, pendingProposals: pendingProposals, exportItem: exportItem, analyze: analyze, targets: targets, candidates: candidates, scan: scan, isRemix: isRemix,
+  var api = { distinctNames: distinctNames, removesOnlyMeta: removesOnlyMeta, stampFlags: stampFlags, changeSummary: changeSummary, scriptOnlyRename: scriptOnlyRename, proposalBucket: proposalBucket, pendingProposals: pendingProposals, exportItem: exportItem, analyze: analyze, targets: targets, candidates: candidates, scan: scan, isRemix: isRemix, isInstrumental: isInstrumental,
     recheckStamp: recheckStamp, PARSER_REVISION: PARSER_REVISION, PROPOSAL_REVISION: PROPOSAL_REVISION, sameContributors: sameContributors,
     compareNames: compareNames, namesOnTopicLine: namesOnTopicLine, topicLineNames: topicLineNames,
     mixedJapaneseNames: mixedJapaneseNames, createArtistReadingLookup: createArtistReadingLookup,
