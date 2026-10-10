@@ -137,6 +137,17 @@ async function main() {
     assert.deepEqual(proposals(row('typonote002','Song',{composer:'Alice, Bob'}),desc),[]);
     assert.equal(analyze(desc,'Song').credits.composer,'');
   });
+  await check('REQ-8 a restored proposal is rechecked when its video is due',async()=>{
+    const r=row('lM5AmnYRSyk','排除くん耐久動画',{composer:'吉田 拓郎 歌唱：キャンディーズ',creditsSource:'enrich:same-song'});
+    r.creditsRecheck=CM.recheckStamp(r,true,true,true,true);
+    const storage={creditRecheckProposalsV1:[{videoId:r.videoId,role:'composer',value:'吉田 拓郎',source:'description-cleanup',selected:false,
+      rev:CM.PROPOSAL_REVISION,savedValue:r.composer,savedSource:'enrich:same-song'}]};
+    const ui=boot('en','success','success','ja',true,storage);
+    ui.setRecords([r]); await ui.review.restoreProposals();
+    const before=ui.ports.length;
+    ui.start([r]);
+    assert.equal(ui.ports.length,before+1,'the restored video must be fetched again');
+  });
   console.log(`RESULT: ${passed} passed / ${failed} failed`); process.exitCode=failed?1:0;
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});

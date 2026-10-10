@@ -33,7 +33,9 @@
     }
   }
   function create(env) {
-    var checked = new Set(), snapshots = new Map(), candidates = new Map();
+    // checked counts what this page shows; scanned holds only videos fetched here, so a
+    // restored proposal is still rechecked when its video is due.
+    var checked = new Set(), scanned = new Set(), snapshots = new Map(), candidates = new Map();
     var port = null, failed = 0, held = 0;
     var exports = new Map(), exportScopes = new Set();
     var start = document.getElementById('creditRecheckStart');
@@ -222,7 +224,7 @@
       save.disabled = copy.disabled;
       adoptAll.disabled = !!port || mbRunning || adopting || !review.adoptable(ownProposal).length;
       undoAll.disabled = !!port || adopting || !((review.lastBatch && review.lastBatch.length));
-      var remaining = root.CreditMaintenance.targets(scanRecords(), scope.value, checked, 500, root.CreditTarget, includeStamped, mbOn()).length;
+      var remaining = root.CreditMaintenance.targets(scanRecords(), scope.value, scanned, 500, root.CreditTarget, includeStamped, mbOn()).length;
       status.textContent = message('history_recheckProgress',
         'このページで点検 ' + checked.size + '件／変更案 ' + candidates.size + '項目／保留 ' + held + '件／取得失敗 ' + failed + '件／未点検 ' + (remaining === 500 ? '500+' : remaining) + '件',
         [checked.size, candidates.size, held, failed, remaining === 500 ? '500+' : remaining]);
@@ -412,13 +414,13 @@
     // a YouTube-side stop (bot check, no tab) or unticking the box ends the run.
     function continueRun() {
       if (stopRequested || !continueBox || !continueBox.checked || port) return;
-      if (!root.CreditMaintenance.targets(scanRecords(), scope.value, checked, 1, root.CreditTarget, includeStamped, mbOn()).length) return;
+      if (!root.CreditMaintenance.targets(scanRecords(), scope.value, scanned, 1, root.CreditTarget, includeStamped, mbOn()).length) return;
       root.setTimeout(function () { if (!stopRequested && !port) runBatch(); }, 1500);
     }
     function runBatch() {
       if (port || review.busy.size || restoring) return;
       if (!limit.checkValidity()) { limit.reportValidity(); return; }
-      var records = root.CreditMaintenance.targets(scanRecords(), scope.value, checked, limit.value, root.CreditTarget, includeStamped, mbOn());
+      var records = root.CreditMaintenance.targets(scanRecords(), scope.value, scanned, limit.value, root.CreditTarget, includeStamped, mbOn());
       if (!records.length) { summary(); return; }
       if (!env.begin()) {
         status.textContent = message('history_enrich_busy', '他のメンテナンス処理が実行中'); return;
@@ -434,7 +436,7 @@
         if (data.type === 'PROGRESS') {
           var record = batch.get(data.videoId);
           if (!record) return;
-          checked.add(record.videoId);
+          checked.add(record.videoId); scanned.add(record.videoId);
           var result = data.result;
           if (result && result.ok) {
             ['composer', 'lyricist', 'arranger'].forEach(function (role) {
@@ -581,7 +583,7 @@
     includeChecked.addEventListener('change', function () {
       if (port) { includeChecked.checked = includeStamped; return; }
       includeStamped = includeChecked.checked;
-      if (includeStamped) checked.clear();
+      if (includeStamped) { checked.clear(); scanned.clear(); }
       copyStatus.textContent = ''; summary();
     });
     function buildReport() {

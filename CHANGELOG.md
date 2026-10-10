@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.76 (2026-10-11)
+
+- A proposal kept from an earlier recheck no longer counts as checked on the reopened page, so its video is fetched again when due and an outdated proposal is replaced.
+
 ## v1.60.75 (2026-10-11)
 
 - A credit copied from another video of the same song is cleared, like a description credit, when it carries another work's singer note and the video is not a song (for example an endurance clip). It was only trimmed before, keeping the wrong composer.
