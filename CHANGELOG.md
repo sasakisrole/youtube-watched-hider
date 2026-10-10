@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.75 (2026-10-11)
+
+- A credit copied from another video of the same song is cleared, like a description credit, when it carries another work's singer note and the video is not a song (for example an endurance clip). It was only trimmed before, keeping the wrong composer.
+
 ## v1.60.74 (2026-10-10)
 
 - Saved credit rechecks use the matching song section before cleaning old values, and hold ambiguous multi-song credits. Compound music, lyrics and arrangement labels are read together.

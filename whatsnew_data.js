@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.75",
+    "date": "2026-10-11",
+    "summary": "",
+    "points": [
+      "A credit copied from another video of the same song is cleared, like a description credit, when it carries another work's singer note and the video is not a song (for example an endurance clip). It was only trimmed before, keeping the wrong composer."
+    ]
+  },
+  {
     "version": "1.60.74",
     "date": "2026-10-10",
     "summary": "",

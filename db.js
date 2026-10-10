@@ -495,7 +495,7 @@ if (typeof WatchedDB === 'undefined') {
           }
           // Review-center adoption may replace an unverified automatic value,
           // but it must never be usable as a back door to overwrite manual data.
-          if (adoptCandidate && ((nextIsBlank && !clearNonSong) || currentSource === 'manual' || (clearNonSong && currentSource !== 'general'))) {
+          if (adoptCandidate && ((nextIsBlank && !clearNonSong) || currentSource === 'manual' || (clearNonSong && !['general', 'enrich:same-song'].includes(currentSource)))) {
             result = { error: currentSource === 'manual' ? 'already_verified' : 'invalid_value' };
             return;
           }

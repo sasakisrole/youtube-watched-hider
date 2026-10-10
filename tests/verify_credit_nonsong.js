@@ -62,6 +62,18 @@ async function main(){
     const undone = await api.setManualCreditRole({videoId:record.videoId,role:'composer',value:saved.previous.value,expectedCurrent:'',expectedSource:saved.post.source,restoreRoleSource:explicit?'general':null});
     check('undo restores value and source marker '+explicit,()=>{assert.equal(undone.updated,true);assert.equal(store.get(record.videoId).composer,record.composer);assert.deepEqual(store.get(record.videoId).creditRoleSources,record.creditRoleSources);assert.equal(store.get(record.videoId).creditReviewUndo,undefined);});
   }
+  {
+    const donor = {videoId:'lM5AmnYRSyk',title:'排除くん耐久動画｜アニメ『銀河特急 ミルキー☆サブウェイ』',composer:'吉田 拓郎 歌唱：キャンディーズ',creditsSource:'enrich:same-song',creditRoleSources:{}};
+    const p = proposals(donor,'第5話「排除くん」にて、排除くんから流れる音楽を特別に公開！/n▶️https://youtu.be/UqEgW4dUHuc');
+    check('a same-song copy with another song credit is cleared',()=>{assert.equal(p.length,1);assert.equal(p[0].source,'description-nonsong');assert.equal(p[0].value,'');});
+    const {api,store} = loadRealDb([donor]);
+    const saved = await api.setManualCreditRole({videoId:donor.videoId,role:'composer',value:'',expectedCurrent:donor.composer,expectedSource:'enrich:same-song',adoptCandidate:true,adoptSource:'description-nonsong'});
+    check('the same-song clear is adopted through the real DB',()=>{assert.equal(saved.updated,true);assert.equal(store.get(donor.videoId).composer,'');});
+    const undone = await api.setManualCreditRole({videoId:donor.videoId,role:'composer',value:saved.previous.value,expectedCurrent:'',expectedSource:saved.post.source,restoreRoleSource:null});
+    check('undo restores the same-song value',()=>{assert.equal(undone.updated,true);assert.equal(store.get(donor.videoId).composer,donor.composer);assert.equal(CT.effectiveRoleSource(store.get(donor.videoId),'composer'),'enrich:same-song');});
+    const rule = await loadRealDb([{...donor,creditsSource:'enrich:rule'}]).api.setManualCreditRole({videoId:donor.videoId,role:'composer',value:'',expectedCurrent:donor.composer,expectedSource:'enrich:rule',adoptCandidate:true,adoptSource:'description-nonsong'});
+    check('a rule-filled value still cannot be cleared',()=>assert.equal(rule.error,'invalid_value'));
+  }
   console.log(`RESULT: ${passed} passed / 0 failed`);
 }
 main().catch(e=>{console.error(e);process.exit(1);});

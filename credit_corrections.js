@@ -6,7 +6,7 @@
   var PARSER_REVISION = '2026-10-10.2';
   // Bump when proposal rules change without a parser change: stored proposals
   // from older rules are dropped and their videos become recheck targets again.
-  var PROPOSAL_REVISION = '2026-10-10.4';
+  var PROPOSAL_REVISION = '2026-10-11.1';
   function normalized(value) {
     return String(value || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
   }
@@ -459,7 +459,7 @@
       var analysis = result.maintenance;
       if ((analysis.multipleSongs && !value) || (analysis.reasons || {})[role] === 'conflict') return null;
       // Soundtrack uploads are the music itself even when the description says BGM.
-      var nonSongCheck = creditTarget.effectiveRoleSource(record, role) === 'general'
+      var nonSongCheck = ['general', 'enrich:same-song'].indexOf(creditTarget.effectiveRoleSource(record, role)) !== -1
         && !/\bOST\b|サウンドトラック|soundtrack/iu.test(record.title || '') && analysis.linkedSong === false;
       // A song's own MV can name its tie-in or supplier, so material lines count only when no heading or Topic row ties the description to this title.
       var material = nonSongCheck && (analysis.nonSongLines || []).find(function (entry) {
