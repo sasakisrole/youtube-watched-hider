@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.60.71 (2026-10-10)
+
+- Opening the analysis folds the data management panel so the analysis starts right below the search box; closing it restores the panel as it was. Recent jobs collapse into one line with a count and open on demand.
+- Rename the Performers credit list to Artist credits: it holds the Topic channel's own artist name, which can be a project, a band or the composer, plus characters credited with a voice actor.
+
 ## v1.60.70 (2026-10-10)
 
 - Split the unassigned credit list: the channel's artist and characters credited with a voice actor move to a new Performers list, labels and sound teams to a new Labels list, and Unassigned keeps only names whose role is unknown.

@@ -1,6 +1,6 @@
 {
-  "history_rawPerformer": {"message": "Performers"},
-  "history_rawPerformerHint": {"message": "Names without a role that are the channel's artist or a character credited with a voice actor"},
+  "history_rawPerformer": {"message": "Artist credits"},
+  "history_rawPerformerHint": {"message": "Names without a role that are the Topic channel's own artist name (a project, band or the composer) or a character credited with a voice actor"},
   "history_rawLabel": {"message": "Labels"},
   "history_rawLabelHint": {"message": "Names without a role that look like a label or sound team"},
   "history_participants": {"message": "Participation"},

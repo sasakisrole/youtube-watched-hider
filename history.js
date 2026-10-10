@@ -445,6 +445,7 @@ if (filterNoChannelBtn) {
 const fixStatus = document.getElementById('fixStatus');
 const jobProgressBar = document.getElementById('jobProgressBar');
 const jobRecentList = document.getElementById('jobRecentList');
+const jobRecentCount = document.getElementById('jobRecentCount');
 const JOB_CURRENT_KEY = 'ytwh.job.current';
 const JOB_RECENT_KEY = 'ytwh.job.recent';
 let displayedJob = null;
@@ -468,6 +469,7 @@ function renderJob(job, recent = recentJobs) {
     jobProgressBar.style.width = `${percent}%`;
   }
 
+  if (jobRecentCount) jobRecentCount.textContent = recentJobs.length ? `(${recentJobs.length})` : '';
   if (jobRecentList) {
     jobRecentList.textContent = '';
     const stateLabels = {
@@ -606,6 +608,12 @@ function updateMaintToggleLock() {
 
 if (maintToggle && maintPanel) {
   setMaintOpen(readMaintOpenPref(), false);
+  const analyzeToggle = document.getElementById('toggleAnalyze');
+  // Runs after analyzer.js has flipped the button's active state.
+  if (analyzeToggle) analyzeToggle.addEventListener('click', () => setTimeout(() => {
+    if (hasRunningMaintenance()) return;
+    setMaintOpen(analyzeToggle.classList.contains('active') ? false : readMaintOpenPref(), false);
+  }, 0));
   maintToggle.addEventListener('click', () => {
     if (hasRunningMaintenance()) return;
     setMaintOpen(maintPanel.hidden);

@@ -3,6 +3,15 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.71",
+    "date": "2026-10-10",
+    "summary": "",
+    "points": [
+      "Opening the analysis folds the data management panel so the analysis starts right below the search box; closing it restores the panel as it was. Recent jobs collapse into one line with a count and open on demand.",
+      "Rename the Performers credit list to Artist credits: it holds the Topic channel's own artist name, which can be a project, a band or the composer, plus characters credited with a voice actor."
+    ]
+  },
+  {
     "version": "1.60.70",
     "date": "2026-10-10",
     "summary": "",

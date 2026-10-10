@@ -616,6 +616,12 @@
       font-variant-numeric: tabular-nums;
     }
     #jobRecentList li + li { margin-top: 4px; }
+    .job-recent summary { cursor: pointer; display: flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 12px; }
+    .job-recent[open] summary { margin-bottom: 6px; }
+    .job-recent summary::-webkit-details-marker { display: none; }
+    .job-recent summary .chev { width: 14px; height: 14px; transition: transform .15s; }
+    .job-recent[open] summary .chev { transform: rotate(90deg); }
+    #jobRecentCount { font-variant-numeric: tabular-nums; }
 
     .enrich-btn {
       display: inline-flex;
@@ -1249,10 +1255,10 @@
         <label class="chk" data-i18n-title="history_skipCheckedTitle" title="一度調べた動画をしばらく再取得しない。何か補完できた動画は30日、概要欄に情報が無くて空のままだった動画は180日→360日→720日と間隔が延びる（同じ概要欄を読み直しても埋まらないため）。外すと、空きのある動画を間隔に関係なく全部取り直す"><input type="checkbox" id="skipCreditsChecked" checked><span data-i18n="history_skipChecked">チェック済みスキップ</span></label>
         <label class="chk" data-i18n-title="history_includeGeneralTitle" title="非Topicチャンネル（MV・公式配信など）も対象にする。ラベル付き行のみ採用"><input type="checkbox" id="includeGeneralCredits"><span data-i18n="history_includeGeneral">一般も含める</span></label>
       </div>
-      <div class="maint-group">
-        <span class="toolbar-label" id="jobRecentLabel" data-i18n="history_recentJobs">最近の処理</span>
+      <details class="maint-group job-recent">
+        <summary><svg class="icon chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg><span class="toolbar-label" id="jobRecentLabel" data-i18n="history_recentJobs">最近の処理</span> <span id="jobRecentCount"></span></summary>
         <ol id="jobRecentList" aria-labelledby="jobRecentLabel"></ol>
-      </div>
+      </details>
       <div class="maint-group">
         <button class="maint-toggle" id="repairToggle" type="button" aria-expanded="false" aria-controls="repairPanel">
           <svg class="icon chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
@@ -1470,7 +1476,7 @@
           <button class="sort-btn az-credit-tab" data-credit="arranger" data-i18n="officialArranger">編曲</button>
           <button class="sort-btn az-credit-tab" data-credit="participants" data-i18n="history_participants">参加</button>
           <button class="sort-btn az-credit-tab" data-credit="raw" data-i18n-title="history_unassignedHint" title="役割不明（Topic「·」区切りで取得した名前のみ。役割が確定したものはここに出ません）" data-i18n="officialUnassigned">未割当</button>
-          <button class="sort-btn az-credit-tab" data-credit="rawPerformer" data-i18n-title="history_rawPerformerHint" title="役割が書かれていない名前のうち、チャンネルの歌手・演奏者と、CV付きのキャラクター名義" data-i18n="history_rawPerformer">演奏者</button>
+          <button class="sort-btn az-credit-tab" data-credit="rawPerformer" data-i18n-title="history_rawPerformerHint" title="役割が書かれていない名前のうち、Topic チャンネルの持ち主として登録されている名前（企画・バンド・作曲家本人など）と、CV付きのキャラクター名義" data-i18n="history_rawPerformer">アーティスト名義</button>
           <button class="sort-btn az-credit-tab" data-credit="rawLabel" data-i18n-title="history_rawLabelHint" title="役割が書かれていない名前のうち、レーベル・サウンドチームと思われる名前" data-i18n="history_rawLabel">レーベル</button>
         </div>
         <label class="chk" data-i18n-title="history_includeGeneralHint" title="非Topicチャンネルのクレジットも集計対象にする"><input type="checkbox" id="azIncludeGeneral"><span data-i18n="history_includeGeneral">一般も含める</span></label>
