@@ -1,4 +1,8 @@
 {
+  "history_rawPerformer": {"message": "演奏者"},
+  "history_rawPerformerHint": {"message": "役割が書かれていない名前のうち、チャンネルの歌手・演奏者と、CV付きのキャラクター名義"},
+  "history_rawLabel": {"message": "レーベル"},
+  "history_rawLabelHint": {"message": "役割が書かれていない名前のうち、レーベル・サウンドチームと思われる名前"},
   "history_participants": {"message": "参加"},
   "history_participantRole": {"message": "役割"},
   "history_participantsOnly": {"message": "参加のみ補完（作曲・作詞・編曲は変更しない）"},

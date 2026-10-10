@@ -1,4 +1,8 @@
 {
+  "history_rawPerformer": {"message": "Performers"},
+  "history_rawPerformerHint": {"message": "Names without a role that are the channel's artist or a character credited with a voice actor"},
+  "history_rawLabel": {"message": "Labels"},
+  "history_rawLabelHint": {"message": "Names without a role that look like a label or sound team"},
   "history_participants": {"message": "Participation"},
   "history_participantRole": {"message": "Role"},
   "history_participantsOnly": {"message": "Fill participation only (keep composer, lyricist and arranger unchanged)"},

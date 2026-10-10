@@ -210,11 +210,23 @@
     return 'general';
   }
 
+  // Unassigned Topic names are mostly the performer of the channel, a character
+  // credited with its voice actor, or a label; only the rest has an unknown role.
+  const RAW_LABEL_RE = /\b(?:music|records?|label|entertainment|sound\s*team|games?)\b|\bsound$|\u682a\u5f0f\u4f1a\u793e|\u30ec\u30b3\u30fc\u30c9|\u30df\u30e5\u30fc\u30b8\u30c3\u30af/iu; // 株式会社・レコード・ミュージック
+  function rawCreditKind(name, d) {
+    const artist = String((d && d.channel) || '').replace(/\s+-\s+Topic$/u, '');
+    if (/[（(]\s*CV\b/iu.test(name) || (artist && creditNameKey(name) === creditNameKey(artist))) return 'performer';
+    // An affiliation in brackets ("Name (Label Inc.)") belongs to a person.
+    if (RAW_LABEL_RE.test(name.replace(/[（(][^）)]*[）)]/gu, ''))) return 'label';
+    return 'unknown';
+  }
+  const RAW_FIELDS = { raw: 'unknown', rawPerformer: 'performer', rawLabel: 'label' };
+
   // Build credit -> {count, duration, selfArrangeCount} filtered by source ('all'|'topic'|'general').
   // field === 'raw' = role-unassigned creditsRaw names (Phase B `·` parser output that did not resolve to a role).
   function buildCreditCount(data, field, sourceFilter) {
     const m = new Map();
-    const isRaw = field === 'raw';
+    const isRaw = Object.prototype.hasOwnProperty.call(RAW_FIELDS, field);
     const isParticipant = field === 'participants';
     // self列（セルフアレンジ曲数）は作曲・編曲タブのみ計算する。
     // 作詞/未割当タブで「その人が関わった曲が作曲＝編曲だったか」を表示しても
@@ -229,7 +241,9 @@
       }
       if (sourceFilter && sourceFilter !== 'all' && sourceOf(d) !== sourceFilter) continue;
       const participants = isParticipant ? window.CreditTarget.normalizeParticipants(d.participants) : [];
-      const names = isParticipant ? participants.map(p => p.name) : splitCreditField(isRaw ? d.creditsRaw : d[field]);
+      const names = isParticipant ? participants.map(p => p.name)
+        : isRaw ? splitCreditField(d.creditsRaw).filter(name => rawCreditKind(name, d) === RAW_FIELDS[field])
+        : splitCreditField(d[field]);
       if (!names.length) continue;
       let isSelfArrange = false;
       if (computeSelf) {
