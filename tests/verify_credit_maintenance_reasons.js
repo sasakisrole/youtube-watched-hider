@@ -47,6 +47,16 @@ check('identical repeated lists are not conflicts', () => {
   assert(result.credits.composer);
   assert.equal(result.reasons.composer, undefined);
 });
+check('part arrangements are not the song arranger', () => {
+  for (const [description, arranger] of [
+    ['Arrangement : kz,TAKU INOUE\nStrings Arrangement : Contributor One', 'kz,TAKU INOUE'],
+    ['Arranger：Contributor Two\nDrums arrange：Contributor One', 'Contributor Two'],
+    ['作曲・編曲：Contributor Two\nピアノ編曲：Contributor One', 'Contributor Two'],
+    ['Recording Arranger: Contributor Two', 'Contributor Two'],
+    ['Arranger: Contributor Two\nVocal: Contributor One', 'Contributor Two'],
+  ]) assert.equal(analyze(description).credits.arranger, arranger, description);
+  assert.deepEqual(parser.extractCreditSegments('Electric Bass Guitar, Lyricist, Composer: Contributor One')[0].roles.sort(), ['composer', 'lyricist']);
+});
 
 const record = {videoId: 'sampleVid01', title: 'Alpha', composer: 'Saved One', arranger: 'Saved Two', creditsSource: 'general'};
 function boot(locale, row = record) {

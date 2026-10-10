@@ -3,7 +3,7 @@
   var ROLES = ['composer', 'lyricist', 'arranger'];
   // Bump whenever description parsing or candidate rules change, so every
   // stored recheck stamp expires and those videos become recheck targets again.
-  var PARSER_REVISION = '2026-10-09.2';
+  var PARSER_REVISION = '2026-10-10.1';
   // Bump when proposal rules change without a parser change: stored proposals
   // from older rules are dropped and their videos become recheck targets again.
   var PROPOSAL_REVISION = '2026-10-10.3';

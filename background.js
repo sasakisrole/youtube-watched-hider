@@ -2171,6 +2171,8 @@ function normalizeCreditLabelFormatting(line) {
     });
 }
 
+const CREDIT_PART_PREFIX_RE = /(?:^|[^a-z])(?:strings?|drums?|brass|horns?|guitars?|piano|bass|keyboards?|synth(?:esizer)?s?|chorus|vocals?|percussion|winds?)\s*$/iu;
+
 function extractCreditSegments(line) {
   const bullet = (line.match(/^[ \t]*[・•●■◆▶*\-]\uFE0F?\uFE0E?[ \t]*/u) || [''])[0];
   line = normalizeCreditLabelFormatting(line);
@@ -2205,7 +2207,10 @@ function extractCreditSegments(line) {
     CREDIT_UNKNOWN_LABEL_BOUNDARY_RE.lastIndex = 0;
     const unknownBoundary = CREDIT_UNKNOWN_LABEL_BOUNDARY_RE.exec(value);
     if (unknownBoundary) value = value.slice(0, unknownBoundary.index);
-    return { roles: rolesForCreditLabel(item.label), value, prefix: (line.slice(0, item.index).trim() ? bullet : '') + line.slice(0, item.index) };
+    let roles = rolesForCreditLabel(item.label);
+    // "Strings Arrangement:" or "Drums arrange:" credits one part, not the song's arranger.
+    if (CREDIT_PART_PREFIX_RE.test(line.slice(0, item.index))) roles = roles.filter(role => role !== 'arranger');
+    return { roles, value, prefix: (line.slice(0, item.index).trim() ? bullet : '') + line.slice(0, item.index) };
   });
 }
 

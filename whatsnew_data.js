@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.68",
+    "date": "2026-10-10",
+    "summary": "",
+    "points": [
+      "A part arrangement credit such as \"Strings Arrangement:\" or \"Drums arrange:\" no longer counts as the song's arranger, matching how \"ピアノ編曲\" was already read. The parser revision changes, so every video becomes a recheck target again."
+    ]
+  },
+  {
     "version": "1.60.67",
     "date": "2026-10-10",
     "summary": "",

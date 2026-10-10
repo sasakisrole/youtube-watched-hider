@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.68 (2026-10-10)
+
+- A part arrangement credit such as "Strings Arrangement:" or "Drums arrange:" no longer counts as the song's arranger, matching how "ピアノ編曲" was already read. The parser revision changes, so every video becomes a recheck target again.
+
 ## v1.60.67 (2026-10-10)
 
 - Fewer recheck proposals need visual review. A romanized name seen beside several unrelated Japanese names (for example Diggy-MO' beside different composers) cannot be one of their readings, so adding it is bulk-adoptable. Removing a name that the description gives only as a producer, label, publisher or song title is bulk-adoptable.
