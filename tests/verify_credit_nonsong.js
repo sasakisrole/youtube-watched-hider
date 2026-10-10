@@ -19,6 +19,10 @@ for(const [record,description] of examples) check('synthetic non-song '+record.v
   const p = proposals(record,description); assert.equal(p.length,1); assert.equal(p[0].value,''); assert.equal(p[0].source,'description-nonsong'); assert.equal(CM.proposalBucket(record.composer,p[0]),'visual');
   assert.equal(CT.getCreditReviewStates(record,{candidates:p}).composer.candidates[0].value,'');
 });
+check('an honorific-only cover credit is cleaned, not cleared',()=>{
+  const p = proposals({videoId:'sampleVid04',title:'可愛くてごめん cover',composer:'shito 様',creditsSource:'general'},'作詞作曲：shito 様');
+  assert.equal(p.length,1); assert.equal(p[0].source,'description-cleanup'); assert.equal(p[0].value,'shito');
+});
 check('matching MV is preserved',()=>assert.deepEqual(proposals({title:'Alpha',composer:'Alice',lyricist:'Bob',creditsSource:'general'},'曲名：Alpha\n作曲：Alice\n作詞：Bob'),[]));
 check('matching title prevents annotation-based deletion',()=>assert(proposals({title:'Alpha',composer:'Alice 様',creditsSource:'general'},'曲名：Alpha\n作曲：Alice 様').every(p=>p.source!=='description-nonsong')));
 check('topic and manual are excluded',()=>{for(const src of ['topic','manual']) assert(proposals({...examples[0][0],creditRoleSources:{composer:src}},examples[0][1]).every(p=>p.source!=='description-nonsong'));});

@@ -1,4 +1,5 @@
 {
+  "history_recheckHeldOnly": {"message": "保留・要目視のみ"},
   "history_recheckChangeLabel": {"message": "変更の内容：$VALUE$", "placeholders": {"value": {"content": "$1"}}},
   "history_recheckChangeFormat": {"message": "区切りを「, 」に揃えるだけです（名前は変わりません）"},
   "history_recheckChangeClear": {"message": "この役割の値を消します"},

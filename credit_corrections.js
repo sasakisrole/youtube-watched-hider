@@ -6,7 +6,7 @@
   var PARSER_REVISION = '2026-10-09.2';
   // Bump when proposal rules change without a parser change: stored proposals
   // from older rules are dropped and their videos become recheck targets again.
-  var PROPOSAL_REVISION = '2026-10-10.2';
+  var PROPOSAL_REVISION = '2026-10-10.3';
   function normalized(value) {
     return String(value || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
   }
@@ -119,10 +119,6 @@
     var b = unifyReading(right, sortNames) || String(right || '');
     return compareNames(a, b) === 'same';
   }
-  // True when an added or removed name sits beside a name in the other script
-  // (romanized vs Japanese). Descriptions often credit one person twice, as
-  // "Lyricist: Eiko Shimamiya" and "Lyricist: 島みやえい子"; without a reading
-  // that may be the same person, so such a change is reviewed one by one.
   // Topic descriptions romanize Japanese credits, so a Japanese name facing only
   // a romanized one is a spelling of the same credit, not evidence of a mistake.
   function scriptOnlyRename(saved, proposed) {
@@ -135,16 +131,51 @@
     return gone.length > 0 && gone.length === added.length
       && gone.every(function (name) { return JAPANESE_SCRIPT.test(name); }) && added.every(isLatinName);
   }
-  function scriptMixedChange(saved, proposed) {
+  // True when an added or removed name sits beside a name in the other script
+  // (romanized vs Japanese). Descriptions often credit one person twice, as
+  // "Lyricist: Eiko Shimamiya" and "Lyricist: 島みやえい子"; without a reading
+  // that may be the same person, so such a change is reviewed one by one.
+  // A name in `distinct` was seen beside several unrelated names in the other
+  // script, so it cannot be the reading of any one of them.
+  function scriptMixedChange(saved, proposed, distinct) {
     function script(name) { return isLatinName(name) ? 'latin' : JAPANESE_SCRIPT.test(name) ? 'ja' : ''; }
     var before = creditNames(String(saved || '')), after = creditNames(String(proposed || ''));
     var keysBefore = before.map(normalized), keysAfter = after.map(normalized);
     var changed = after.filter(function (name, i) { return keysBefore.indexOf(keysAfter[i]) === -1; })
       .concat(before.filter(function (name, i) { return keysAfter.indexOf(keysBefore[i]) === -1; }));
     return changed.some(function (name) {
+      if (distinct && distinct.has(normalized(name))) return false;
       var own = script(name);
       return own && after.some(function (other) { var s = script(other); return s && s !== own; });
     });
+  }
+  function distinctNames(entries) {
+    function script(name) { return isLatinName(name) ? 'latin' : JAPANESE_SCRIPT.test(name) ? 'ja' : ''; }
+    var seen = new Map(), aliases = new Set();
+    (entries || []).forEach(function (entry) {
+      // A name MusicBrainz already matched to a Japanese reading is a spelling, not another person.
+      if (entry.source === 'musicbrainz-reading') {
+        var kept = creditNames(String(entry.value || '')).map(normalized);
+        creditNames(String(entry.saved || '')).map(normalized).forEach(function (key) { if (kept.indexOf(key) === -1) aliases.add(key); });
+      }
+      var before = creditNames(String(entry.saved || '')).map(normalized);
+      var after = creditNames(String(entry.value || ''));
+      after.forEach(function (name) {
+        var key = normalized(name), own = script(name);
+        if (!own || before.indexOf(key) !== -1) return;
+        var others = after.filter(function (other) { var s = script(other); return s && s !== own; }).map(normalized);
+        if (!others.length) return;
+        if (!seen.has(key)) seen.set(key, []);
+        seen.get(key).push(others);
+      });
+    });
+    var distinct = new Set();
+    seen.forEach(function (groups, key) {
+      var union = new Set([].concat.apply([], groups));
+      var shared = groups.reduce(function (common, group) { return common.filter(function (name) { return group.indexOf(name) !== -1; }); }, groups[0]);
+      if (groups.length > 1 && union.size > 1 && !shared.length && !aliases.has(key)) distinct.add(key);
+    });
+    return distinct;
   }
   function topicLineNames(description) {
     var lines = String(description || '').split(/\r?\n/), provided = false;
@@ -188,6 +219,9 @@
 
   // Headings bound evidence to a song/version. Unknown or conflicting sections
   // are held for review instead of concatenating everybody in the description.
+  // Lines that name a producer, label, publisher or the song itself, never a role.
+  var META_LABEL = /^(?:producers?|music\s+directors?|(?:music\s+)?labels?|(?:music\s+)?publishers?|(?:music|song)\s+title|曲名|プロデューサー|レーベル)$/iu;
+  var HONORIFIC_ONLY = /^\s*(?:様|さん|氏|先生)\s*$/u;
   function analyze(description, title, extract, clean, creditTarget) {
     var scope = 'current', heading = '', section = 0;
     var targetKeys = titleKeys(title);
@@ -202,7 +236,7 @@
     var namedKey = '';
     var entries = [], excluded = [], hasVersionSections = false;
     var candidateLines = { composer: [], lyricist: [], arranger: [] };
-    var nonSongLines = [], linkedSong = false;
+    var nonSongLines = [], linkedSong = false, metaValues = [];
     var materialHeading = '';
     // Only attribution labels count; a phrase such as "Event Menu BGM" names the track itself.
     var materialPattern = /(?:^|[\s【\[■◆●▼・#])BGM\s*(?:[:：】\]]|by\b|提供)|使用楽曲|使用曲|音楽素材|使用素材|使用させていただいた素材|Music provided by/iu;
@@ -240,6 +274,10 @@
       if (trimmed.includes(' · ') && targetKeys.has(normalized(trimmed.split(' · ')[0]))) linkedSong = true;
       var titleLine = /^(?:music\s+title|song\s+title|曲名)\s*[:：]\s*(.+)$/iu.exec(trimmed);
       if (titleLine && targetKeys.has(normalized(titleLine[1]))) linkedSong = true;
+      var meta = /^([^:：]{2,40}?)\s*[:：]\s*(.+)$/u.exec(trimmed);
+      if (meta && meta[1].split(/\s*[,，&\/／]\s*/u).every(function (label) { return META_LABEL.test(label.trim()); })) {
+        metaValues.push(normalized(meta[2]));
+      }
       if (materialPattern.test(trimmed) || (materialHeading && segments.length)) {
         nonSongLines.push({line: trimmed, heading: materialHeading, roles: segments.flatMap(function (s) { return s.roles; })});
       }
@@ -312,7 +350,7 @@
       }
     });
     return { credits: credits, evidence: evidence, held: held, reasons: reasons, candidateLines: candidateLines,
-      topicNames: topicLineNames(description), nonSongLines: nonSongLines, linkedSong: linkedSong };
+      topicNames: topicLineNames(description), nonSongLines: nonSongLines, linkedSong: linkedSong, metaValues: metaValues };
   }
 
   // A stamp covers the parser revision and the role values it saw; a later
@@ -322,19 +360,23 @@
   // ':src' marks a check that also looked at confirmed values (since v1.60.51);
   // only videos that have one are revisited for it, not the whole history.
   // ':artist' records the exact-name reading check for mixed-script fields.
-  function recheckStamp(record, withMb, withSource, withArtist) {
+  // ':held' / ':clear' record whether the video still had held roles or proposals
+  // needing review; stamps without either predate it and count as unknown.
+  function recheckStamp(record, withMb, withSource, withArtist, held) {
     var text = PARSER_REVISION + '\u001f' + ROLES.map(function (role) { return String((record && record[role]) || ''); }).join('\u001f');
     var hash = 5381;
     for (var i = 0; i < text.length; i++) hash = ((hash * 33) ^ text.charCodeAt(i)) >>> 0;
-    return PARSER_REVISION + ':' + hash.toString(16) + (withMb ? ':mb' : '') + (withSource ? ':src' : '') + (withArtist ? ':artist' : '');
+    return PARSER_REVISION + ':' + hash.toString(16) + (withMb ? ':mb' : '') + (withSource ? ':src' : '') + (withArtist ? ':artist' : '')
+      + (held === true ? ':held' : held === false ? ':clear' : '');
   }
   // Flags of a stamp for the record's current values, or null when stale.
   function stampFlags(record) {
     var stamp = String((record && record.creditsRecheck) || ''), base = recheckStamp(record);
     if (stamp.indexOf(base) !== 0) return null;
     var rest = stamp.slice(base.length);
-    if (!/^(?::mb)?(?::src)?(?::artist)?$/.test(rest)) return null;
-    return { mb: rest.indexOf(':mb') !== -1, source: rest.indexOf(':src') !== -1, artist: rest.indexOf(':artist') !== -1 };
+    if (!/^(?::mb)?(?::src)?(?::artist)?(?::held|:clear)?$/.test(rest)) return null;
+    return { mb: rest.indexOf(':mb') !== -1, source: rest.indexOf(':src') !== -1, artist: rest.indexOf(':artist') !== -1,
+      held: /:held$/.test(rest) ? true : /:clear$/.test(rest) ? false : undefined };
   }
   // Confirmed (manual) roles are only revisited by a MusicBrainz check, and
   // only when romanized, since the sole change allowed to them is the same
@@ -357,6 +399,8 @@
       var mixedReading = !!withMb && ROLES.some(function (role) { return mixedJapaneseNames(record[role]).length; });
       var cleanupDue = ROLES.some(function (role) { return creditTarget.effectiveRoleSource(record, role) !== 'manual' && creditTarget.cleanupCreditValue(record[role], record.title); });
       var due = cleanupDue || includeStamped || !flags || (mixedReading && !flags.artist) || (!!withMb && !flags.mb && (auto || manualReading)) || (manualValue && !flags.source);
+      // The held scope revisits only videos left with held roles or proposals to review.
+      if (scope === 'held') due = !flags || flags.held !== false;
       return /^[\w-]{11}$/.test(record.videoId || '') && (!checked || !checked.has(record.videoId))
         && due && (scope !== 'remix' || isRemix(record.title)) && (auto || manualReading || manualValue);
     }).slice(0, Math.max(1, Math.min(500, Number(limit) || 50)));
@@ -368,6 +412,15 @@
       var escaped = name.normalize('NFKC').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       return new RegExp('(?:^|[^\\p{L}\\p{N}])' + escaped + '(?:$|[^\\p{L}\\p{N}])', 'iu').test(text);
     });
+  }
+  // True when the change only drops names that the description gives as a
+  // producer, label, publisher or song title, so nothing about the credit is guessed.
+  function removesOnlyMeta(saved, value, metaValues) {
+    var before = creditNames(String(saved || '')), after = creditNames(String(value || '')).map(normalized);
+    var keys = before.map(normalized);
+    var removed = keys.filter(function (key) { return after.indexOf(key) === -1; });
+    return removed.length > 0 && after.every(function (key) { return keys.indexOf(key) !== -1; })
+      && removed.every(function (key) { return (metaValues || []).indexOf(key) !== -1; });
   }
   function candidates(record, result, creditTarget) {
     if (!result || !result.ok || !result.maintenance) return [];
@@ -385,7 +438,9 @@
       });
       // Every name carrying an honorific or a singer note means the value was copied from another work's credit line.
       var chunks = creditNames(String(saved));
+      // An honorific alone is usual in cover credits, so it is cleaned rather than cleared.
       var annotated = nonSongCheck && chunks.length && chunks.every(function (chunk) { return creditTarget.cleanupCreditValue(chunk, record.title); })
+        && chunks.some(function (chunk) { return !HONORIFIC_ONLY.test(creditTarget.cleanupCreditValue(chunk, record.title).removed); })
         && (analysis.candidateLines[role] || []).length;
       if (material || annotated) {
         return { videoId: record.videoId, role: role, value: '', source: 'description-nonsong',
@@ -416,9 +471,11 @@
       }
       if (source === 'description-recheck' && scriptOnlyRename(saved, value)) return null;
       if (!creditTarget.isValidCreditValue(value, result.title)) return null;
-      return { videoId: record.videoId, role: role, value: value,
+      var proposal = { videoId: record.videoId, role: role, value: value,
         source: source, sourceDetail: 'https://www.youtube.com/watch?v=' + record.videoId,
         evidence: result.maintenance.evidence[role], selected: false };
+      if (source === 'description-recheck' && removesOnlyMeta(saved, value, analysis.metaValues)) proposal.metaOnly = true;
+      return proposal;
     }).filter(Boolean);
   }
 
@@ -461,13 +518,14 @@
     return { success: true, processed: processed, total: ids.length, failed: failed, stopped: stopped, aborted: !!(signal && signal.aborted) };
   }
   // Recheck-only presentation policy; history verification states stay unchanged.
-  function proposalBucket(saved, proposal, adopted) {
+  function proposalBucket(saved, proposal, adopted, distinct) {
     if (adopted) return 'adopted';
     var value = proposal.value === undefined ? proposal.to : proposal.value;
+    if (proposal.metaOnly && proposal.source === 'description-recheck') return 'bulk';
     if (proposal.source === 'description-nonsong' || proposal.source === 'description-cleanup'
       || (JAPANESE_SCRIPT.test(String(saved || '').normalize('NFKC')) && isLatinName(value))) return 'visual';
     var adds = compareNames(saved, value) === 'adds' || compareNames(value, saved) === 'adds';
-    return adds && scriptMixedChange(saved, value) ? 'visual' : 'bulk';
+    return adds && scriptMixedChange(saved, value, distinct) ? 'visual' : 'bulk';
   }
   function pendingProposals(entries, records, creditTarget) {
     var byId = new Map(records.map(function (r) { return [r.videoId, r]; }));
@@ -491,7 +549,7 @@
     var removed = before.filter(function (name, i) { return afterKeys.indexOf(beforeKeys[i]) === -1; });
     return added.length || removed.length ? { kind: 'names', added: added, removed: removed } : { kind: 'spelling' };
   }
-  var api = { changeSummary: changeSummary, scriptOnlyRename: scriptOnlyRename, proposalBucket: proposalBucket, pendingProposals: pendingProposals, exportItem: exportItem, analyze: analyze, targets: targets, candidates: candidates, scan: scan, isRemix: isRemix,
+  var api = { distinctNames: distinctNames, removesOnlyMeta: removesOnlyMeta, stampFlags: stampFlags, changeSummary: changeSummary, scriptOnlyRename: scriptOnlyRename, proposalBucket: proposalBucket, pendingProposals: pendingProposals, exportItem: exportItem, analyze: analyze, targets: targets, candidates: candidates, scan: scan, isRemix: isRemix,
     recheckStamp: recheckStamp, PARSER_REVISION: PARSER_REVISION, PROPOSAL_REVISION: PROPOSAL_REVISION, sameContributors: sameContributors,
     compareNames: compareNames, namesOnTopicLine: namesOnTopicLine, topicLineNames: topicLineNames,
     mixedJapaneseNames: mixedJapaneseNames, createArtistReadingLookup: createArtistReadingLookup,

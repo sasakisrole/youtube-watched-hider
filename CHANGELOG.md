@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.60.67 (2026-10-10)
+
+- Fewer recheck proposals need visual review. A romanized name seen beside several unrelated Japanese names (for example Diggy-MO' beside different composers) cannot be one of their readings, so adding it is bulk-adoptable. Removing a name that the description gives only as a producer, label, publisher or song title is bulk-adoptable.
+- A non-song credit that only carries an honorific such as 様 (common in cover credits) is cleaned instead of cleared.
+- Add a "Held and needs review only" recheck scope. Each check now records whether the video was left with held roles or proposals to review; videos checked before this version are included until they are checked again.
+
 ## v1.60.66 (2026-10-10)
 
 - Stop proposing to replace a saved Japanese name with the romanized spelling from a Topic description (for example 宮崎誠 to Makoto Miyazaki). The two are treated as spellings of the same credit, so the Japanese name stays; proposals that add or remove people are unchanged. Saved proposals from the previous rules are rebuilt on the next recheck.

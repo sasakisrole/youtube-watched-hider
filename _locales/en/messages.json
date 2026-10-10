@@ -1,4 +1,5 @@
 {
+  "history_recheckHeldOnly": {"message": "Held and needs review only"},
   "history_recheckChangeLabel": {"message": "Change: $VALUE$", "placeholders": {"value": {"content": "$1"}}},
   "history_recheckChangeFormat": {"message": "Separators only become \", \" (names stay the same)"},
   "history_recheckChangeClear": {"message": "Clears this role"},

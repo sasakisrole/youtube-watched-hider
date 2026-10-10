@@ -3,6 +3,16 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.67",
+    "date": "2026-10-10",
+    "summary": "",
+    "points": [
+      "Fewer recheck proposals need visual review. A romanized name seen beside several unrelated Japanese names (for example Diggy-MO' beside different composers) cannot be one of their readings, so adding it is bulk-adoptable. Removing a name that the description gives only as a producer, label, publisher or song title is bulk-adoptable.",
+      "A non-song credit that only carries an honorific such as 様 (common in cover credits) is cleaned instead of cleared.",
+      "Add a \"Held and needs review only\" recheck scope. Each check now records whether the video was left with held roles or proposals to review; videos checked before this version are included until they are checked again."
+    ]
+  },
+  {
     "version": "1.60.66",
     "date": "2026-10-10",
     "summary": "",

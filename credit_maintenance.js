@@ -57,6 +57,24 @@
     // Confirmed values rewritten only from a romanized name to the Japanese name
     // with the same MusicBrainz reading; applied and undone with adopt-all.
     var readingFixes = new Map();
+    // Bucket checks run for every card, so the cross-proposal name index is
+    // rebuilt only after a proposal is added or removed.
+    var proposalVersion = 0, distinctCache = null;
+    [candidates, readingFixes].forEach(function (map) {
+      ['set', 'delete', 'clear'].forEach(function (method) {
+        var original = map[method];
+        map[method] = function () { proposalVersion++; return original.apply(map, arguments); };
+      });
+    });
+    function distinct() {
+      if (distinctCache && distinctCache.version === proposalVersion) return distinctCache.names;
+      var names = root.CreditMaintenance.distinctNames(allProposals().map(function (p) {
+        var record = snapshots.get(p.videoId) || {};
+        return { saved: p.savedValue === undefined ? record[p.role] : p.savedValue, value: p.value, source: p.source };
+      }));
+      distinctCache = { version: proposalVersion, names: names };
+      return names;
+    }
     var storageKey = 'creditRecheckProposalsV1', storageReady = false, storageQueue = Promise.resolve(), restoring = false;
     var bucketLabels = {
       bulk: message('history_recheckBucketBulk', 'まとめて採用'),
@@ -76,7 +94,7 @@
       var proposal = readingFixes.get(key) || candidates.get(key) || (item.candidates || [])[0] || {};
       var record = snapshots.get(item.videoId) || {};
       return root.CreditMaintenance.proposalBucket(proposal.savedValue === undefined ? record[item.role] : proposal.savedValue,
-        proposal, !!(review && review.undoActions && review.undoActions.has(key)));
+        proposal, !!(review && review.undoActions && review.undoActions.has(key)), distinct());
     }
     function bucketCounts() {
       var counts = { bulk: 0, visual: 0, adopted: 0 };
@@ -150,9 +168,17 @@
         return /^ja\b/i.test(String(lang || 'ja'));
       } catch (_error) { return true; }
     }
-    function stampRecord(record, withMb, withArtist) {
+    // A video stays in the held scope while it has held roles or a proposal to review.
+    function needsReview(videoId, heldRoles) {
+      return !!heldRoles || ['composer', 'lyricist', 'arranger'].some(function (role) {
+        var key = videoId + ':' + role;
+        return (readingFixes.has(key) || candidates.has(key)) && bucketFor({ videoId: videoId, role: role }) === 'visual';
+      });
+    }
+    function stampRecord(record, withMb, withArtist, heldRoles) {
       if (typeof env.markRechecked !== 'function') return;
-      Promise.resolve(env.markRechecked(record.videoId, root.CreditMaintenance.recheckStamp(record, withMb, true, withArtist))).catch(function () {});
+      var stamp = root.CreditMaintenance.recheckStamp(record, withMb, true, withArtist, needsReview(record.videoId, heldRoles));
+      Promise.resolve(env.markRechecked(record.videoId, stamp)).catch(function () {});
     }
     var review = root.CreditReview.create({
       getRecords: function () { return Array.from(snapshots.values()); },
@@ -355,7 +381,7 @@
         var response = recording ? await lookupMb(job.record) : null;
         if (recording) applyMb(job, response);
         var artistComplete = await applyArtistReadings(job);
-        stampRecord(job.record, !recording || !!(response && response.success), job.artistRoles.length > 0 && artistComplete);
+        stampRecord(job.record, !recording || !!(response && response.success), job.artistRoles.length > 0 && artistComplete, job.held);
         review.refreshReviewList(); summary();
       }
       mbRunning = false; summary();
@@ -419,7 +445,7 @@
           copyStatus.textContent = '';
           // Only a successful fetch counts as checked; failures stay targets. With
           // MusicBrainz on, a queued video is stamped once its lookup finishes.
-          var stampLater = false;
+          var stampLater = false, heldRoles = [];
           if (!result || !result.ok) {
             failed++;
             issue(record, fetchFailure(result && result.reason), false);
@@ -438,7 +464,7 @@
               lyricist: message('history_scripts_lyricist_7', '作詞'),
               arranger: message('history_scripts_arranger_8', '編曲')
             };
-            var heldRoles = ['composer', 'lyricist', 'arranger'].filter(function (role) {
+            heldRoles = ['composer', 'lyricist', 'arranger'].filter(function (role) {
               return !root.CreditTarget.creditIsBlank(record[role]) && root.CreditTarget.effectiveRoleSource(record, role) !== 'manual'
                 && !changed.has(role) && !(maintenance.credits || {})[role];
             }).map(function (role) {
@@ -480,11 +506,11 @@
             readingRoles = readingRoles.filter(function (role) { return artistRoles.indexOf(role) === -1; });
             if (mbOn() && (mbRoles.length || readingRoles.length || manualRoles.length || artistRoles.length)) {
               stampLater = true;
-              mbQueue.push({ record: record, roles: mbRoles, readingRoles: readingRoles, manualRoles: manualRoles, artistRoles: artistRoles });
+              mbQueue.push({ record: record, roles: mbRoles, readingRoles: readingRoles, manualRoles: manualRoles, artistRoles: artistRoles, held: heldRoles.length > 0 });
               if (!mbRunning) drainMb();
             }
           }
-          if (result && result.ok && !stampLater) stampRecord(record, mbOn());
+          if (result && result.ok && !stampLater) stampRecord(record, mbOn(), false, heldRoles.length > 0);
           review.refreshReviewList(); summary(); return;
         }
         if (data.type === 'DONE') {

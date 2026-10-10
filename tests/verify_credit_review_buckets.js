@@ -1,5 +1,6 @@
 const assert = require('assert/strict');
 const CM = require('../credit_corrections');
+const CT = require('../credit_target');
 const {boot, row, success} = require('./verify_credit_recheck_copy');
 let passed = 0;
 async function check(name, fn) { await fn(); passed++; console.log('PASS ' + name); }
@@ -35,6 +36,44 @@ function real(storage) { return boot('en', 'success', 'success', 'ja', true, sto
     ['Satoshi Yaginuma', '八木沼悟志', false],
     ['DJ OKAWARI・웅산', 'Woong San, DJ OKAWARI', false],
   ]) await check(`script-only rename ${saved} -> ${value}`, () => assert.equal(CM.scriptOnlyRename(saved, value), expected));
+  await check('a romanized name beside unrelated Japanese names is a distinct person', () => {
+    const entries = [
+      {saved: '高橋涼', value: 'Diggy-MO’, 高橋涼'}, {saved: '長谷川大介', value: 'Diggy-MO’, 長谷川大介'},
+      {saved: '星街すいせい', value: '星街すいせい, TAKU INOUE'}, {saved: '星街すいせい', value: '星街すいせい, TAKU INOUE'},
+      {saved: '斎藤真也', value: 'Satoshi Yaginuma, 斎藤真也'}, {saved: '川崎海', value: 'Satoshi Yaginuma, 川崎海'},
+      {saved: 'Satoshi Yaginuma,八木沼悟志', value: '八木沼悟志', source: 'musicbrainz-reading'},
+    ];
+    const distinct = CM.distinctNames(entries);
+    assert(distinct.has('diggymo'));
+    assert(!distinct.has('takuinoue'), 'always beside the same name: may be its reading');
+    assert(!distinct.has('satoshiyaginuma'), 'MusicBrainz matched it to a Japanese reading');
+    assert.equal(CM.proposalBucket('高橋涼', {value: 'Diggy-MO’, 高橋涼', source: 'description-recheck'}, false, distinct), 'bulk');
+    assert.equal(CM.proposalBucket('高橋涼', {value: 'Diggy-MO’, 高橋涼', source: 'description-recheck'}), 'visual');
+    assert.equal(CM.proposalBucket('斎藤真也', {value: 'Satoshi Yaginuma, 斎藤真也', source: 'description-recheck'}, false, distinct), 'visual');
+  });
+  await check('removing a producer, label or title line is bulk-adoptable', () => {
+    for (const [saved, description, expected] of [
+      ['森宗秀隆,Taku Sugawara', 'Composer, Arranger: 森宗秀隆\nProducer, Music Director: Taku Sugawara', '森宗秀隆'],
+      ['神山羊,ASOBINOTES', '作詞・作曲・編曲：神山羊\nMusic Label : ASOBINOTES', '神山羊'],
+      ['草色の気球/Balloon of grass green,mozell', 'Music title: 草色の気球 / Balloon of grass green\nComposer: mozell', 'mozell'],
+      ['Bushiroad Music,MEGATERA・ZERO', 'Music  Publisher: Bushiroad Music\nLyricist, Composer: MEGATERA・ZERO', 'MEGATERA・ZERO'],
+    ]) {
+      const p = CM.candidates({videoId: 'sampleVid01', title: 'Alpha', composer: saved, creditsSource: 'general'}, success(description), CT);
+      assert.equal(p.length, 1); assert.equal(p[0].value, expected); assert.equal(p[0].metaOnly, true);
+      assert.equal(CM.proposalBucket(saved, p[0]), 'bulk');
+    }
+    const other = CM.candidates({videoId: 'sampleVid01', title: 'Alpha', composer: 'Alice,Bob', creditsSource: 'general'}, success('Composer: Alice'), CT);
+    assert.equal(other[0].metaOnly, undefined, 'a name missing from the description is not a label line');
+  });
+  await check('held stamps and the held-only scope', () => {
+    const base = {videoId: 'sampleVid01', title: 'Alpha', composer: 'Alice', creditsSource: 'general'};
+    const held = {...base, creditsRecheck: CM.recheckStamp(base, false, true, false, true)};
+    const clear = {...base, videoId: 'sampleVid02', creditsRecheck: CM.recheckStamp(base, false, true, false, false)};
+    const legacy = {...base, videoId: 'sampleVid03', creditsRecheck: CM.recheckStamp(base, false, true)};
+    assert.equal(CM.stampFlags(held).held, true); assert.equal(CM.stampFlags(clear).held, false); assert.equal(CM.stampFlags(legacy).held, undefined);
+    assert.deepEqual(CM.targets([held, clear, legacy], 'held', new Set(), 50, CT).map(r => r.videoId), ['sampleVid01', 'sampleVid03']);
+    assert.deepEqual(CM.targets([held, clear, legacy], 'all', new Set(), 50, CT).map(r => r.videoId), []);
+  });
   await check('cards say what a proposal changes', async () => {
     const rows = [{...row(), composer: 'Alice、Bob'}, {...row('sampleVid02'), composer: 'nayuta'}];
     const ui = boot('ja', 'success', 'success', 'ja', true, {}); ui.setRecords(rows); await ui.review.restoreProposals();

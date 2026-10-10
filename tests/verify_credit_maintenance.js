@@ -214,7 +214,7 @@ async function artistTests() {
     assert.equal(merged.elements.creditRecheckAdoptAll.disabled,true);
     assert.deepEqual(merged.calls.map(c=>c.type),['lookupMbArtistReading']);
     assert.equal(merged.calls[0].name,'島みやえい子');
-    assert(merged.stamps[0].endsWith(':mb:src:artist'));
+    assert(merged.stamps[0].endsWith(':mb:src:artist:held'), 'a video left with a proposal to review stays in the held scope');
   });
   for (const [label,options] of [
     ['mismatched reading',{artists:[{name:'島みやえい子','sort-name':'Different, Person',id:'other'}]}],
