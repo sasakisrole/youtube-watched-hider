@@ -2353,7 +2353,7 @@ async function fetchCreditsFromWatch(videoId, abortSignal, maintenance = false) 
     if (maintenance) {
       const identity = slice.match(/"videoId":"([^"]+)"/);
       if (!identity || identity[1] !== videoId) return { videoId, ok: false, reason: 'video-identity-mismatch' };
-      return { videoId, ok: true, title, artist,
+      return { videoId, ok: true, title, artist, participants: extractParticipantCredits(desc, title),
         maintenance: self.CreditMaintenance.analyze(desc, title, extractCreditSegments, cleanCreditLine, self.CreditTarget) };
     }
     const credits = parseCreditsFromDescription(desc, title);
@@ -2643,11 +2643,26 @@ function registerJobPort({ portName, createJob, run, progressPatch, finishPatch 
 registerJobPort({
   portName: 'recheck-credits',
   createJob: (msg) => ({ kind: 'recheckCredits', label: '保存済みクレジットを再点検', total: Math.min(500, (msg.videoIds || []).length), abortable: true }),
-  run: (msg, onProgress, signal) => self.CreditMaintenance.scan(msg.videoIds,
-    (id, abortSignal) => fetchCreditsFromWatch(id, abortSignal, true), onProgress, signal),
+  // The recheck already reads every description, so it also stores participants
+  // (part arrangers). Composer, lyricist and arranger are never written here.
+  run: async (msg, onProgress, signal) => {
+    let participantsSaved = 0;
+    const result = await self.CreditMaintenance.scan(msg.videoIds, async (id, abortSignal) => {
+      const fetched = await fetchCreditsFromWatch(id, abortSignal, true);
+      if (fetched.ok && !(abortSignal && abortSignal.aborted)) {
+        try {
+          const participants = fetched.participants || [];
+          const changed = await sendToOffscreenDb('UPDATE_CREDITS', { videoId: id, credits: { participants } });
+          if (changed && participants.length) participantsSaved++;
+        } catch (_e) { /* a failed participant save must not fail the recheck */ }
+      }
+      return fetched;
+    }, onProgress, signal);
+    return { ...result, participantsSaved };
+  },
   progressPatch: (progress) => ({ processed: progress.processed, total: progress.total, counters: { failed: progress.failed } }),
   finishPatch: (result) => ({ processed: result.processed, total: result.total, counters: { failed: result.failed },
-    message: `クレジット再点検: ${result.processed}/${result.total}件（取得失敗${result.failed}件）。保存値は変更していません。` }),
+    message: `クレジット再点検: ${result.processed}/${result.total}件（取得失敗${result.failed}件）。作曲・作詞・編曲は変更していません。参加を${result.participantsSaved || 0}件保存しました。` }),
 });
 
 registerJobPort({

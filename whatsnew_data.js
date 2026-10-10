@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.73",
+    "date": "2026-10-10",
+    "summary": "",
+    "points": [
+      "The saved credit recheck also stores participants (part arrangers) from each description it reads, so no separate pass over the whole history is needed. Composer, lyricist and arranger are still never changed by a recheck; the summary reports how many participants were saved."
+    ]
+  },
+  {
     "version": "1.60.72",
     "date": "2026-10-10",
     "summary": "",

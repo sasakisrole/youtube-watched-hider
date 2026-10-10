@@ -3559,7 +3559,7 @@
     "message": "Recheck saved credits"
   },
   "history_correctionNote": {
-    "message": "Compare saved composers, lyricists and arrangers with current video descriptions. Scanning changes no credits. Review the evidence before adopting a change. Manual values are protected. Undo and scan progress remain available until this history page is reloaded."
+    "message": "Compare saved composers, lyricists and arrangers with current video descriptions. Scanning never changes composers, lyricists or arrangers (participants such as drum arrangers are saved). Review the evidence before adopting a change. Manual values are protected. Undo and scan progress remain available until this history page is reloaded."
   },
   "history_correctionEmpty": {
     "message": "No known credit errors match the verified corrections. This does not mean all credits have been verified."

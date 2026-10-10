@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.73 (2026-10-10)
+
+- The saved credit recheck also stores participants (part arrangers) from each description it reads, so no separate pass over the whole history is needed. Composer, lyricist and arranger are still never changed by a recheck; the summary reports how many participants were saved.
+
 ## v1.60.72 (2026-10-10)
 
 - Move the participants-only option next to the other enrichment options and shorten its label; the full explanation is in its tooltip.
