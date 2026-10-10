@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.64 (2026-10-10)
+
+- Keep the recheck's end-of-run message visible. Each progress update rebuilt the status line and erased it, so a finished overnight run looked stopped; the run now ends with an explicit completion message, including a note when some videos could not be fetched.
+
 ## v1.60.63 (2026-10-10)
 
 - Drop saved recheck proposals made under older proposal rules instead of showing them, and mark their videos for the next recheck so the proposals are rebuilt with the current rules.

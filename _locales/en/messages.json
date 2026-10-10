@@ -3611,6 +3611,12 @@
   "history_recheckDone": {
     "message": "This batch is complete. Continue to scan unchecked videos."
   },
+  "history_recheckAllDone": {
+    "message": "The recheck is complete. No unchecked videos remain."
+  },
+  "history_recheckAllDoneFailed": {
+    "message": "The recheck is complete. Reload this page to recheck the videos that could not be fetched."
+  },
   "history_recheckDisconnected": {
     "message": "The connection ended. Fetched proposals remain available. You can resume unchecked videos."
   },

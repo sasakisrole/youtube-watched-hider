@@ -54,9 +54,9 @@ function boot(locale, row = record) {
   const element = () => ({dataset:{},children: [], textContent: '', value: 'all', listeners: {}, disabled: false,
     append(...items) { this.children.push(...items); }, appendChild(item) { this.children.push(item); },
     addEventListener(type, fn) { this.listeners[type] = fn; }, checkValidity() { return true; }});
-  let listener, materials;
+  let listener, materials, refresh;
   const ctx = {CreditMaintenance: CM, CreditTarget: CT, structuredClone,
-    CreditReview: {create(env) { materials = env.getMaterials; return {busy: new Set(), refreshReviewList() {}}; }},
+    CreditReview: {create(env) { materials = env.getMaterials; refresh = env.onRefresh; return {busy: new Set(), refreshReviewList() {}, adoptable() { return []; }}; }},
     document: {getElementById(id) { return elements[id] ||= element(); }, createElement: element},
     chrome: {runtime: {connect() { return {onMessage: {addListener(fn) { listener = fn; }}, onDisconnect: {addListener() {}}, postMessage() {}}; }}}};
   if (locale) {
@@ -73,7 +73,7 @@ function boot(locale, row = record) {
   ctx.CreditMaintenanceUI.create({getRecords: () => [row], begin: () => true, end() {}, saveCreditRole() { throw Error('unexpected save'); }});
   elements.creditRecheckLimit.value = '50';
   elements.creditRecheckStart.listeners.click();
-  return {keys, elements, materials, progress(result) { listener({type: 'PROGRESS', videoId: row.videoId, result}); },
+  return {keys, elements, materials, refresh: () => refresh(), done(data = {}) { listener({type: 'DONE', ...data}); }, progress(result) { listener({type: 'PROGRESS', videoId: row.videoId, result}); },
     issues() { return elements.creditRecheckIssues.children.map(item => item.children[1].textContent).join('\n'); }};
 }
 for (const locale of [null, 'ja', 'en']) {
@@ -132,6 +132,28 @@ for (const locale of [null, 'ja', 'en']) {
       ui.progress({ok: true, maintenance: {credits: {}, evidence: {}, reasons: {composer: reason}}});
       assert.match(ui.issues(), locale === 'en' ? en : ja);
     }
+  });
+}
+for (const locale of [null, 'ja', 'en']) {
+  check('completion message survives later status updates: ' + locale, () => {
+    const done = locale === 'en' ? /recheck is complete/ : /点検が完了しました/;
+    const ui = boot(locale);
+    ui.progress({ok: true, title: 'Alpha', maintenance: analyze('Composer: Saved One\nArranger: Saved Two')});
+    ui.done();
+    assert.match(ui.elements.creditRecheckStatus.textContent, done);
+    ui.refresh();
+    assert.match(ui.elements.creditRecheckStatus.textContent, done);
+    const failed = boot(locale);
+    failed.progress({ok: false, reason: 'timeout'});
+    failed.done();
+    failed.refresh();
+    assert.match(failed.elements.creditRecheckStatus.textContent, locale === 'en' ? /Reload this page/ : /再読み込み/);
+  });
+  check('stop message survives later status updates: ' + locale, () => {
+    const ui = boot(locale, {...record, videoId: 'sampleVid02'});
+    ui.done({stopped: true});
+    ui.refresh();
+    assert.match(ui.elements.creditRecheckStatus.textContent, locale === 'en' ? /stopped|Stopped/ : /停止しました/);
   });
 }
 check('release metadata is updated', () => {

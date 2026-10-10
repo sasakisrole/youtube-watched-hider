@@ -49,6 +49,9 @@
     var adoptAll = document.getElementById('creditRecheckAdoptAll');
     var undoAll = document.getElementById('creditRecheckUndoAll');
     var adopting = false, includeStamped = false;
+    // summary() rebuilds the status line on every update, so the end-of-run note
+    // is kept here and re-appended instead of being written once and overwritten.
+    var runNote = '', ranThisPage = false;
     var mbToggle = document.getElementById('creditRecheckMb');
     var mbQueue = [], mbRunning = false, mbFound = 0, mbSame = 0, mbDifferent = 0;
     // Confirmed values rewritten only from a romanized name to the Japanese name
@@ -206,6 +209,13 @@
       var counts = bucketCounts();
       status.textContent += ' / ' + bucketLabels.visual + ': ' + counts.visual;
       status.style && (status.style.fontWeight = counts.visual ? 'bold' : '');
+      var note = runNote;
+      if (ranThisPage && !port && !mbRunning && remaining === 0) {
+        note = failed
+          ? message('history_recheckAllDoneFailed', '点検が完了しました。取得失敗の動画は、このページを再読み込みすると再び点検できます。')
+          : message('history_recheckAllDone', '点検が完了しました。未点検の動画はありません。');
+      }
+      if (note) status.textContent += ' ' + note;
       if (!port) stop.disabled = !mbRunning;
       persist();
     }
@@ -365,8 +375,7 @@
     var stopRequested = false;
     function finish(activePort, text) {
       if (port !== activePort) return;
-      port = null; controls(false); env.end(); summary();
-      if (text) status.textContent += ' ' + text;
+      port = null; runNote = text || ''; controls(false); env.end(); summary();
     }
     start.addEventListener('click', function () { stopRequested = false; runBatch(); });
     // A finished batch starts the next one while unchecked videos remain. A stop,
@@ -389,7 +398,7 @@
       var activePort;
       try { activePort = chrome.runtime.connect({ name: 'recheck-credits' }); }
       catch (_error) { env.end(); status.textContent = message('history_recheckConnection', '接続できませんでした。拡張を再読み込みしてから再試行してください。'); return; }
-      port = activePort; controls(true); summary();
+      port = activePort; runNote = ''; ranThisPage = true; controls(true); summary();
       activePort.onMessage.addListener(function (data) {
         if (port !== activePort) return;
         if (data.type === 'PROGRESS') {

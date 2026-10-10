@@ -3611,6 +3611,12 @@
   "history_recheckDone": {
     "message": "この範囲の点検が完了しました。続けると未点検の動画を調べます。"
   },
+  "history_recheckAllDone": {
+    "message": "点検が完了しました。未点検の動画はありません。"
+  },
+  "history_recheckAllDoneFailed": {
+    "message": "点検が完了しました。取得失敗の動画は、このページを再読み込みすると再び点検できます。"
+  },
   "history_recheckDisconnected": {
     "message": "通信が終了しました。取得済みの変更案は残っています。未点検分は再開できます。"
   },
