@@ -603,6 +603,15 @@ function updateMaintToggleLock() {
   // 走っている処理の中止ボタンは折り畳みの中にあるので、実行中は閉じさせない
   if (locked) setMaintOpen(true, false);
   maintToggle.disabled = locked;
+  // チャンネル名の再取得は中止ボタンがデータ修復の中にあるので、実行中はそちらも閉じさせない
+  const repairToggleEl = document.getElementById('repairToggle');
+  const repairPanelEl = document.getElementById('repairPanel');
+  const repairLocked = running === 'fixChannelsForce';
+  if (repairLocked && repairToggleEl && repairPanelEl) {
+    repairPanelEl.hidden = false;
+    repairToggleEl.setAttribute('aria-expanded', 'true');
+  }
+  if (repairToggleEl) repairToggleEl.disabled = repairLocked;
   maintToggle.title = locked ? historyMessage('history_maintenance_locked', '実行中は閉じられません') : '';
 }
 

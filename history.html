@@ -1244,7 +1244,6 @@
       <div class="maint-group">
         <span class="toolbar-label" data-i18n="history_complete">補完</span>
         <button class="sort-btn" id="fixChannels" data-i18n-title="history_fillChannelsHint" title="oEmbed APIでチャンネル名を補正（未記録のみ）" data-i18n="history_enrich_channels_label">チャンネル名を補完</button>
-        <button class="sort-btn" id="fixChannelsForce" data-i18n-title="history_refetchChannelsHint" title="oEmbed APIでチャンネル名を上書き補正（表示中の全件）" data-i18n="history_enrich_refetch_label">チャンネル名を再取得</button>
         <button class="sort-btn" id="fixCredits" data-i18n-title="history_fillCreditsHint" title="動画の作曲・作詞・編曲を概要欄から補完（ラベル行のみ採用）" data-i18n="history_enrich_credits_label">概要欄からクレジット補完</button>
         <button class="sort-btn enrich-btn" id="enrichCredits" data-i18n-title="history_externalCreditsHint" title="未割当creditsRawを外部DB照合で補完">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 12H3"></path><path d="M16 6H3"></path><path d="M16 18H3"></path><path d="M18 9v6"></path><path d="M21 12h-6"></path></svg>
@@ -1265,11 +1264,12 @@
           <span data-i18n="history_repair">データ修復</span>
         </button>
         <div id="repairPanel" class="repair-panel" hidden>
-          <p data-i18n="history_repairNote">保存済みのクレジットのうち人名でない値を空欄へ戻し、補完対象に復帰させます。元の値は記録に残り、元に戻せます。</p>
+          <p data-i18n="history_repairNote">保存済みの値を正します。クレジットは人名でない値を空欄へ戻して補完対象に復帰させ（元の値は記録に残り、元に戻せます）、チャンネル名は表示中の動画について取り直して上書きします。</p>
           <div class="repair-actions">
             <button class="sort-btn" id="creditReviewOpen" type="button" data-i18n="history_correctionOpen">保存済みクレジットを再点検</button>
             <button class="sort-btn" id="repairCredits" data-i18n-title="history_repairCreditsHint" title="保存済みの作曲・作詞・編曲のうち、URL・権利表示・説明文の切れ端など人名でない値を空欄へ戻し、補完対象に復帰させる。元の値は記録に残す" data-i18n="history_repair_label">クレジットの不正値を修復</button>
             <button class="sort-btn" id="restoreCredits" data-i18n-title="history_restoreCreditsHint" title="修復で空欄にしたクレジットを記録から元に戻す。現在値が入っている役割は上書きしない" data-i18n="history_restore_label">修復を元に戻す</button>
+            <button class="sort-btn" id="fixChannelsForce" data-i18n-title="history_refetchChannelsHint" title="oEmbed APIでチャンネル名を上書き補正（表示中の全件）" data-i18n="history_enrich_refetch_label">チャンネル名を再取得</button>
           </div>
           <p data-i18n="history_maintenance_never" id="repairLastRun" role="status" aria-live="polite">最終実行: 未実行</p>
         </div>

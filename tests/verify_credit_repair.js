@@ -783,8 +783,11 @@ function testWiringAndUi() {
       && history.includes("repairToggle.setAttribute('aria-expanded', String(open))")
       && history.includes('repairPanel.hidden = !open')
       && history.includes("repairToggle.addEventListener('click', () => setRepairOpen(repairPanel.hidden))"));
+  check('channel refetch sits in the repair panel, which stays open while it runs',
+    html.indexOf('id="fixChannelsForce"') > html.indexOf('id="repairPanel"') && html.indexOf('id="fixChannelsForce"') < html.indexOf('id="repairLastRun"')
+      && history.includes("const repairLocked = running === 'fixChannelsForce';"));
   check('repair panel explains the reversible operation and starts with an unexecuted status',
-    html.includes('補完対象に復帰させます。元の値は記録に残り、元に戻せます。')
+    html.includes('補完対象に復帰させ（元の値は記録に残り、元に戻せます）')
       && html.includes('id="repairLastRun" role="status" aria-live="polite">最終実行: 未実行</p>'));
 
   const restorePreviewAt = history.indexOf("sendHistoryDbRpc('RESTORE_REPAIRED_CREDITS', { dryRun: true })");

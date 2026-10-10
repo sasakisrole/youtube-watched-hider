@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.79 (2026-10-11)
+
+- Move "Refetch channel names" from the fill-in row to Data repair, since it overwrites saved channel names rather than filling empty ones. Data repair stays open while it runs so its stop button remains reachable.
+
 ## v1.60.78 (2026-10-11)
 
 - The proposals-to-review scope checks only videos with a kept proposal or a check that recorded one, instead of revisiting every video held before v1.60.77.

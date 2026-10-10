@@ -240,7 +240,7 @@
     "message": "Repair data"
   },
   "history_repairNote": {
-    "message": "Clear saved credit values that are not names so they can be filled again. Original values are logged and can be restored."
+    "message": "Correct saved values. Credit values that are not names are cleared so they can be filled again (original values are logged and can be restored); channel names of the shown videos are fetched again and overwritten."
   },
   "history_bulkDialogTitle": {
     "message": "Videos to remove in bulk"

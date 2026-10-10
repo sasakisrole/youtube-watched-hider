@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.79",
+    "date": "2026-10-11",
+    "summary": "",
+    "points": [
+      "Move \"Refetch channel names\" from the fill-in row to Data repair, since it overwrites saved channel names rather than filling empty ones. Data repair stays open while it runs so its stop button remains reachable."
+    ]
+  },
+  {
     "version": "1.60.78",
     "date": "2026-10-11",
     "summary": "",
