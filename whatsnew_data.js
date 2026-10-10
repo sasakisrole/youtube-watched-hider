@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.72",
+    "date": "2026-10-10",
+    "summary": "",
+    "points": [
+      "Move the participants-only option next to the other enrichment options and shorten its label; the full explanation is in its tooltip."
+    ]
+  },
+  {
     "version": "1.60.71",
     "date": "2026-10-10",
     "summary": "",

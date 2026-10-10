@@ -1,11 +1,12 @@
 {
+  "history_participantsOnlyHint": {"message": "Make description credit enrichment import only participants such as drum arrangers; composer, lyricist and arranger stay unchanged"},
   "history_rawPerformer": {"message": "Artist credits"},
   "history_rawPerformerHint": {"message": "Names without a role that are the Topic channel's own artist name (a project, band or the composer) or a character credited with a voice actor"},
   "history_rawLabel": {"message": "Labels"},
   "history_rawLabelHint": {"message": "Names without a role that look like a label or sound team"},
   "history_participants": {"message": "Participation"},
   "history_participantRole": {"message": "Role"},
-  "history_participantsOnly": {"message": "Fill participation only (keep composer, lyricist and arranger unchanged)"},
+  "history_participantsOnly": {"message": "Participants only"},
   "history_participantsConfirm": {"message": "Fill participation from $1 video descriptions. Composer, lyricist and arranger remain unchanged. Keep a YouTube tab open to continue."},
   "history_recheckHeldOnly": {"message": "Held and needs review only"},
   "history_recheckChangeLabel": {"message": "Change: $VALUE$", "placeholders": {"value": {"content": "$1"}}},

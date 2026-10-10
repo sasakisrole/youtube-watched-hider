@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.72 (2026-10-10)
+
+- Move the participants-only option next to the other enrichment options and shorten its label; the full explanation is in its tooltip.
+
 ## v1.60.71 (2026-10-10)
 
 - Opening the analysis folds the data management panel so the analysis starts right below the search box; closing it restores the panel as it was. Recent jobs collapse into one line with a count and open on demand.

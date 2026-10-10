@@ -1,11 +1,12 @@
 {
+  "history_participantsOnlyHint": {"message": "「概要欄からクレジット補完」で、ドラム編曲などの参加だけを取り込む。作曲・作詞・編曲は変更しない"},
   "history_rawPerformer": {"message": "アーティスト名義"},
   "history_rawPerformerHint": {"message": "役割が書かれていない名前のうち、Topic チャンネルの持ち主として登録されている名前（企画・バンド・作曲家本人など）と、CV付きのキャラクター名義"},
   "history_rawLabel": {"message": "レーベル"},
   "history_rawLabelHint": {"message": "役割が書かれていない名前のうち、レーベル・サウンドチームと思われる名前"},
   "history_participants": {"message": "参加"},
   "history_participantRole": {"message": "役割"},
-  "history_participantsOnly": {"message": "参加のみ補完（作曲・作詞・編曲は変更しない）"},
+  "history_participantsOnly": {"message": "参加だけ補完"},
   "history_participantsConfirm": {"message": "$1件の概要欄から参加のみ補完します。作曲・作詞・編曲は変更しません。YouTubeタブを開いたまま続行してください。"},
   "history_recheckHeldOnly": {"message": "保留・要目視のみ"},
   "history_recheckChangeLabel": {"message": "変更の内容：$VALUE$", "placeholders": {"value": {"content": "$1"}}},

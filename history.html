@@ -1245,7 +1245,6 @@
         <span class="toolbar-label" data-i18n="history_complete">補完</span>
         <button class="sort-btn" id="fixChannels" data-i18n-title="history_fillChannelsHint" title="oEmbed APIでチャンネル名を補正（未記録のみ）" data-i18n="history_enrich_channels_label">チャンネル名を補完</button>
         <button class="sort-btn" id="fixChannelsForce" data-i18n-title="history_refetchChannelsHint" title="oEmbed APIでチャンネル名を上書き補正（表示中の全件）" data-i18n="history_enrich_refetch_label">チャンネル名を再取得</button>
-        <label class="chk"><input type="checkbox" id="participantsOnly"><span data-i18n="history_participantsOnly">参加のみ補完（作曲・作詞・編曲は変更しない）</span></label>
         <button class="sort-btn" id="fixCredits" data-i18n-title="history_fillCreditsHint" title="動画の作曲・作詞・編曲を概要欄から補完（ラベル行のみ採用）" data-i18n="history_enrich_credits_label">概要欄からクレジット補完</button>
         <button class="sort-btn enrich-btn" id="enrichCredits" data-i18n-title="history_externalCreditsHint" title="未割当creditsRawを外部DB照合で補完">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 12H3"></path><path d="M16 6H3"></path><path d="M16 18H3"></path><path d="M18 9v6"></path><path d="M21 12h-6"></path></svg>
@@ -1254,6 +1253,7 @@
         <button class="sort-btn" id="fixDurations" data-i18n-title="history_fillDurationsHint" title="動画時間をwatchページから補完（ライブは-1として記録）" data-i18n="history_duration_label">動画の長さを補完</button>
         <label class="chk" data-i18n-title="history_skipCheckedTitle" title="一度調べた動画をしばらく再取得しない。何か補完できた動画は30日、概要欄に情報が無くて空のままだった動画は180日→360日→720日と間隔が延びる（同じ概要欄を読み直しても埋まらないため）。外すと、空きのある動画を間隔に関係なく全部取り直す"><input type="checkbox" id="skipCreditsChecked" checked><span data-i18n="history_skipChecked">チェック済みスキップ</span></label>
         <label class="chk" data-i18n-title="history_includeGeneralTitle" title="非Topicチャンネル（MV・公式配信など）も対象にする。ラベル付き行のみ採用"><input type="checkbox" id="includeGeneralCredits"><span data-i18n="history_includeGeneral">一般も含める</span></label>
+        <label class="chk" data-i18n-title="history_participantsOnlyHint" title="「概要欄からクレジット補完」で、ドラム編曲などの参加だけを取り込む。作曲・作詞・編曲は変更しない"><input type="checkbox" id="participantsOnly"><span data-i18n="history_participantsOnly">参加だけ補完</span></label>
       </div>
       <details class="maint-group job-recent">
         <summary><svg class="icon chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg><span class="toolbar-label" id="jobRecentLabel" data-i18n="history_recentJobs">最近の処理</span> <span id="jobRecentCount"></span></summary>
