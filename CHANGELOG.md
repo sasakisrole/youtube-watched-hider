@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.60.66 (2026-10-10)
+
+- Stop proposing to replace a saved Japanese name with the romanized spelling from a Topic description (for example 宮崎誠 to Makoto Miyazaki). The two are treated as spellings of the same credit, so the Japanese name stays; proposals that add or remove people are unchanged. Saved proposals from the previous rules are rebuilt on the next recheck.
+
 ## v1.60.65 (2026-10-10)
 
 - Say what each recheck proposal changes on its card: separators only, names added or removed, extra text removed, a Japanese reading, a spelling change, or a cleared role. Separator-only proposals previously showed two values that looked identical.

@@ -25,6 +25,16 @@ function real(storage) { return boot('en', 'success', 'success', 'ja', true, sto
     ['Satoshi Yaginuma', '八木沼悟志', 'musicbrainz-reading', {kind: 'reading'}],
     ['Some BGM', '', 'description-nonsong', {kind: 'clear'}],
   ]) await check(`change summary ${source} ${saved} -> ${value}`, () => assert.deepEqual(CM.changeSummary(saved, {value, source}), expected));
+  for (const [saved, value, expected] of [
+    ['宮崎誠', 'Makoto Miyazaki', true],
+    ['DJ OKAWARI・金原千恵子', 'Chieko Kinbara, DJ OKAWARI', true],
+    ['八木沼悟志', 'Satoshi Yaginuma', true],
+    ['すりぃ,ノイ,山崎真吾', 'R・O・N', false],
+    ['nayuta', 'nayuta, narry', false],
+    ['斎藤真也', 'Satoshi Yaginuma, 斎藤真也', false],
+    ['Satoshi Yaginuma', '八木沼悟志', false],
+    ['DJ OKAWARI・웅산', 'Woong San, DJ OKAWARI', false],
+  ]) await check(`script-only rename ${saved} -> ${value}`, () => assert.equal(CM.scriptOnlyRename(saved, value), expected));
   await check('cards say what a proposal changes', async () => {
     const rows = [{...row(), composer: 'Alice、Bob'}, {...row('sampleVid02'), composer: 'nayuta'}];
     const ui = boot('ja', 'success', 'success', 'ja', true, {}); ui.setRecords(rows); await ui.review.restoreProposals();
@@ -38,11 +48,11 @@ function real(storage) { return boot('en', 'success', 'success', 'ja', true, sto
   });
   await check('adopted overrides visual', () => assert.equal(CM.proposalBucket('藤永龍太郎', {value:'Ryutaro Fujinaga'}, true), 'adopted'));
   await check('persist, reload, bulk excludes visual, adopted counts and undo', async () => {
-    const storage = {}, rows = [{...row(), composer:'Mili'}, {...row('sampleVid02'), composer:'藤永龍太郎'}];
+    const storage = {}, rows = [{...row(), composer:'Mili'}, {...row('sampleVid02'), composer:'斎藤真也'}];
     const ui = real(storage); ui.setRecords(rows); await ui.review.restoreProposals();
     const port = ui.start(rows);
     ui.progress(port, rows[0], success('Composer: Cassie Wei\nComposer: Yamato Kasai'));
-    ui.progress(port, rows[1], success('Composer: Ryutaro Fujinaga')); ui.done(port); await settle();
+    ui.progress(port, rows[1], success('Composer: Satoshi Yaginuma\nComposer: 斎藤真也')); ui.done(port); await settle();
     assert.equal(storage[key].length, 2);
     assert.equal(storage[key][0].savedValue, 'Mili');
     const reloaded = real(storage); reloaded.setRecords(rows); await reloaded.review.restoreProposals();
@@ -50,7 +60,7 @@ function real(storage) { return boot('en', 'success', 'success', 'ja', true, sto
     reloaded.review.setFilter('visual'); assert.equal(reloaded.review.visibleItems()[0].videoId, 'sampleVid02');
     reloaded.setSave(async () => ({updated:true}));
     await reloaded.click('creditRecheckAdoptAll'); await settle();
-    assert.equal(rows[0].composer, 'Cassie Wei, Yamato Kasai'); assert.equal(rows[1].composer, '藤永龍太郎');
+    assert.equal(rows[0].composer, 'Cassie Wei, Yamato Kasai'); assert.equal(rows[1].composer, '斎藤真也');
     assert.equal(reloaded.saves, 1); assert.equal(reloaded.elements.creditRecheckAdoptAll.disabled, true);
     assert.equal(reloaded.review.reviewList.counts.adopted, 1); assert.equal(reloaded.review.reviewList.counts.visual, 1);
     assert.equal(storage[key].length, 1); assert.match(reloaded.confirms[0], /1 bulk.*1 proposals/);

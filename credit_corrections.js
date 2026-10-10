@@ -6,7 +6,7 @@
   var PARSER_REVISION = '2026-10-09.2';
   // Bump when proposal rules change without a parser change: stored proposals
   // from older rules are dropped and their videos become recheck targets again.
-  var PROPOSAL_REVISION = '2026-10-10.1';
+  var PROPOSAL_REVISION = '2026-10-10.2';
   function normalized(value) {
     return String(value || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
   }
@@ -123,6 +123,18 @@
   // (romanized vs Japanese). Descriptions often credit one person twice, as
   // "Lyricist: Eiko Shimamiya" and "Lyricist: 島みやえい子"; without a reading
   // that may be the same person, so such a change is reviewed one by one.
+  // Topic descriptions romanize Japanese credits, so a Japanese name facing only
+  // a romanized one is a spelling of the same credit, not evidence of a mistake.
+  function scriptOnlyRename(saved, proposed) {
+    function split(value) { return String(value || '').split(/[,，、・\/／]/u).map(function (name) { return name.trim(); }).filter(Boolean); }
+    // Only the saved side splits on ・ and /: a proposed "R・O・N" is one name.
+    var before = split(saved), after = creditNames(String(proposed || ''));
+    var keysBefore = before.map(normalized), keysAfter = after.map(normalized);
+    var gone = before.filter(function (name, i) { return keysAfter.indexOf(keysBefore[i]) === -1; });
+    var added = after.filter(function (name, i) { return keysBefore.indexOf(keysAfter[i]) === -1; });
+    return gone.length > 0 && gone.length === added.length
+      && gone.every(function (name) { return JAPANESE_SCRIPT.test(name); }) && added.every(isLatinName);
+  }
   function scriptMixedChange(saved, proposed) {
     function script(name) { return isLatinName(name) ? 'latin' : JAPANESE_SCRIPT.test(name) ? 'ja' : ''; }
     var before = creditNames(String(saved || '')), after = creditNames(String(proposed || ''));
@@ -402,6 +414,7 @@
         value = names.join(', ');
         source = 'description-format';
       }
+      if (source === 'description-recheck' && scriptOnlyRename(saved, value)) return null;
       if (!creditTarget.isValidCreditValue(value, result.title)) return null;
       return { videoId: record.videoId, role: role, value: value,
         source: source, sourceDetail: 'https://www.youtube.com/watch?v=' + record.videoId,
@@ -478,7 +491,7 @@
     var removed = before.filter(function (name, i) { return afterKeys.indexOf(beforeKeys[i]) === -1; });
     return added.length || removed.length ? { kind: 'names', added: added, removed: removed } : { kind: 'spelling' };
   }
-  var api = { changeSummary: changeSummary, proposalBucket: proposalBucket, pendingProposals: pendingProposals, exportItem: exportItem, analyze: analyze, targets: targets, candidates: candidates, scan: scan, isRemix: isRemix,
+  var api = { changeSummary: changeSummary, scriptOnlyRename: scriptOnlyRename, proposalBucket: proposalBucket, pendingProposals: pendingProposals, exportItem: exportItem, analyze: analyze, targets: targets, candidates: candidates, scan: scan, isRemix: isRemix,
     recheckStamp: recheckStamp, PARSER_REVISION: PARSER_REVISION, PROPOSAL_REVISION: PROPOSAL_REVISION, sameContributors: sameContributors,
     compareNames: compareNames, namesOnTopicLine: namesOnTopicLine, topicLineNames: topicLineNames,
     mixedJapaneseNames: mixedJapaneseNames, createArtistReadingLookup: createArtistReadingLookup,

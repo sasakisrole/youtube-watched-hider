@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.66",
+    "date": "2026-10-10",
+    "summary": "",
+    "points": [
+      "Stop proposing to replace a saved Japanese name with the romanized spelling from a Topic description (for example 宮崎誠 to Makoto Miyazaki). The two are treated as spellings of the same credit, so the Japanese name stays; proposals that add or remove people are unchanged. Saved proposals from the previous rules are rebuilt on the next recheck."
+    ]
+  },
+  {
     "version": "1.60.65",
     "date": "2026-10-10",
     "summary": "",

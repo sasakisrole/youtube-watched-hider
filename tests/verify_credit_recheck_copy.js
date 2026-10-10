@@ -355,20 +355,20 @@ async function main() {
     assert.equal(ui.elements.creditRecheckIncludeChecked.disabled, false);
     assert.equal(ui.runtime.mbSent.length, before);
   });
-  await check('ADOPT-2: replacement and spelling changes are bulk; Japanese to Latin needs visual review', async () => {
+  await check('ADOPT-2: replacement and spelling changes are bulk; a Latin name added to a Japanese credit needs visual review', async () => {
     const ui = boot(), add = {...row(), composer: 'Saved credit'}, swap = {...row('sampleVid02'), composer: '漢字名'},
       upper = {...row('sampleVid03'), composer: 'Hayato'};
     let seen = [];
     ui.review.adoptAll = async (accept) => {
       seen = [accept({videoId: 'sampleVid01', role: 'composer', candidates: [{source: 'description-recheck', value: 'Saved credit, Guest'}]}, 'Saved credit, Guest'),
-        accept({videoId: 'sampleVid02', role: 'composer', candidates: [{source: 'description-recheck', value: 'Romaji Name'}]}, 'Romaji Name'),
+        accept({videoId: 'sampleVid02', role: 'composer', candidates: [{source: 'description-recheck', value: '漢字名, Romaji Name'}]}, '漢字名, Romaji Name'),
         accept({videoId: 'sampleVid03', role: 'composer', candidates: [{source: 'description-recheck', value: 'HAYATO'}]}, 'HAYATO')];
       return {targets: 0, adopted: 0, failed: 0};
     };
     ui.review.pending = 1;
     const port = ui.start([add, swap, upper]);
     ui.progress(port, add, success('Composer: Saved credit\nComposer: Guest'));
-    ui.progress(port, swap, success('Composer: Romaji Name'));
+    ui.progress(port, swap, success('Composer: 漢字名\nComposer: Romaji Name'));
     ui.progress(port, upper, success('Composer: HAYATO'));
     ui.done(port);
     await ui.click('creditRecheckAdoptAll');
@@ -402,7 +402,7 @@ async function main() {
     ui.elements.creditRecheckMb.checked = true;
     const port = ui.start([record]);
     ui.progress(port, record, success('Composer: Satoshi Yaginuma'));
-    assert.equal((await ui.report()).counts.proposals, 1, 'proposed until MusicBrainz answers');
+    assert.equal((await ui.report()).counts.proposals, 0, 'never proposed, even before MusicBrainz answers');
     await settle();
     const after = await ui.report();
     assert.equal(after.counts.proposals, 0);
