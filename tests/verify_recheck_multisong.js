@@ -148,6 +148,16 @@ async function main() {
     ui.start([r]);
     assert.equal(ui.ports.length,before+1,'the restored video must be fetched again');
   });
+  await check('REQ-9 the stamp records why a video stays held',async()=>{
+    const ui=boot('en','success','success','ja',true,{});
+    const none=row('noCredit001','Talk',{composer:'Alice'}), parse=row('unreadCr001','Song',{composer:'Alice'});
+    ui.setRecords([none,parse]); await ui.review.restoreProposals();
+    const port=ui.start([none,parse]);
+    ui.progress(port,none,{ok:true,title:none.title,maintenance:analyze('No credits here.',none.title)});
+    ui.progress(port,parse,{ok:true,title:parse.title,maintenance:{...analyze('No credits here.',parse.title),reasons:{composer:'unparsed'}}});
+    const stamps=Object.fromEntries(ui.marked);
+    assert.match(stamps.noCredit001,/:h-n$/); assert.match(stamps.unreadCr001,/:h-p$/);
+  });
   console.log(`RESULT: ${passed} passed / ${failed} failed`); process.exitCode=failed?1:0;
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});

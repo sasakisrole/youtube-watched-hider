@@ -395,16 +395,17 @@
     var hash = 5381;
     for (var i = 0; i < text.length; i++) hash = ((hash * 33) ^ text.charCodeAt(i)) >>> 0;
     return PARSER_REVISION + ':' + hash.toString(16) + (withMb ? ':mb' : '') + (withSource ? ':src' : '') + (withArtist ? ':artist' : '')
-      + (held === true ? ':held' : held === false ? ':clear' : '');
+      + (typeof held === 'string' ? (held ? ':h-' + held : ':clear') : held === true ? ':held' : held === false ? ':clear' : '');
   }
   // Flags of a stamp for the record's current values, or null when stale.
   function stampFlags(record) {
     var stamp = String((record && record.creditsRecheck) || ''), base = recheckStamp(record);
     if (stamp.indexOf(base) !== 0) return null;
     var rest = stamp.slice(base.length);
-    if (!/^(?::mb)?(?::src)?(?::artist)?(?::held|:clear)?$/.test(rest)) return null;
+    if (!/^(?::mb)?(?::src)?(?::artist)?(?::held|:clear|:h-[npr]+)?$/.test(rest)) return null;
     return { mb: rest.indexOf(':mb') !== -1, source: rest.indexOf(':src') !== -1, artist: rest.indexOf(':artist') !== -1,
-      held: /:held$/.test(rest) ? true : /:clear$/.test(rest) ? false : undefined };
+      held: /:held$|:h-[npr]+$/.test(rest) ? true : /:clear$/.test(rest) ? false : undefined,
+      kinds: (rest.match(/:h-([npr]+)$/) || [])[1] || '' };
   }
   // Confirmed (manual) roles are only revisited by a MusicBrainz check, and
   // only when romanized, since the sole change allowed to them is the same
@@ -429,6 +430,10 @@
       var due = cleanupDue || includeStamped || !flags || (mixedReading && !flags.artist) || (!!withMb && !flags.mb && (auto || manualReading)) || (manualValue && !flags.source);
       // The held scope revisits only videos left with held roles or proposals to review.
       if (scope === 'held') due = !flags || flags.held !== false;
+      // Held stamps name why (r: a proposal to review, p: credits not read, n: no credit
+      // in the description); a stamp without the reason counts for every held scope.
+      var kind = { review: 'r', 'held-parse': 'p', 'held-none': 'n' }[scope];
+      if (kind) due = !flags || flags.held === undefined || (flags.held && (!flags.kinds || flags.kinds.indexOf(kind) !== -1));
       return /^[\w-]{11}$/.test(record.videoId || '') && (!checked || !checked.has(record.videoId))
         && due && (scope !== 'remix' || isRemix(record.title)) && (auto || manualReading || manualValue);
     }).slice(0, Math.max(1, Math.min(500, Number(limit) || 50)));

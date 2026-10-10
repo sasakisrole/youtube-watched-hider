@@ -3,6 +3,14 @@
 // 生成物が古いままだと tests/verify_whatsnew.js が落ちる。
 globalThis.YWH_WHATSNEW = [
   {
+    "version": "1.60.77",
+    "date": "2026-10-11",
+    "summary": "",
+    "points": [
+      "The held recheck scope is split into three: proposals to review, held credits that could not be read, and held videos with no credit in the description. Each check now records why a video stays held, so a scope revisits only its own videos; videos checked before this version are revisited once by every held scope."
+    ]
+  },
+  {
     "version": "1.60.76",
     "date": "2026-10-11",
     "summary": "",

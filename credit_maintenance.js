@@ -170,16 +170,20 @@
         return /^ja\b/i.test(String(lang || 'ja'));
       } catch (_error) { return true; }
     }
-    // A video stays in the held scope while it has held roles or a proposal to review.
-    function needsReview(videoId, heldRoles) {
-      return !!heldRoles || ['composer', 'lyricist', 'arranger'].some(function (role) {
+    // Stamp letters say why a video stays held, so each held scope revisits only its kind:
+    // r = a proposal to review, p = credits present but not read, n = no credit in the description.
+    function heldKinds(videoId, reasons) {
+      var review = ['composer', 'lyricist', 'arranger'].some(function (role) {
         var key = videoId + ':' + role;
         return (readingFixes.has(key) || candidates.has(key)) && bucketFor({ videoId: videoId, role: role }) === 'visual';
       });
+      var list = reasons || [];
+      return (review ? 'r' : '') + (list.some(function (reason) { return reason !== 'no-evidence'; }) ? 'p' : '')
+        + (list.indexOf('no-evidence') !== -1 ? 'n' : '');
     }
-    function stampRecord(record, withMb, withArtist, heldRoles) {
+    function stampRecord(record, withMb, withArtist, heldReasons) {
       if (typeof env.markRechecked !== 'function') return;
-      var stamp = root.CreditMaintenance.recheckStamp(record, withMb, true, withArtist, needsReview(record.videoId, heldRoles));
+      var stamp = root.CreditMaintenance.recheckStamp(record, withMb, true, withArtist, heldKinds(record.videoId, heldReasons));
       Promise.resolve(env.markRechecked(record.videoId, stamp)).catch(function () {});
     }
     var review = root.CreditReview.create({
@@ -451,7 +455,7 @@
           copyStatus.textContent = '';
           // Only a successful fetch counts as checked; failures stay targets. With
           // MusicBrainz on, a queued video is stamped once its lookup finishes.
-          var stampLater = false, heldRoles = [];
+          var stampLater = false, heldRoles = [], heldReasons = [];
           if (!result || !result.ok) {
             failed++;
             issue(record, fetchFailure(result && result.reason), false);
@@ -474,6 +478,7 @@
               return !root.CreditTarget.creditIsBlank(record[role]) && root.CreditTarget.effectiveRoleSource(record, role) !== 'manual'
                 && !changed.has(role) && !(maintenance.credits || {})[role];
             }).map(function (role) {
+              heldReasons.push((maintenance.reasons || {})[role] || 'unknown');
               var reason = heldReason((maintenance.reasons || {})[role]);
               if (root.CreditMaintenance.namesOnTopicLine(record[role], maintenance.topicNames)) {
                 reason += message('history_recheckTopicNames', '（概要欄に名前あり・役割は未確認）');
@@ -512,11 +517,11 @@
             readingRoles = readingRoles.filter(function (role) { return artistRoles.indexOf(role) === -1; });
             if (mbOn() && (mbRoles.length || readingRoles.length || manualRoles.length || artistRoles.length)) {
               stampLater = true;
-              mbQueue.push({ record: record, roles: mbRoles, readingRoles: readingRoles, manualRoles: manualRoles, artistRoles: artistRoles, held: heldRoles.length > 0 });
+              mbQueue.push({ record: record, roles: mbRoles, readingRoles: readingRoles, manualRoles: manualRoles, artistRoles: artistRoles, held: heldReasons });
               if (!mbRunning) drainMb();
             }
           }
-          if (result && result.ok && !stampLater) stampRecord(record, mbOn(), false, heldRoles.length > 0);
+          if (result && result.ok && !stampLater) stampRecord(record, mbOn(), false, heldReasons);
           review.refreshReviewList(); summary(); return;
         }
         if (data.type === 'DONE') {
