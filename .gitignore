@@ -97,6 +97,8 @@ yt-recommend-*.html
 !/docs/assets/room.webp
 !/docs/assets/sea.webp
 !/docs/assets/stars.webp
+!/docs/assets/og-ja.jpg
+!/docs/assets/og-en.jpg
 !/docs/assets/guide-compare.webp
 !/docs/assets/guide-pin.webp
 !/docs/assets/guide-popup.webp
