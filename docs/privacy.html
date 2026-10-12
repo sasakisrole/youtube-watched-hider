@@ -5,38 +5,39 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>プライバシーポリシー / Privacy Policy — YouTube Watched Hider</title>
 <style>
-  :root { color-scheme: light dark; }
+  :root { color-scheme: light dark; --bg: #fff; --surface: #f3f3f3; --border: #ccc; --text: #222; --accent: #2266cc; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif;
     max-width: 720px;
     margin: 2rem auto;
     padding: 0 1rem 4rem;
     line-height: 1.75;
-    color: #222;
+    color: var(--text);
+    background: var(--bg);
   }
-  h1 { font-size: 1.6rem; border-bottom: 2px solid #ccc; padding-bottom: 0.4rem; }
+  h1 { font-size: 1.6rem; border-bottom: 2px solid var(--border); padding-bottom: 0.4rem; }
   h2 { font-size: 1.2rem; margin-top: 2rem; border-left: 4px solid #4a90e2; padding-left: 0.6rem; }
   h3 { font-size: 1rem; margin-top: 1.4rem; }
-  code { background: #f3f3f3; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.9em; }
+  code { overflow-wrap: anywhere; background: var(--surface); padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.9em; }
   hr { margin: 3rem 0; border: none; border-top: 1px solid #ddd; }
-  a { color: #2266cc; }
+  a { color: var(--accent); overflow-wrap: anywhere; display: inline-block; min-height: 44px; min-width: 44px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
   .meta { color: #666; font-size: 0.9rem; }
   @media (prefers-color-scheme: dark) {
-    body { color: #eee; background: #1a1a1a; }
-    h1 { border-color: #444; }
-    code { background: #2a2a2a; }
+    :root { --bg: #1a1a1a; --surface: #2a2a2a; --border: #444; --text: #eee; --accent: #7ab8ff; }
     hr { border-top-color: #333; }
-    a { color: #7ab8ff; }
     .meta { color: #aaa; }
   }
 </style>
 </head>
 <body>
-
+<main>
 <h1>プライバシーポリシー / Privacy Policy — YouTube Watched Hider</h1>
-<p class="meta">最終更新 / Last updated: 2026-10-09</p>
+<p class="meta">最終更新 / Last updated: 2026-10-11</p>
 
-<h2>日本語</h2>
+<nav aria-label="言語と紹介ページ / Language and overview"><a href="#japanese" lang="ja">日本語</a> · <a href="#english" lang="en">English</a> · <a href="index.html" lang="ja">紹介ページ</a> · <a href="en/index.html" lang="en">Overview</a></nav>
+<section lang="ja" aria-labelledby="japanese">
+<h2 id="japanese">日本語</h2>
 <p>本拡張機能「YouTube Watched Hider」（以下「本拡張」）は、利用者のプライバシーを最大限尊重します。</p>
 
 <h3>収集するデータ</h3>
@@ -66,20 +67,24 @@
 <p>YouTubeページ上で実行される content script から YouTube 自身へ同一オリジン通信する場合、ブラウザが YouTube の Cookie または認証ヘッダを付与することがあります。これらは YouTube 以外の外部サーバー、本拡張の開発者、第三者には送信・保存されません。</p>
 
 <h3>データの削除</h3>
-<p>拡張機能をアンインストールすると、保存された全データは Chrome によって自動的に削除されます。拡張のポップアップ内「Export / Clear」機能からも個別に削除可能です。</p>
+<p>拡張機能をアンインストールすると、本拡張がブラウザ内に保存したデータは Chrome によって自動的に削除されます。ブラウザ内の視聴履歴は、拡張の「設定・データ管理 → データ削除 → 視聴履歴だけ削除」からも削除できます。ダウンロード済みの JSON バックアップは削除されないため、利用者が別途管理してください。</p>
 
 <h3>お問い合わせ</h3>
 <p>不具合報告・要望は以下の GitHub Issues までお願いします。<br>
 <a href="https://github.com/sasakisrole/youtube-watched-hider/issues">https://github.com/sasakisrole/youtube-watched-hider/issues</a></p>
 
+</section>
 <hr>
 
-<h2>English</h2>
+<section lang="en" aria-labelledby="english">
+<h2 id="english">English</h2>
 <p>This extension ("YouTube Watched Hider") does <strong>not</strong> collect, transmit, or share personal data with the developer or any third party. Watch history, liked-video sync data, extension settings, backup status, and sync metadata are stored locally in the browser (<code>chrome.storage.local</code> / IndexedDB). Liked sync metadata does not store YouTube cookies or authorization headers. Credit-related records also keep the information used to decide when to look a video up again, and — when you run the credit repair under データ修復 ("Data repair") — the original values that were cleared, so that the repair can be undone; none of this is sent anywhere.</p>
 <p>The extension uses Chrome's offscreen document feature for internal IndexedDB access and Blob URL generation for JSON export / backup. This does not transmit data externally.</p>
 <p>External requests go to YouTube endpoints such as <code>oembed</code>, public <code>watch</code> page HTML for metadata / credits / duration backfill, <code>playlist?list=LL</code>, and <code>youtubei/v1/browse</code>, and to the MusicBrainz music database (<code>https://musicbrainz.org/ws/2/...</code>) — only when you run "Fix Credits", or run a saved-credit recheck with "Also check MusicBrainz" selected — to look up composer / lyricist / arranger candidates. Search strings derived from the artist name and track title are sent to MusicBrainz. During Japanese-language rechecks, credits containing both romanized and Japanese names can also trigger an artist search sending only the Japanese person name to verify the reading. No cookies or YouTube credentials are sent, and requests do not pass through any developer server. When the extension proxies same-origin requests from a YouTube tab, the browser may attach YouTube cookies or an authorization header for YouTube only. These credentials are never sent to the developer or any third party and are not stored by the extension.</p>
-<p>Uninstalling the extension removes all stored data.</p>
+<p>Uninstalling the extension removes the data it stores inside the browser. Downloaded JSON backup files are not removed and must be managed separately by the user.</p>
 <p>Contact: <a href="https://github.com/sasakisrole/youtube-watched-hider/issues">https://github.com/sasakisrole/youtube-watched-hider/issues</a></p>
 
+</section>
+</main>
 </body>
 </html>

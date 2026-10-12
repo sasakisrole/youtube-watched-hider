@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="YouTube Watched Hider の導入と基本の使い方。対象画面、視聴済みの判定と95％設定、非表示の切り替え、履歴・分析、JSONバックアップを案内します。">
+  <title>基本の使い方 — YouTube Watched Hider</title>
+  <link rel="icon" href="icon128.png" type="image/png">
+  <link rel="stylesheet" href="site.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">本文へ移動</a>
+  <header class="site-header wrap"><a class="brand" href="index.html" aria-label="YouTube Watched Hider ホーム"><img src="icon128.png" alt="" width="128" height="128"><span>YouTube<br>Watched Hider</span></a><nav aria-label="メインナビゲーション"><a href="index.html">紹介ページ</a><a href="index.html#install">導入する <span aria-hidden="true">↗</span></a><a class="language-link" href="en/guide.html" lang="en" hreflang="en" aria-label="Read this page in English">English</a></nav></header>
+  <main id="main" class="guide-main wrap">
+    <header class="guide-header"><p class="eyebrow">YouTube Watched Hider</p><h1>基本の使い方</h1><p>拡張内の「使い方・更新履歴」をもとに、<br class="wide-break">はじめて使うときの操作をまとめました。</p></header>
+    <nav class="guide-nav" aria-label="使い方の目次"><a href="#first-use">導入する</a><a href="#visibility">表示を調整する</a><a href="#history">履歴・分析</a><a href="#backup">バックアップ</a><a href="#in-extension">拡張内のガイド</a></nav>
+    <section id="first-use" class="guide-section"><h2>1. 導入して、YouTube を開く</h2><ol><li>パソコンの Chrome で、下のリンクから Chrome ウェブストアを開きます。</li><li>拡張名が <span class="ui-name">YouTube Watched Hider</span>、提供元が <span class="ui-name">sasaki.s.role</span> であることと、表示される権限を確認して追加します。</li><li>YouTube を開きます。すでに開いていたページは再読み込みしてください。</li><li>通常どおり動画を見ます。拡張が視聴済みと判定・記録した動画が、次の一覧から隠れます。</li></ol><figure class="guide-figure"><img src="assets/guide-compare.webp" width="720" height="361" alt="YWH なしでは視聴済み3本を含む6本が並び、YWH ありでは視聴済みの3本が隠れて残りの3本が同じ順番で並ぶ比較図。" loading="lazy"><figcaption><span>視聴済みの3本が隠れ、残りは同じ順番のまま並びます（説明用の合成画像）。</span></figcaption></figure><a class="button primary" href="https://chromewebstore.google.com/detail/youtube-watched-hider/bfanjfgoedconkhkkjhfclhimlgiamkh">Chrome ウェブストアで見る <span aria-hidden="true">↗</span></a><p class="guide-note">過去の全視聴履歴を自動で揃えるものではありません。まずは導入後の視聴で、表示の変化を確認してください。</p></section>
+    <section id="visibility" class="guide-section"><h2>2. 隠し方を、自分に合わせる</h2><p>Chrome の拡張機能メニュー（パズルのアイコン）から YWH のアイコンを押すと、操作画面が開きます。よく使うので、ツールバーに固定しておくと便利です。</p><figure class="guide-figure"><img src="assets/guide-pin.webp" width="560" height="365" alt="Chrome のツールバーでパズルのアイコンを押し、拡張機能の一覧で YouTube Watched Hider のピンを押すと、YWH のアイコンがツールバーに固定される説明図。" loading="lazy"><figcaption><ol class="figure-steps"><li>パズルのアイコンを押す</li><li>YouTube Watched Hider の横のピンを押す</li><li>ツールバーに YWH のアイコンが常に表示される</li></ol><span>Chrome の画面を模した説明図です。</span></figcaption></figure><figure class="guide-figure guide-figure-side"><img src="assets/guide-popup.webp" width="374" height="593" alt="YWH の操作画面。上から ON スイッチ、記録件数、最近の履歴、履歴・分析を開く、使い方・更新履歴、設定・データ管理。" loading="lazy"><figcaption><ol class="figure-steps"><li>上部のスイッチ：非表示の ON / OFF</li><li>「履歴・分析を開く」：履歴の検索と音楽の分析</li><li>「設定・データ管理」：ページ別の非表示、半透明表示、バックアップ</li></ol><span>公開版 v1.60.79 の実際の画面（初めて開いた状態。診断用の表示は省略）。</span></figcaption></figure><h3>隠した動画も表示したい</h3><p>上部の <span class="ui-name">ON / OFF</span> で非表示を切り替えます。隠れた動画そのものを YouTube から削除する操作ではありません。</p><h3>検索結果だけは隠したくない</h3><p><span class="ui-name">設定・データ管理 → ページ別の非表示 → 検索結果で隠す</span> を OFF にします。ホーム、登録チャンネルの新着一覧、各チャンネルページ、プレイリストのページ、検索結果、関連動画の6か所を個別に設定できます。</p><h3>消す代わりに、薄く表示したい</h3><p><span class="ui-name">設定・データ管理 → 視聴済みを半透明で表示する</span> を ON にします。</p><h3>視聴済みは、どう判定する？</h3><p>再生が終わった動画や、YouTube の一覧で視聴済みと検出した動画を記録します。一覧の進捗バーを判定する割合は、<span class="ui-name">設定・データ管理 → 視聴済みとみなす％</span> で1〜100％から選べます。既定は95％です。</p><p>これは実視聴時間の計測ではありません。値を変えても、すでに登録された視聴記録は変わりません。</p></section>
+    <section id="history" class="guide-section"><h2>3. 履歴や音楽の傾向を振り返る</h2><p>拡張アイコンから <span class="ui-name">履歴・分析を開く</span> を押します。記録した動画の一覧・検索や、音楽の傾向分析を利用できます。</p><p>Topic チャンネルの履歴からアーティスト別のランキングを表示するほか、チャンネルやキーワードを手がかりに振り返れます。</p><p class="guide-note">分析の「合計時間」は動画の長さの合計です。途中で視聴をやめた時間、倍速、リピートを反映した実視聴時間ではありません。</p></section>
+    <section id="backup" class="guide-section"><h2>4. 必要な履歴を、手元に残す</h2><p>拡張アイコンの <span class="ui-name">設定・データ管理 → 今すぐバックアップ</span> から、データを JSON ファイルに書き出せます。復元するときは <span class="ui-name">バックアップを復元</span> からファイルを選びます。</p><p>復元方法には置換と統合があります。置換では、バックアップ時点にない記録が失われるため、画面に出る件数と復元方法を確認してください。</p><p class="guide-note">拡張を削除すると、ブラウザ内の履歴も削除されます。残したい場合は先にバックアップしてください。ダウンロード済みの JSON バックアップは削除されないため、別途管理してください。</p></section>
+    <section id="in-extension" class="guide-section"><h2>続きは、拡張内のガイドへ</h2><p><span class="ui-name">YWH の拡張アイコン → 使い方・更新履歴</span> を開くと、導入した版の操作案内と更新情報を読めます。</p><p>このページは公開版 v1.60.79 の基本操作に絞った案内です。表示言語や導入した版によって、文言や配置が異なる場合があります。</p><a href="https://github.com/sasakisrole/youtube-watched-hider/issues">困ったときは不具合を報告する <span aria-hidden="true">↗</span></a></section>
+    <p class="guide-source small">確認日：2026年10月11日。紹介文と基本操作は公開タグ v1.60.79、ストア掲載情報、拡張内ガイドを参照しています。</p>
+  </main>
+  <footer class="site-footer wrap"><nav aria-label="補足リンク"><a href="index.html">紹介ページへ戻る</a><a href="privacy.html#japanese">プライバシーポリシー</a><a href="https://github.com/sasakisrole/youtube-watched-hider">ソースコード</a></nav><p class="small">YouTube・Google とは無関係の非公式ツールです。</p></footer>
+</body>
+</html>

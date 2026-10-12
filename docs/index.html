@@ -1,42 +1,36 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>YouTube Watched Hider</title>
-<style>
-  :root { color-scheme: light dark; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif;
-    max-width: 640px;
-    margin: 3rem auto;
-    padding: 0 1rem;
-    line-height: 1.75;
-    color: #222;
-  }
-  h1 { font-size: 1.5rem; }
-  a { color: #2266cc; }
-  ul { padding-left: 1.2rem; }
-  @media (prefers-color-scheme: dark) {
-    body { color: #eee; background: #1a1a1a; }
-    a { color: #7ab8ff; }
-  }
-</style>
-</head>
-<body>
-
-<h1>YouTube Watched Hider</h1>
-<p>YouTubeのおすすめから視聴済み動画を非表示にする Chrome 拡張機能。</p>
-
-<ul>
-  <li><a href="https://github.com/sasakisrole/youtube-watched-hider">GitHub リポジトリ</a></li>
-  <li><a href="privacy.html">プライバシーポリシー / Privacy Policy</a></li>
-  <li><a href="https://github.com/sasakisrole/youtube-watched-hider/issues">不具合報告 / Issues</a></li>
-  <li><a href="https://ko-fi.com/srole">開発を支援する / Ko-fi</a>（アカウント登録なしで送れます）</li>
-  <li><a href="https://github.com/sponsors/sasakisrole">開発を支援する / GitHub Sponsors</a></li>
-</ul>
-
-<p>無償で公開しているツールです。支援しても機能は増えません。</p>
-
-</body>
-</html>
+<!doctype html><html lang="ja"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1" name="viewport"/>
+<meta content="パソコンの YouTube で観た動画を一覧から隠す、無料の Chrome 拡張機能。表示の例、使い方、視聴済みの判定、履歴の保存先と外部通信を紹介します。" name="description"/>
+<meta content="#f6f7f9" media="(prefers-color-scheme: light)" name="theme-color"/><meta content="#20292d" media="(prefers-color-scheme: dark)" name="theme-color"/>
+<title>YouTube Watched Hider — 観た動画を隠す無料の Chrome 拡張機能</title>
+<link href="icon128.png" rel="icon" type="image/png"/>
+<link href="en/index.html" hreflang="en" rel="alternate"/>
+<link href="brand.css" rel="stylesheet"/>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "YouTube Watched Hider",
+  "description": "パソコンの YouTube で視聴済み動画を一覧から隠す、無料の Chrome 拡張機能。",
+  "url": "https://sasakisrole.github.io/youtube-watched-hider/",
+  "installUrl": "https://chromewebstore.google.com/detail/youtube-watched-hider/bfanjfgoedconkhkkjhfclhimlgiamkh",
+  "applicationCategory": "BrowserApplication",
+  "isAccessibleForFree": true
+}
+  </script>
+<script defer="" src="demo.js"></script>
+</head><body class="direction-f"><a class="skip" href="#main">本文へ移動</a><header class="site-header wrap"><a aria-label="YouTube Watched Hider ホーム" class="brand" href="index.html"><img alt="" height="36" src="icon128.png" width="36"/><span class="wordmark">YWH</span><span class="brand-long">YouTube<br/>Watched Hider</span></a><nav aria-label="メインナビゲーション"><a href="guide.html">使い方</a><a class="header-install" href="#install">Chromeで使う</a><a aria-label="Read this page in English" class="language-link" href="en/index.html" hreflang="en" lang="en">English</a></nav></header>
+<main id="main"><section aria-labelledby="title" class="hero wrap page-header"><div class="hero-intro"><div><h1 id="title"><span>観た動画を<wbr/>隠して、</span><span>次を探す。</span></h1></div><div class="hero-side"><div class="lede"><p>YouTube向けのChrome拡張です。</p></div><div class="install"><a class="primary" href="https://chromewebstore.google.com/detail/youtube-watched-hider/bfanjfgoedconkhkkjhfclhimlgiamkh">Chromeに追加 <svg aria-hidden="true" class="icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"></path></svg></a><p>無料 · パソコン版 Chrome 向け</p></div></div></div>
+<figure aria-describedby="demo-note" aria-labelledby="demo-title" class="browser-demo"><div aria-hidden="true" class="browser-chrome"><span class="window-dots"><i></i><i></i><i></i></span><span class="address">youtube.com</span><span class="extension-mark"><img alt="" height="20" src="icon128.png" width="20"/>YWH</span></div><div class="yt-bar"><span class="yt-word">YouTube <small>ホームの表示例</small></span><span aria-hidden="true" class="search-decoration">検索 <svg aria-hidden="true" class="icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m16 16 5 5"></path></svg></span></div><div class="demo-body"><aside aria-hidden="true" class="yt-sidebar"><div class="current"><svg aria-hidden="true" class="icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v11H3Z"></path><path d="M9 21v-8h6v8"></path></svg>ホーム</div><div><svg aria-hidden="true" class="icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewBox="0 0 24 24"><path d="M5 3h14M3 7h18M3 11h18v10H3Z"></path><path d="m10 14 4 2-4 2Z"></path></svg>登録チャンネル</div><div><svg aria-hidden="true" class="icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>履歴</div></aside><div class="feed"><div class="feed-head"><div><p class="demo-kicker">YWHを使った表示例（合成データ）</p><h2 id="demo-title">まだ観ていない、3本。</h2></div><button aria-controls="video-grid" aria-pressed="true" class="compare" hidden="" id="toggle"><span aria-hidden="true" class="toggle-icon"></span><span id="toggle-text">視聴済みを隠す</span></button></div><div class="video-grid hide-watched" id="video-grid"><article class="video watched"><div class="thumb"><img alt="" height="360" src="assets/coffee.webp" width="640"/><span class="duration">12:00</span><span class="watched-tag">視聴済み</span><span class="progress"></span></div><div class="video-info"><span aria-hidden="true" class="avatar">日</span><div><h3>朝のコーヒーを淹れる</h3><p>日々の喫茶</p></div></div></article><article class="video"><div class="thumb"><img alt="" height="360" src="assets/sea.webp" width="640"/><span class="duration">13:00</span></div><div class="video-info"><span aria-hidden="true" class="avatar">小</span><div><h3>青い海を、ただ歩く</h3><p>小さな旅の記録</p></div></div></article><article class="video watched"><div class="thumb"><img alt="" height="360" src="assets/piano.webp" width="640"/><span class="duration">14:00</span><span class="watched-tag">視聴済み</span><span class="progress"></span></div><div class="video-info"><span aria-hidden="true" class="avatar">架</span><div><h3>雨の日のピアノ</h3><p>架空音楽室</p></div></div></article><article class="video"><div class="thumb"><img alt="" height="360" src="assets/room.webp" width="640"/><span class="duration">15:00</span></div><div class="video-info"><span aria-hidden="true" class="avatar">暮</span><div><h3>週末の部屋づくり</h3><p>暮らしの余白</p></div></div></article><article class="video watched"><div class="thumb"><img alt="" height="360" src="assets/stars.webp" width="640"/><span class="duration">16:00</span><span class="watched-tag">視聴済み</span><span class="progress"></span></div><div class="video-info"><span aria-hidden="true" class="avatar">空</span><div><h3>街を離れて、星を見る</h3><p>空の向こう</p></div></div></article><article class="video"><div class="thumb"><img alt="" height="360" src="assets/city.webp" width="640"/><span class="duration">17:00</span></div><div class="video-info"><span aria-hidden="true" class="avatar">街</span><div><h3>夕暮れの街を歩く</h3><p>街の観察室</p></div></div></article></div><p aria-live="polite" class="feed-status" id="demo-status" role="status">6本のうち、視聴済みの3本を隠した状態です。</p></div></div></figure><p class="demo-note" id="demo-note">YouTubeのホームを模した説明図です。動画・履歴は合成データ、画像は生成素材です。実際のYouTube画面ではありません。</p>
+<div class="proof-row"><div><p class="proof-number">消すのは、一覧での表示だけ。</p><h2>OFFにすれば、元の一覧に戻ります。</h2><p>拡張機能のアイコンから、いつでも切り替えられます。</p><a class="text-link" href="guide.html#first-use">最初の操作を読む <svg aria-hidden="true" class="icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"></path></svg></a></div><figure class="popup-proof"><div class="popup-crop"><img alt="公開版の拡張ポップアップ上部。YT Watched HiderのONスイッチ。" height="1110" src="assets/popup.png" width="640"/></div><figcaption class="evidence-label">公開版 v1.60.79 の実UIの抜粋。<a href="assets/popup.png">全体を見る</a></figcaption></figure></div></section>
+<section aria-labelledby="history-title" class="history-preview wrap"><div class="history-copy"><p class="proof-number">また観たい日に。</p><h2 id="history-title">あの一本を、履歴から。</h2><p>記録した動画は、タイトルやチャンネル名で検索できます。</p><a class="text-link" href="guide.html#history">履歴の使い方 <svg aria-hidden="true" class="icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"></path></svg></a><div class="music-note"><h3>よく聴く音楽も、振り返れる。</h3><p>Topic チャンネルなどの履歴から、アーティスト別のランキングを表示します。</p><p class="small">分析の「合計時間」は動画の長さの合計です。実際に聴いた時間ではありません。</p></div></div><figure><picture><source media="(max-width:700px)" srcset="assets/history-controls-320.png"/><img alt="公開版の履歴UI。コーヒーと入力して、架空の履歴を検索した画面。" height="220" loading="lazy" src="assets/history-controls.webp" width="780"/></picture><p class="history-result-label">「朝のコーヒーを淹れる」が一致</p><picture><source media="(max-width:700px)" srcset="assets/history-result-320.png"/><img alt="一致した記録は、朝のコーヒーを淹れる。チャンネルは日々の喫茶。" height="128" loading="lazy" src="assets/history-result.webp" width="780"/></picture><figcaption>公開版 v1.60.79 の実UI。架空の履歴3件を「コーヒー」で検索し、1件へ絞った画面の抜粋です。</figcaption></figure></section>
+<section aria-labelledby="workflow-title" class="section wrap" id="how-it-works"><div class="section-intro"><p class="eyebrow">いつもの視聴の、その先で</p><h2 id="workflow-title">観る。記録される。<br/>次から隠れる。</h2><a class="text-link" href="guide.html">詳しい使い方を読む <svg aria-hidden="true" class="icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"></path></svg></a></div>
+<ol class="steps"><li><span aria-hidden="true" class="step-number">01</span><div><h3>いつもどおり、動画を観る</h3><p>再生の終了や一覧の視聴進捗などから記録します。視聴済みとみなす進捗の割合は、設定で調整できます。</p></div></li><li><span aria-hidden="true" class="step-number">02</span><div><h3>次の一覧では、まだ観ていない動画を探す</h3><p>記録された動画を一覧から隠します。検索結果だけは残す、といったページ別の設定もできます。</p></div></li><li><span aria-hidden="true" class="step-number">03</span><div><h3>また観たいときは、OFF で戻せる</h3><p>拡張機能のアイコンから非表示を OFF にできます。消さずに残したい場合は、薄く表示することもできます。</p></div></li></ol></section>
+<section aria-labelledby="fit-title" class="section wrap"><div><p class="eyebrow">導入前に</p><h2 id="fit-title">自分の使い方に、<br/>合うか確かめる。</h2></div>
+<ul class="limits"><li><strong>パソコンの Chrome 向けです。</strong>ブラウザーで開く YouTube が対象です。スマートフォンの YouTube アプリでは使えません。</li><li><strong>記録・検出した動画を隠します。</strong>入れるだけで、過去の視聴履歴がすべて自動で揃うわけではありません。<a href="guide.html#visibility">判定と対象ページ</a></li><li><strong>YouTube の表示に合わせて動きます。</strong>YouTube 側の表示変更などで、検出できない場合もあります。</li></ul></section>
+<section aria-labelledby="data-title" class="section wrap"><div><p class="eyebrow">保存と通信</p><h2 id="data-title">履歴は、<br/>ブラウザー内に保存。</h2></div>
+<div class="data-body"><p>視聴履歴と設定はブラウザー内に保存します。保存した履歴を開発者のサーバーへ送ることはありません。</p><p>動画情報の取得や、自分で実行する高評価の同期などで YouTube と通信します。</p><p>クレジットの補完・再点検を自分で実行した場合は、曲名・アーティスト名などを使って MusicBrainz に問い合わせることがあります。</p><a class="text-link" href="privacy.html#japanese">プライバシーポリシーを読む <svg aria-hidden="true" class="icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"></path></svg></a></div></section>
+<section aria-labelledby="install-title" class="install-section wrap" id="install"><div><p class="eyebrow">YouTube Watched Hider</p><h2 id="install-title">次の一本を、<br/>探しやすく。</h2><p>Chrome ウェブストアで内容と権限を確認してから、「Chrome に追加」で導入できます。</p></div>
+<div class="install-action"><a class="primary" href="https://chromewebstore.google.com/detail/youtube-watched-hider/bfanjfgoedconkhkkjhfclhimlgiamkh">Chrome ウェブストアで見る <svg aria-hidden="true" class="icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"></path></svg></a><p class="small">無料 · 支援の有無で機能は変わりません</p><a class="text-link" href="guide.html#first-use">導入後の最初の操作を読む <svg aria-hidden="true" class="icon" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"></path></svg></a></div></section></main>
+<footer class="site-footer wrap"><div class="footer-top"><p>YouTube Watched Hider</p><nav aria-label="補足リンク"><a href="guide.html">使い方</a><a href="privacy.html#japanese">プライバシー</a><a href="https://github.com/sasakisrole/youtube-watched-hider">ソースコード</a><a href="https://github.com/sasakisrole/youtube-watched-hider/issues">不具合報告</a><a href="https://ko-fi.com/srole">開発を支援する</a></nav></div><p class="small">YouTube・Google とは無関係の非公式ツールです。</p><p class="small">この紹介は公開版 v1.60.79 の機能を基準にしています（2026年10月11日確認）。最新の配布版はストアで確認できます。</p></footer></body></html>

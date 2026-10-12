@@ -72,7 +72,40 @@ backup_diff_metrics.json
 /docs/*
 !/docs/index.html
 !/docs/privacy.html
+!/docs/guide.html
+!/docs/site.css
+!/docs/icon128.png
+!/docs/brand.css
+!/docs/demo.js
 
 # 内部文書（AI委託プロンプト・個人の嗜好データ由来の出力）
 codex/
 yt-recommend-*.html
+# Bilingual introduction: named public pages and assets only.
+!/docs/assets/
+/docs/assets/*
+!/docs/en/
+/docs/en/*
+!/docs/en/assets/
+/docs/en/assets/*
+!/docs/assets/city.webp
+!/docs/assets/coffee.webp
+!/docs/assets/history-controls.webp
+!/docs/assets/history-result.webp
+!/docs/assets/piano.webp
+!/docs/assets/room.webp
+!/docs/assets/sea.webp
+!/docs/assets/stars.webp
+!/docs/assets/guide-compare.webp
+!/docs/assets/guide-pin.webp
+!/docs/assets/guide-popup.webp
+!/docs/assets/popup.png
+!/docs/assets/history-controls-320.png
+!/docs/assets/history-result-320.png
+!/docs/en/assets/history-controls.webp
+!/docs/en/assets/history-result.webp
+!/docs/en/assets/guide-compare.webp
+!/docs/en/assets/guide-pin.webp
+!/docs/en/assets/guide-popup.webp
+!/docs/en/guide.html
+!/docs/en/index.html
