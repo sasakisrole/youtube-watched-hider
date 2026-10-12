@@ -77,6 +77,7 @@ backup_diff_metrics.json
 !/docs/icon128.png
 !/docs/brand.css
 !/docs/demo.js
+!/docs/sitemap.xml
 
 # 内部文書（AI委託プロンプト・個人の嗜好データ由来の出力）
 codex/
